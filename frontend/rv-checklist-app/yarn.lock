@@ -146,6 +146,14 @@
   optionalDependencies:
     lmdb "3.2.6"
 
+"@angular/cdk@19.2.17":
+  version "19.2.17"
+  resolved "https://registry.yarnpkg.com/@angular/cdk/-/cdk-19.2.17.tgz#749253ed4eb3207566420b554bce25af5f8aa286"
+  integrity sha512-3jG33S+5+kqymCRwQlcSEWlY5rYwkKxe0onln+NXxT0/kteR02vWvv1+Li4/QqSr5JvsGHEhAFsZaR9QtOzbdA==
+  dependencies:
+    parse5 "^7.1.2"
+    tslib "^2.3.0"
+
 "@angular/cli@^19.2.13":
   version "19.2.13"
   resolved "https://registry.yarnpkg.com/@angular/cli/-/cli-19.2.13.tgz#af8bad8b0af69395fb53920ce0e125795c98668c"
@@ -211,6 +219,13 @@
   dependencies:
     tslib "^2.3.0"
 
+"@angular/material@^19.2.17":
+  version "19.2.17"
+  resolved "https://registry.yarnpkg.com/@angular/material/-/material-19.2.17.tgz#3954d66c278af565b07bad761df9f39b89f9f105"
+  integrity sha512-IyA+KP+uUj3r9loqGJrj7qAiEBckj7EVIdV0jlYwqWIUyKWeJ3R88GmLPMH2BgtBU3R/WkS2blXDI0yvRhKfww==
+  dependencies:
+    tslib "^2.3.0"
+
 "@angular/platform-browser-dynamic@^19.2.0":
   version "19.2.13"
   resolved "https://registry.yarnpkg.com/@angular/platform-browser-dynamic/-/platform-browser-dynamic-19.2.13.tgz#8fe006495bff5e810e3f9bc3eb77c18c487055a3"
@@ -229,6 +244,13 @@
   version "19.2.13"
   resolved "https://registry.yarnpkg.com/@angular/router/-/router-19.2.13.tgz#5ddcfcc511bb890269e184251eba0b4421df8ba2"
   integrity sha512-BZObWQtGkDv2WHyLVRRecGbLwalbI8kOXKaVgN5dqP4z/t5bpzYXZixPO9e0E1Ff0+m4tQalhTc84j8X7XZuTw==
+  dependencies:
+    tslib "^2.3.0"
+
+"@angular/service-worker@^19.2.0":
+  version "19.2.13"
+  resolved "https://registry.yarnpkg.com/@angular/service-worker/-/service-worker-19.2.13.tgz#d020f4f83c857e3ab12962d5f95d2283dbd81ee1"
+  integrity sha512-6go8iP2kb/dYiOT6MMaZHUsUaijMTb2cc8Spnvge91gNr48QwiDbP7Tukg0EVTGbXfRX8oU3AflMVOQqDY2v1w==
   dependencies:
     tslib "^2.3.0"
 
@@ -5426,7 +5448,7 @@ parse5-sax-parser@^7.0.0:
   dependencies:
     parse5 "^7.0.0"
 
-parse5@^7.0.0:
+parse5@^7.0.0, parse5@^7.1.2:
   version "7.3.0"
   resolved "https://registry.yarnpkg.com/parse5/-/parse5-7.3.0.tgz#d7e224fa72399c7a175099f45fc2ad024b05ec05"
   integrity sha512-IInvU7fabl34qmi9gY8XOVxhYyMyuH2xUNpb2q8/Y+7552KlejkRvqvD19nMoUW/uQGGbqNpA6Tufu5FL5BZgw==

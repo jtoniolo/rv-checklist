@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  frontend-dev:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ../frontend/rv-checklist-app:/app
+    ports:
+      - "4200:4200"
+    command: >
+      bash -c "yarn install && yarn start --host 0.0.0.0"
+    environment:
+      - NODE_ENV=development
+
+  backend-dev:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ../backend/backend:/app
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongodb
+    command: >
+      bash -c "yarn install && yarn start:dev"
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://mongodb:27017/rv-checklist
+      - JWT_SECRET=dev_jwt_secret
+      - JWT_EXPIRATION=86400
+
+  mongodb:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data_dev:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=rv-checklist
+
+volumes:
+  mongodb_data_dev:
