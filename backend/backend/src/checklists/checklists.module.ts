@@ -3,7 +3,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ChecklistTemplate, ChecklistTemplateSchema } from './schemas/checklist-template.schema';
 import { ChecklistInstance, ChecklistInstanceSchema } from './schemas/checklist-instance.schema';
 import { ChecklistItem, ChecklistItemSchema } from './schemas/checklist-item.schema';
-import { ChecklistsController } from './checklists.controller';
+import { ChecklistTemplatesController } from './checklist-templates.controller';
+import { ChecklistInstancesController } from './checklist-instances.controller';
 import { ChecklistsService } from './checklists.service';
 
 @Module({
@@ -14,7 +15,7 @@ import { ChecklistsService } from './checklists.service';
       { name: ChecklistItem.name, schema: ChecklistItemSchema },
     ]),
   ],
-  controllers: [ChecklistsController],
+  controllers: [ChecklistTemplatesController, ChecklistInstancesController],
   providers: [ChecklistsService],
   exports: [ChecklistsService],
 })
