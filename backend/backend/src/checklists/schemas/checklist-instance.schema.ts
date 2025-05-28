@@ -14,12 +14,12 @@ export class ChecklistInstance {
 
   @Prop({ type: [{ 
     item: ChecklistItemSchema,
-    completedAt: { type: Date },
+    completedAt: { type: Date, default: null },
     notes: { type: String }
   }] })
   items: Array<{
     item: ChecklistItem;
-    completedAt: Date;
+    completedAt: Date | null;
     notes: string;
   }>;
 

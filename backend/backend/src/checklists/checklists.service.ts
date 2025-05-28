@@ -31,8 +31,7 @@ export class ChecklistsService {
   }
 
   async createTemplate(createTemplateDto: CreateChecklistTemplateDto): Promise<ChecklistTemplate> {
-    const newTemplate = new this.checklistTemplateModel(createTemplateDto);
-    return newTemplate.save();
+    return await this.checklistTemplateModel.create(createTemplateDto);
   }
 
   async updateTemplate(
@@ -90,7 +89,7 @@ export class ChecklistsService {
     if (createInstanceDto.templateId) {
       const template = await this.findTemplateById(createInstanceDto.templateId);
       
-      const newInstance = new this.checklistInstanceModel({
+      const newInstance = {
         name: createInstanceDto.name || template.name,
         description: createInstanceDto.description || template.description,
         items: template.items.map(item => ({
@@ -98,23 +97,23 @@ export class ChecklistsService {
           completedAt: null,
           notes: '',
         })),
-        templateId: template._id,
+        templateId: new Types.ObjectId(createInstanceDto.templateId),
         userId: new Types.ObjectId(userId),
         startedAt: new Date(),
-      });
+      };
       
-      return newInstance.save();
+      return await this.checklistInstanceModel.create(newInstance);
     } else {
       // Create an empty checklist
-      const newInstance = new this.checklistInstanceModel({
+      const newInstance = {
         name: createInstanceDto.name,
         description: createInstanceDto.description,
         items: [],
         userId: new Types.ObjectId(userId),
         startedAt: new Date(),
-      });
+      };
       
-      return newInstance.save();
+      return await this.checklistInstanceModel.create(newInstance);
     }
   }
 
@@ -125,9 +124,12 @@ export class ChecklistsService {
   ): Promise<ChecklistInstance> {
     const instance = await this.findInstanceById(id, userId);
     
+    // Create update object
+    const updateData: any = {};
+    
     // Update basic fields
-    if (updateInstanceDto.name) instance.name = updateInstanceDto.name;
-    if (updateInstanceDto.description) instance.description = updateInstanceDto.description;
+    if (updateInstanceDto.name) updateData.name = updateInstanceDto.name;
+    if (updateInstanceDto.description) updateData.description = updateInstanceDto.description;
     
     // Check if the checklist is being marked as completed
     if (updateInstanceDto.status === 'completed' && instance.status !== 'completed') {
@@ -138,19 +140,30 @@ export class ChecklistsService {
         throw new BadRequestException('Cannot mark checklist as completed when items are still pending');
       }
       
-      instance.completedAt = new Date();
+      updateData.completedAt = new Date();
     }
     
     if (updateInstanceDto.status) {
-      instance.status = updateInstanceDto.status;
+      updateData.status = updateInstanceDto.status;
     }
     
-    return instance.save();
+    const updatedInstance = await this.checklistInstanceModel.findByIdAndUpdate(
+      id, 
+      updateData, 
+      { new: true }
+    ).exec();
+
+    if (!updatedInstance) {
+      throw new NotFoundException(`Checklist instance with ID ${id} not found`);
+    }
+    
+    return updatedInstance;
   }
 
   async deleteInstance(id: string, userId: string): Promise<void> {
-    const instance = await this.findInstanceById(id, userId);
-    await instance.deleteOne();
+    // First verify the user has access to this instance
+    await this.findInstanceById(id, userId);
+    await this.checklistInstanceModel.deleteOne({ _id: id }).exec();
   }
 
   // Item completion methods
@@ -166,13 +179,24 @@ export class ChecklistsService {
       throw new BadRequestException('Invalid item index');
     }
     
-    instance.items[itemIndex].completedAt = new Date();
+    const updatedItems = [...instance.items];
+    updatedItems[itemIndex] = {
+      ...updatedItems[itemIndex],
+      completedAt: new Date(),
+      notes: notes || updatedItems[itemIndex].notes,
+    };
     
-    if (notes) {
-      instance.items[itemIndex].notes = notes;
+    const updatedInstance = await this.checklistInstanceModel.findByIdAndUpdate(
+      instanceId,
+      { items: updatedItems },
+      { new: true }
+    ).exec();
+    
+    if (!updatedInstance) {
+      throw new NotFoundException(`Checklist instance with ID ${instanceId} not found`);
     }
     
-    return instance.save();
+    return updatedInstance;
   }
 
   async uncompleteItem(
@@ -186,9 +210,23 @@ export class ChecklistsService {
       throw new BadRequestException('Invalid item index');
     }
     
-    instance.items[itemIndex].completedAt = null;
+    const updatedItems = [...instance.items];
+    updatedItems[itemIndex] = {
+      ...updatedItems[itemIndex],
+      completedAt: null,
+    };
     
-    return instance.save();
+    const updatedInstance = await this.checklistInstanceModel.findByIdAndUpdate(
+      instanceId,
+      { items: updatedItems },
+      { new: true }
+    ).exec();
+    
+    if (!updatedInstance) {
+      throw new NotFoundException(`Checklist instance with ID ${instanceId} not found`);
+    }
+    
+    return updatedInstance;
   }
 
   async findDefaultTemplates(type?: string): Promise<ChecklistTemplate[]> {

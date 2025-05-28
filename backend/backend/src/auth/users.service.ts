@@ -33,14 +33,12 @@ export class UsersService {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // Create new user
-    const newUser = new this.userModel({
+    return this.userModel.create({
       email,
       passwordHash,
       firstName,
       lastName,
     });
-
-    return newUser.save();
   }
 
   async updateLastLogin(userId: string): Promise<void> {
