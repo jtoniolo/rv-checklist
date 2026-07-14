@@ -12,4 +12,4 @@ Uses the five canonical triage labels (`needs-triage`, `needs-info`, `ready-for-
 
 ### Domain docs
 
-Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. Split into per-context files once `CONTEXT.md` grows too big. See `docs/agents/domain.md`.

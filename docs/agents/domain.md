@@ -38,6 +38,19 @@ Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
         └── docs/adr/
 ```
 
+## When to split a growing CONTEXT.md
+
+Start single-context. When the root `CONTEXT.md` gets too big to hold in your head — it has grown past a few screens, mixes vocabulary from clearly separate areas (e.g. ordering terms next to billing terms), or you keep scrolling past irrelevant sections to find the ones you need — **split it into multiple contexts** rather than letting it keep growing.
+
+To split:
+
+1. Identify the distinct contexts (bounded areas of the domain) the single file has accumulated.
+2. Create a per-context `CONTEXT.md` for each — under `src/<context>/CONTEXT.md`, matching the multi-context layout above — and move each area's vocabulary and decisions into its own file.
+3. Replace the root `CONTEXT.md` with a `CONTEXT-MAP.md` that lists the contexts and points at each `CONTEXT.md`.
+4. Move any context-specific ADRs into `src/<context>/docs/adr/`; leave system-wide ones in the root `docs/adr/`.
+
+Prefer splitting early over carrying one oversized file — a context you can read end-to-end is worth more than one exhaustive document. When a split is warranted, hand it to `/domain-modeling`, which owns the structure of these files.
+
 ## Use the glossary's vocabulary
 
 When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
