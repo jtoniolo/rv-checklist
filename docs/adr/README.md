@@ -12,6 +12,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0003](0003-flat-multi-user-tenancy.md) | Flat multi-user tenancy with row-level ownership |
 | [0004](0004-task-metadata-jsonb.md) | Task metadata as JSONB, with snapshot-to-log |
 | [0005](0005-pull-based-no-notifications.md) | Pull-based — no notifications |
+| [0006](0006-rig-as-maintenance-aggregate.md) | Rig as the aggregate for maintenance (refines 0003) |
 
 The domain model (entities, relationships, ubiquitous language) lives in
 `CONTEXT.md` at the repo root, written as the domain-model ticket (#2) is walked.
