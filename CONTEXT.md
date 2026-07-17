@@ -1,6 +1,6 @@
 # RV Checklist & Maintenance Tracker
 
-A personal memory aid for a forgetful RV owner. Checklists exist so nothing gets left behind when packing and no step gets missed during procedures (pre-departure, departure, setup, spring opening, fall closing, the various packing lists, etc.). Maintenance tracking exists so "when did I last do this?" always has an answer. The app is pull-based: it answers when asked, it never nags.
+A personal aid for an RV owner whose failure mode is **object permanence** — what's out of sight gets missed. Checklists exist to surface out-of-sight things at the moment they matter: nothing left behind when packing, no unseen step missed in a procedure. (Things in plain view need no checklist — there is no campsite-setup list.) Maintenance tracking exists so "when did I last do this?" always has an answer. The app is pull-based: it answers when asked, it never nags.
 
 ## Language
 
