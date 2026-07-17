@@ -16,6 +16,8 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0007](0007-photo-field-type-garage-s3.md) | Photo field type, stored in Garage S3 (extends 0004) |
 | [0008](0008-step-custom-fields.md) | Step custom fields (extends 0004) |
 | [0009](0009-nx-workspace-layout.md) | Nx workspace layout — pnpm, Zod shared domain, scope/type boundaries |
+| [0010](0010-mvp-scope.md) | MVP scope — full core loop, mobile-first PWA, photos deferred |
+| [0011](0011-redux-rtk-state.md) | Web state management — Redux Toolkit with RTK Query |
 
 The domain model (entities, relationships, ubiquitous language) lives in
 `CONTEXT.md` at the repo root, written as the domain-model ticket (#2) is walked.
