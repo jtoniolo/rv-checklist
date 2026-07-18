@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./libs/shared/domain"
+    },
+    {
+      "path": "./libs/api/data-access"
+    },
+    {
+      "path": "./libs/web/data-access"
+    },
+    {
+      "path": "./libs/web/ui"
+    }
+  ],
+  "compilerOptions": {}
+}
