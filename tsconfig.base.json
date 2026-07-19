@@ -21,7 +21,6 @@
     "strict": true,
     "target": "es2022",
     "customConditions": ["@rv-checklist/source"],
-    "noUncheckedSideEffectImports": false,
-    "types": ["*"]
+    "noUncheckedSideEffectImports": true
   }
 }
