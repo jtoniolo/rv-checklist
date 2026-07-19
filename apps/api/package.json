@@ -88,13 +88,27 @@
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
+    "@nestjs/config": "^4.0.4",
+    "@rv-checklist/domain": "workspace:*",
+    "zod": "^4.4.3",
     "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/typeorm": "^11.0.3",
+    "google-auth-library": "^10.9.0",
+    "passport": "^0.7.0",
+    "passport-custom": "^1.1.1",
+    "passport-jwt": "^4.0.1",
+    "pg": "^8.22.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
-    "tslib": "^2.3.0"
+    "tslib": "^2.3.0",
+    "typeorm": "^1.1.0"
   },
   "devDependencies": {
-    "@nestjs/testing": "^11.0.0"
+    "@nestjs/testing": "^11.0.0",
+    "@types/passport-jwt": "^4.0.1",
+    "@types/pg": "^8.20.0"
   }
 }

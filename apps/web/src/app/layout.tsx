@@ -1,6 +1,7 @@
 import './global.css';
 import type { Metadata, Viewport } from 'next';
 import type { JSX, ReactNode } from 'react';
+import { AuthProvider } from './auth-provider';
 import { ServiceWorkerRegistrar } from './sw-register';
 
 export const metadata: Metadata = {
@@ -38,7 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        {children}
+        <AuthProvider>{children}</AuthProvider>
         <ServiceWorkerRegistrar />
       </body>
     </html>

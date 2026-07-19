@@ -3,12 +3,20 @@
   "version": "0.0.1",
   "private": true,
   "nx": {
+    "targets": {
+      "dev": {
+        "options": {
+          "port": 4200
+        }
+      }
+    },
     "tags": [
       "scope:web",
       "type:app"
     ]
   },
   "dependencies": {
+    "@rv-checklist/domain": "workspace:*",
     "next": "~16.1.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

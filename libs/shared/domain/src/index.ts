@@ -1,4 +1,6 @@
 export * from './lib/common.js';
+export * from './lib/owner.js';
+export * from './lib/auth.js';
 export * from './lib/field-schema.js';
 export * from './lib/rig.js';
 export * from './lib/checklist.js';
