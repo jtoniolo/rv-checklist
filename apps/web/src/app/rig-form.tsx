@@ -31,7 +31,7 @@ function toFields(initial: CreateRig | undefined): FormFields {
     vin: initial?.vin ?? '',
     make: initial?.make ?? '',
     model: initial?.model ?? '',
-    year: initial ? String(initial.year) : '',
+    year: initial?.year === undefined ? '' : String(initial.year),
     nickname: initial?.nickname ?? '',
   };
 }
@@ -57,12 +57,14 @@ export function RigForm({
     };
 
   const submit = (): void => {
+    const year = fields.year.trim();
+    // Only the nickname is required; blank details are omitted, not sent empty.
     const parsed = CreateRigSchema.safeParse({
-      vin: fields.vin.trim(),
-      make: fields.make.trim(),
-      model: fields.model.trim(),
-      year: Number(fields.year),
       nickname: fields.nickname.trim(),
+      vin: fields.vin.trim() || undefined,
+      make: fields.make.trim() || undefined,
+      model: fields.model.trim() || undefined,
+      year: year ? Number(year) : undefined,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Please check the details.');
@@ -92,7 +94,7 @@ export function RigForm({
       </label>
       <div className="flex gap-3">
         <label className={`${labelClass} flex-1`}>
-          Make
+          Make (optional)
           <input
             className={inputClass}
             value={fields.make}
@@ -101,7 +103,7 @@ export function RigForm({
           />
         </label>
         <label className={`${labelClass} flex-1`}>
-          Model
+          Model (optional)
           <input
             className={inputClass}
             value={fields.model}
@@ -112,7 +114,7 @@ export function RigForm({
       </div>
       <div className="flex gap-3">
         <label className={`${labelClass} w-28`}>
-          Year
+          Year (optional)
           <input
             className={inputClass}
             value={fields.year}
@@ -122,7 +124,7 @@ export function RigForm({
           />
         </label>
         <label className={`${labelClass} flex-1`}>
-          VIN
+          VIN (optional)
           <input
             className={inputClass}
             value={fields.vin}

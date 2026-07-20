@@ -27,10 +27,23 @@ describe('RigSchema', () => {
     );
   });
 
+  it('accepts a rig with only id, owner, and nickname', () => {
+    const minimal = {
+      id: validRig.id,
+      ownerId: validRig.ownerId,
+      nickname: validRig.nickname,
+    };
+    expect(RigSchema.parse(minimal)).toEqual(minimal);
+  });
+
   it('rejects a non-integer year', () => {
     expect(RigSchema.safeParse({ ...validRig, year: 2021.5 }).success).toBe(
       false,
     );
+  });
+
+  it('rejects a blank VIN when one is given', () => {
+    expect(RigSchema.safeParse({ ...validRig, vin: '' }).success).toBe(false);
   });
 });
 
@@ -47,6 +60,18 @@ describe('CreateRigSchema', () => {
     const { ownerId, ...body } = validRig;
     void ownerId;
     expect(CreateRigSchema.safeParse(body).success).toBe(true);
+  });
+
+  it('accepts a body with only a nickname', () => {
+    expect(CreateRigSchema.parse({ nickname: 'Just a name' })).toEqual({
+      nickname: 'Just a name',
+    });
+  });
+
+  it('rejects a body with no nickname', () => {
+    expect(CreateRigSchema.safeParse({ make: 'Airstream' }).success).toBe(
+      false,
+    );
   });
 });
 

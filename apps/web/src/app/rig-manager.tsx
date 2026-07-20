@@ -162,6 +162,9 @@ function RigCard({
   onEdit,
   onDelete,
 }: RigCardProps): JSX.Element {
+  const details = [rig.year, rig.make, rig.model]
+    .filter((part): part is string | number => part !== undefined)
+    .join(' ');
   return (
     <div
       className={`flex flex-col gap-2 rounded-xl border p-4 ${
@@ -173,12 +176,14 @@ function RigCard({
           <span className="text-lg font-semibold text-brand dark:text-ink-inverted">
             {rig.nickname}
           </span>
-          <span className="text-sm text-brand-muted">
-            {rig.year} {rig.make} {rig.model}
-          </span>
-          <span className="font-mono text-xs text-brand-muted">
-            VIN {rig.vin}
-          </span>
+          {details ? (
+            <span className="text-sm text-brand-muted">{details}</span>
+          ) : undefined}
+          {rig.vin ? (
+            <span className="font-mono text-xs text-brand-muted">
+              VIN {rig.vin}
+            </span>
+          ) : undefined}
         </div>
         {isActive ? (
           <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">

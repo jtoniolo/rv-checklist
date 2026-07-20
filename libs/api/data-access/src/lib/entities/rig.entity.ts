@@ -24,17 +24,20 @@ export class RigEntity {
   @Column({ name: 'owner_id', type: 'uuid' })
   ownerId!: string;
 
-  @Column({ type: 'text' })
-  vin!: string;
+  // Only the nickname is required; VIN, make, model, and year are optional
+  // details (RigSchema). TypeORM yields SQL NULL as `null`; the domain speaks
+  // `undefined` — the repository maps between them.
+  @Column({ type: 'text', nullable: true })
+  vin!: string | undefined;
 
-  @Column({ type: 'text' })
-  make!: string;
+  @Column({ type: 'text', nullable: true })
+  make!: string | undefined;
 
-  @Column({ type: 'text' })
-  model!: string;
+  @Column({ type: 'text', nullable: true })
+  model!: string | undefined;
 
-  @Column({ type: 'integer' })
-  year!: number;
+  @Column({ type: 'integer', nullable: true })
+  year!: number | undefined;
 
   @Column({ type: 'text' })
   nickname!: string;
