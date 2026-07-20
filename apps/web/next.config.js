@@ -33,6 +33,9 @@ const rootEnv = loadRootEnv();
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The shared UI lib is published as raw TypeScript/TSX source, so Next must
+  // transpile it rather than treat it as pre-built node_modules.
+  transpilePackages: ['@rv-checklist/web-ui'],
   env: {
     NEXT_PUBLIC_GOOGLE_CLIENT_ID:
       process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ??
