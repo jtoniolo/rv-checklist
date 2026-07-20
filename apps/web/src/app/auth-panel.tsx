@@ -10,7 +10,7 @@ import { useAuth } from './auth-provider';
  * when signed in, proving the whole auth path end to end.
  */
 const cardClass =
-  'border-hairline text-brand-muted flex flex-1 flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-8 text-center';
+  'border-hairline text-brand-muted flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-8 text-center';
 
 export function AuthPanel(): JSX.Element {
   const { status, owner, buttonRef, signOut } = useAuth();
