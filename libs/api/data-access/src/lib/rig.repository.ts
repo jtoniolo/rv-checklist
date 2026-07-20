@@ -28,10 +28,11 @@ function toRig(entity: RigEntity): Rig {
   return {
     id: entity.id,
     ownerId: entity.ownerId,
-    vin: entity.vin,
-    make: entity.make,
-    model: entity.model,
-    year: entity.year,
+    // TypeORM yields SQL NULL as `null`; the domain omits an absent detail.
+    vin: entity.vin ?? undefined,
+    make: entity.make ?? undefined,
+    model: entity.model ?? undefined,
+    year: entity.year ?? undefined,
     nickname: entity.nickname,
   };
 }
