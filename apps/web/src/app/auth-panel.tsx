@@ -16,7 +16,8 @@ import { disableGoogleAutoSelect, GoogleOneTap } from './google-one-tap';
  * owner from `GET /me` (RTK Query) and offers sign-out. The token lifecycle and
  * silent refresh live in the data-access layer, not here.
  */
-const cardClass =
+/** The dashed card shell shared by the auth panel's states and the pre-hydration placeholder. */
+export const authCardClass =
   'border-hairline text-brand-muted flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-8 text-center';
 
 export function AuthPanel(): JSX.Element {
@@ -29,7 +30,7 @@ export function AuthPanel(): JSX.Element {
 
   if (!isAuthenticated) {
     return (
-      <section className={cardClass} aria-label="Sign in">
+      <section className={authCardClass} aria-label="Sign in">
         <p>Sign in with Google to continue.</p>
         <GoogleOneTap />
       </section>
@@ -38,14 +39,14 @@ export function AuthPanel(): JSX.Element {
 
   if (isLoading || !owner) {
     return (
-      <section className={cardClass} aria-label="Signing in">
+      <section className={authCardClass} aria-label="Signing in">
         <p>Checking your session…</p>
       </section>
     );
   }
 
   return (
-    <section className={cardClass} aria-label="Signed in">
+    <section className={authCardClass} aria-label="Signed in">
       <p>
         Signed in as{' '}
         <strong className="text-brand dark:text-ink-inverted">
