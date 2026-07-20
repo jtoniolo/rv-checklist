@@ -13,10 +13,10 @@ export class Rigs1721000100000 implements MigrationInterface {
       CREATE TABLE "rigs" (
         "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         "owner_id" uuid NOT NULL REFERENCES "users" ("id") ON DELETE CASCADE,
-        "vin" text,
-        "make" text,
-        "model" text,
-        "year" integer,
+        "vin" text NOT NULL,
+        "make" text NOT NULL,
+        "model" text NOT NULL,
+        "year" integer NOT NULL,
         "nickname" text NOT NULL,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now()

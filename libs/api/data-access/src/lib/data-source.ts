@@ -4,6 +4,7 @@ import { RigEntity } from './entities/rig.entity.js';
 import { UserEntity } from './entities/user.entity.js';
 import { Baseline1721000000000 } from './migrations/1721000000000-baseline.js';
 import { Rigs1721000100000 } from './migrations/1721000100000-rigs.js';
+import { RigOptionalDetails1721000200000 } from './migrations/1721000200000-rig-optional-details.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -20,7 +21,11 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
     type: 'postgres',
     url: databaseUrl,
     entities: [UserEntity, RefreshTokenEntity, RigEntity],
-    migrations: [Baseline1721000000000, Rigs1721000100000],
+    migrations: [
+      Baseline1721000000000,
+      Rigs1721000100000,
+      RigOptionalDetails1721000200000,
+    ],
     migrationsRun: true,
     synchronize: false,
   };
