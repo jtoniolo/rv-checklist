@@ -51,6 +51,9 @@
   ],
   "references": [
     {
+      "path": "../../libs/web/ui"
+    },
+    {
       "path": "../../libs/shared/domain"
     }
   ]

@@ -1,34 +1,35 @@
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
+@import 'tailwindcss';
+
+/* Scan the shared UI lib (it lives outside this app dir) for class names. */
+@source '../../../../libs/web/ui/src';
+
+/*
+ * Design tokens (issue #11 follow-up). One brand palette feeds every utility so
+ * the app reads as one system and later slices reuse the same names. Tailwind's
+ * default mobile-first breakpoints (sm 40rem, md 48rem, lg 64rem, …) are kept;
+ * we only add colours here.
+ */
+@theme {
+  --color-brand: #1f3a5f;
+  --color-brand-muted: #5b6b7f;
+  --color-ink: #16202c;
+  --color-ink-inverted: #e7edf5;
+  --color-surface: #f5f7fa;
+  --color-surface-dark: #0f1720;
+  --color-hairline: #c3ccd8;
 }
 
-html {
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-  line-height: 1.5;
-}
-
-body {
-  min-height: 100dvh;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    Helvetica,
-    Arial,
-    sans-serif;
-  color: #16202c;
-  background-color: #f5f7fa;
-  -webkit-font-smoothing: antialiased;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   body {
-    color: #e7edf5;
-    background-color: #0f1720;
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    body {
+      background-color: var(--color-surface-dark);
+      color: var(--color-ink-inverted);
+    }
   }
 }
