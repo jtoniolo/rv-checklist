@@ -1,8 +1,12 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  RefreshTokenStore,
+  UserStore,
+  type UserRecord,
+} from '@rv-checklist/api-data-access';
 import type { TokenPair } from '@rv-checklist/domain';
 import { Clock } from './clock.js';
 import type { GoogleProfile } from './google-verifier.js';
-import { RefreshTokenStore, UserStore, type UserRecord } from './stores.js';
 import { TokenService } from './token.service.js';
 
 /**

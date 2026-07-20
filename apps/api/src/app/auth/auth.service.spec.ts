@@ -1,14 +1,15 @@
 import { UnauthorizedException } from '@nestjs/common';
+import {
+  RefreshTokenStore,
+  UserStore,
+  type CreateRefreshTokenInput,
+  type RefreshTokenRecord,
+  type UpsertUserInput,
+  type UserRecord,
+} from '@rv-checklist/api-data-access';
 import { AuthService } from './auth.service.js';
 import { Clock } from './clock.js';
 import type { GoogleProfile } from './google-verifier.js';
-import { RefreshTokenStore, UserStore } from './stores.js';
-import type {
-  CreateRefreshTokenInput,
-  RefreshTokenRecord,
-  UpsertUserInput,
-  UserRecord,
-} from './stores.js';
 import { TokenService } from './token.service.js';
 
 /** A clock the test drives by hand. */

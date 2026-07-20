@@ -1,16 +1,24 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { buildDataSourceOptions } from '@rv-checklist/api-data-access';
+import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { validateEnv, type Env } from './config/env.js';
-import { buildDataSourceOptions } from './database/data-source.js';
+import { RigModule } from './rig/rig.module.js';
 
 /**
  * Root module (issue #13). Loads and validates the environment globally, opens
  * the Postgres connection (running migrations at startup), and mounts the auth
- * platform. Feature modules (Rig CRUD, …) land here in later slices.
+ * platform and feature modules.
+ *
+ * The global `ZodValidationPipe` and `ZodSerializerInterceptor` (nestjs-zod,
+ * ADR-0009) make the shared Zod schemas the one source of validation truth:
+ * every request body is validated against its DTO schema and every `@ZodSerializerDto`
+ * response is validated/serialised on the way out.
  */
 @Module({
   imports: [
@@ -25,8 +33,13 @@ import { buildDataSourceOptions } from './database/data-source.js';
         buildDataSourceOptions(config.get('DATABASE_URL', { infer: true })),
     }),
     AuthModule,
+    RigModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_PIPE, useClass: ZodValidationPipe },
+    { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+  ],
 })
 export class AppModule {}

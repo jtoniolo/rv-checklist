@@ -1,10 +1,10 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
+import { UserStore } from '@rv-checklist/api-data-access';
 import type { Owner } from '@rv-checklist/domain';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Env } from '../../config/env.js';
-import { UserStore } from '../stores.js';
 
 /** The verified access-token payload (see {@link TokenService}). */
 interface JwtPayload {

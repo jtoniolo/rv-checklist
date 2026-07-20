@@ -12,6 +12,7 @@ module.exports = {
   displayName: '@rv-checklist/web-data-access',
   preset: '../../../jest.preset.js',
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/src/test-setup.ts'],
   transform: {
     '^.+\\.[tj]s$': ['@swc/jest', swcJestConfig],
   },

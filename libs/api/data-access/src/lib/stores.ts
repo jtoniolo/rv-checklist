@@ -1,8 +1,8 @@
 /**
- * Auth persistence ports (issue #13) — the seam that keeps {@link AuthService}
+ * Auth persistence ports (issue #13) — the seam that keeps the auth flow
  * unit-testable with no database. Production binds these to the TypeORM-backed
- * stores; tests bind them to in-memory doubles. Expressed in plain domain terms
- * so no TypeORM shape leaks into the service.
+ * stores in this lib; tests bind them to in-memory doubles. Expressed in plain
+ * domain terms so no TypeORM shape leaks into the service.
  */
 
 /** A persisted user (the Owner), as the auth flow needs to see it. */
