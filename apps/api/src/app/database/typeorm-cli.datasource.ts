@@ -1,6 +1,6 @@
+import { buildDataSourceOptions } from '@rv-checklist/api-data-access';
 import { DataSource } from 'typeorm';
 import { validateEnv } from '../config/env.js';
-import { buildDataSourceOptions } from './data-source.js';
 
 /**
  * DataSource for the TypeORM CLI only (generating / inspecting migrations). It

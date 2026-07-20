@@ -3,9 +3,15 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import {
+  RefreshTokenEntity,
+  RefreshTokenStore,
+  TypeOrmRefreshTokenStore,
+  TypeOrmUserStore,
+  UserEntity,
+  UserStore,
+} from '@rv-checklist/api-data-access';
 import type { Env } from '../config/env.js';
-import { RefreshTokenEntity } from '../database/entities/refresh-token.entity.js';
-import { UserEntity } from '../database/entities/user.entity.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { Clock, SystemClock } from './clock.js';
@@ -14,14 +20,9 @@ import {
   GoogleIdTokenVerifier,
 } from './google-verifier.js';
 import { MeController } from './me.controller.js';
-import { RefreshTokenStore, UserStore } from './stores.js';
 import { GoogleIdTokenStrategy } from './strategies/google-id-token.strategy.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { TokenService } from './token.service.js';
-import {
-  TypeOrmRefreshTokenStore,
-  TypeOrmUserStore,
-} from './typeorm-stores.js';
 
 /**
  * Auth module (ADR-0002) — binds the ports to their production implementations
