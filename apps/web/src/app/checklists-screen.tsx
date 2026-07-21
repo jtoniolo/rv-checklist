@@ -4,6 +4,7 @@ import {
   runProgress,
   type Checklist,
   type Id,
+  type MaintenanceTask,
   type Rig,
   type Run,
   type Step,
@@ -15,6 +16,7 @@ import {
   useDeleteChecklistMutation,
   useListChecklistsQuery,
   useListRunsByRigQuery,
+  useListTasksQuery,
   useUpdateChecklistMutation,
 } from '@rv-checklist/web-data-access';
 import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
@@ -70,6 +72,8 @@ export function ChecklistsScreen({
   } = useListChecklistsQuery(activeRig?.id ?? skipToken);
   // The rig's runs (cached from home) put an in-progress bar on list rows.
   const { data: rigRuns } = useListRunsByRigQuery(activeRig?.id ?? skipToken);
+  // The rig's maintenance tasks: link targets for steps (issue #18).
+  const { data: rigTasks } = useListTasksQuery(activeRig?.id ?? skipToken);
   const [createChecklist, { isLoading: isCreating }] =
     useCreateChecklistMutation();
   const [updateChecklist, { isLoading: isUpdating }] =
@@ -197,6 +201,7 @@ export function ChecklistsScreen({
               }}
             />
             <ChecklistForm
+              tasks={rigTasks ?? []}
               submitLabel="Add checklist"
               pending={isCreating}
               onSubmit={(values) => void handleCreate(values)}
@@ -217,6 +222,7 @@ export function ChecklistsScreen({
             ) : editing ? (
               <ChecklistForm
                 initial={desktopSelected}
+                tasks={rigTasks ?? []}
                 submitLabel="Save changes"
                 pending={isUpdating}
                 onSubmit={(values) =>
@@ -229,6 +235,7 @@ export function ChecklistsScreen({
             ) : (
               <ChecklistDetail
                 checklist={desktopSelected}
+                tasks={rigTasks ?? []}
                 onEdit={() => {
                   setEditing(true);
                 }}
@@ -347,12 +354,14 @@ function ChecklistListRow({
  */
 function ChecklistDetail({
   checklist,
+  tasks,
   onEdit,
   onDuplicate,
   onDelete,
   onOpenRun,
 }: {
   readonly checklist: Checklist;
+  readonly tasks: readonly MaintenanceTask[];
   readonly onEdit: () => void;
   readonly onDuplicate: () => void;
   readonly onDelete: () => void;
@@ -414,6 +423,15 @@ function ChecklistDetail({
               }`}
             >
               {step.text}
+              {/* ⚙ marks a task-linked step — completing it in a run logs
+                  maintenance for the named task (issue #18). */}
+              {step.taskId ? (
+                <span className="ml-2 text-xs text-brand-muted">
+                  ⚙{' '}
+                  {tasks.find((t) => t.id === step.taskId)?.name ??
+                    'logs maintenance'}
+                </span>
+              ) : undefined}
             </li>
           ))}
         </ol>

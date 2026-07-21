@@ -3,11 +3,17 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   ChecklistEntity,
   ChecklistRepository,
+  LogEntryEntity,
+  LogEntryRepository,
+  MaintenanceTaskEntity,
+  MaintenanceTaskRepository,
   RigEntity,
   RigRepository,
   RunEntity,
   RunRepository,
   TypeOrmChecklistRepository,
+  TypeOrmLogEntryRepository,
+  TypeOrmMaintenanceTaskRepository,
   TypeOrmRigRepository,
   TypeOrmRunRepository,
 } from '@rv-checklist/api-data-access';
@@ -21,17 +27,32 @@ import { RunService } from './run.service.js';
  * surface. It also binds {@link ChecklistRepository} (a run copies its steps on
  * creation and is listed by checklist) and {@link RigRepository} (ownership is
  * resolved through the rig, ADR-0006), plus a {@link Clock} to date a run — so
- * all three entities are registered here. The port bindings are the seam the
- * use-case test swaps for the in-memory doubles.
+ * all three entities are registered here, along with
+ * {@link MaintenanceTaskRepository} and {@link LogEntryRepository} — completing
+ * a task-linked step writes a Log Entry for its task (issue #18). The port
+ * bindings are the seam the use-case test swaps for the in-memory doubles.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([RunEntity, ChecklistEntity, RigEntity])],
+  imports: [
+    TypeOrmModule.forFeature([
+      RunEntity,
+      ChecklistEntity,
+      RigEntity,
+      MaintenanceTaskEntity,
+      LogEntryEntity,
+    ]),
+  ],
   controllers: [RunController],
   providers: [
     RunService,
     { provide: RunRepository, useClass: TypeOrmRunRepository },
     { provide: ChecklistRepository, useClass: TypeOrmChecklistRepository },
     { provide: RigRepository, useClass: TypeOrmRigRepository },
+    {
+      provide: MaintenanceTaskRepository,
+      useClass: TypeOrmMaintenanceTaskRepository,
+    },
+    { provide: LogEntryRepository, useClass: TypeOrmLogEntryRepository },
     { provide: Clock, useClass: SystemClock },
   ],
 })

@@ -2,6 +2,7 @@ import {
   CreateLogEntrySchema,
   LoggedFieldSchema,
   LogEntrySchema,
+  toLoggedFields,
 } from './log-entry.js';
 
 const id = (n: number) => `550e8400-e29b-41d4-a716-44665544000${String(n)}`;
@@ -82,6 +83,36 @@ describe('LogEntrySchema', () => {
         ],
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('toLoggedFields', () => {
+  const schema = [
+    { name: 'Product used', type: 'text', required: true },
+    { name: 'Notes', type: 'note', required: false },
+  ] as const;
+
+  it('snapshots every field definition, attaching each recorded value by name', () => {
+    expect(
+      toLoggedFields(schema, [{ name: 'Product used', value: '303' }]),
+    ).toEqual([
+      { name: 'Product used', type: 'text', required: true, value: '303' },
+      { name: 'Notes', type: 'note', required: false },
+    ]);
+  });
+
+  it('snapshots the definitions alone when nothing was recorded', () => {
+    expect(toLoggedFields(schema, undefined)).toEqual([
+      { name: 'Product used', type: 'text', required: true },
+      { name: 'Notes', type: 'note', required: false },
+    ]);
+  });
+
+  it('ignores a recorded value that names no field in the schema', () => {
+    expect(toLoggedFields(schema, [{ name: 'Ghost', value: 1 }])).toEqual([
+      { name: 'Product used', type: 'text', required: true },
+      { name: 'Notes', type: 'note', required: false },
+    ]);
   });
 });
 

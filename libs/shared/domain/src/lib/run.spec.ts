@@ -54,6 +54,18 @@ describe('RunStepSchema', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('parses a completed task-linked step linked to the log entry it wrote (issue #18)', () => {
+    const step = {
+      id: id(4),
+      text: 'Condition seals',
+      taskId: id(9),
+      state: 'complete',
+      values: [{ name: 'Product', value: '303 Protectant' }],
+      logEntryId: id(8),
+    };
+    expect(RunStepSchema.parse(step)).toEqual(step);
+  });
 });
 
 describe('RunSchema', () => {

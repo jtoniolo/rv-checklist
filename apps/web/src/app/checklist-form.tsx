@@ -4,6 +4,7 @@ import {
   StepPatchSchema,
   SUPPORTED_FIELD_TYPES,
   type Checklist,
+  type MaintenanceTask,
   type StepPatch,
   type SupportedFieldType,
 } from '@rv-checklist/domain';
@@ -22,10 +23,12 @@ import { useState, type JSX } from 'react';
 
 /**
  * The add/edit checklist form (issue #15). Authors a checklist's name, free-form
- * tags, and its ordered plain steps — add, edit the text, reorder (up/down), and
- * delete — plus an optional custom `field_schema` per step. Task-linked steps
- * are out of scope here (task-linking is T8), so every step authored is a plain
- * step and the ADR-0008 "no fields on a task-linked step" conflict cannot arise.
+ * tags, and its ordered steps — add, edit the text, reorder (up/down), and
+ * delete — plus, per step, either an optional custom `field_schema` or a link to
+ * one of the rig's maintenance tasks (issue #18). Linking replaces the fields
+ * editor: a task-linked step takes its fields from the task and defines none of
+ * its own (ADR-0008), so linking clears any authored fields and unlinking starts
+ * from a clean slate.
  *
  * Each built step is validated by the shared `StepPatchSchema` before submit, so
  * the field rules (unique names, supported types, `photo` rejected, unit only on
@@ -44,6 +47,8 @@ export interface ChecklistFormValues {
 
 export interface ChecklistFormProps {
   readonly initial?: Checklist;
+  /** The rig's maintenance tasks, offered as link targets per step. */
+  readonly tasks: readonly MaintenanceTask[];
   readonly submitLabel: string;
   readonly pending: boolean;
   readonly onSubmit: (values: ChecklistFormValues) => void;
@@ -62,6 +67,7 @@ interface StepDraft {
   key: string;
   id: string | undefined;
   text: string;
+  taskId: string | undefined;
   fields: FieldDraft[];
 }
 
@@ -77,6 +83,7 @@ function toStepDraft(step: Checklist['steps'][number]): StepDraft {
     key: newKey(),
     id: step.id,
     text: step.text,
+    taskId: step.taskId,
     fields: (step.fieldSchema ?? []).map((f) => ({
       key: newKey(),
       name: f.name,
@@ -92,7 +99,13 @@ function toStepDraft(step: Checklist['steps'][number]): StepDraft {
 }
 
 function emptyStep(): StepDraft {
-  return { key: newKey(), id: undefined, text: '', fields: [] };
+  return {
+    key: newKey(),
+    id: undefined,
+    text: '',
+    taskId: undefined,
+    fields: [],
+  };
 }
 
 /** Split the free-form tags input on commas, trimming and dropping blanks. */
@@ -103,7 +116,11 @@ function parseTags(text: string): string[] {
     .filter((tag) => tag.length > 0);
 }
 
-/** Build the wire step for a draft, omitting an empty field schema and a unit off a number. */
+/**
+ * Build the wire step for a draft, omitting an empty field schema and a unit off
+ * a number. A task-linked step carries only its link — never fields of its own
+ * (ADR-0008); the editor already clears them on link, so this is belt and braces.
+ */
 function toStepPatch(draft: StepDraft): StepPatch {
   const fieldSchema = draft.fields.map((f) => ({
     name: f.name.trim(),
@@ -116,12 +133,14 @@ function toStepPatch(draft: StepDraft): StepPatch {
   return {
     ...(draft.id && { id: draft.id }),
     text: draft.text.trim(),
-    ...(fieldSchema.length > 0 && { fieldSchema }),
+    ...(draft.taskId && { taskId: draft.taskId }),
+    ...(!draft.taskId && fieldSchema.length > 0 && { fieldSchema }),
   };
 }
 
 export function ChecklistForm({
   initial,
+  tasks,
   submitLabel,
   pending,
   onSubmit,
@@ -316,7 +335,32 @@ export function ChecklistForm({
                 </div>
               </div>
 
-              {step.fields.length > 0 ? (
+              {step.taskId ? (
+                <div className="flex flex-wrap items-center gap-2 pl-6 text-sm text-muted-foreground">
+                  <span aria-hidden>⚙</span>
+                  <span>
+                    Logs maintenance:{' '}
+                    <span className="font-medium">
+                      {tasks.find((t) => t.id === step.taskId)?.name ??
+                        'a task that no longer exists'}
+                    </span>{' '}
+                    — its fields are entered when the step is completed in a
+                    run.
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => {
+                      updateStep(step.key, { taskId: undefined });
+                    }}
+                  >
+                    Unlink
+                  </Button>
+                </div>
+              ) : undefined}
+
+              {!step.taskId && step.fields.length > 0 ? (
                 <ul className="flex flex-col gap-2 pl-6">
                   {step.fields.map((field) => (
                     <li
@@ -394,17 +438,43 @@ export function ChecklistForm({
                 </ul>
               ) : undefined}
 
-              <div className="flex gap-3 pl-6">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="xs"
-                  onClick={() => {
-                    addField(step.key);
-                  }}
-                >
-                  Add field
-                </Button>
+              <div className="flex flex-wrap items-center gap-3 pl-6">
+                {step.taskId ? undefined : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => {
+                      addField(step.key);
+                    }}
+                  >
+                    Add field
+                  </Button>
+                )}
+                {/* Linking a task replaces authored fields (ADR-0008) — the
+                    select clears them so the two field sources never coexist. */}
+                {!step.taskId && tasks.length > 0 ? (
+                  <Select
+                    value=""
+                    onValueChange={(taskId) => {
+                      updateStep(step.key, { taskId, fields: [] });
+                    }}
+                  >
+                    <SelectTrigger
+                      className="h-7 w-auto gap-1 text-xs"
+                      aria-label={`Link step ${String(index + 1)} to a maintenance task`}
+                    >
+                      <SelectValue placeholder="Link task…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tasks.map((task) => (
+                        <SelectItem key={task.id} value={task.id}>
+                          {task.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : undefined}
                 <Button
                   type="button"
                   variant="ghost"
