@@ -1,12 +1,14 @@
 'use client';
 
 import {
+  selectActiveRigId,
   selectIsAuthenticated,
   useAppSelector,
   useHasHydrated,
 } from '@rv-checklist/web-data-access';
 import type { JSX } from 'react';
 import { AuthPanel, authCardClass } from './auth-panel';
+import { ChecklistManager } from './checklist-manager';
 import { RigManager } from './rig-manager';
 
 /**
@@ -20,6 +22,7 @@ import { RigManager } from './rig-manager';
 export function Home(): JSX.Element {
   const isHydrated = useHasHydrated();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  const activeRigId = useAppSelector(selectActiveRigId);
 
   if (!isHydrated) {
     return (
@@ -33,6 +36,11 @@ export function Home(): JSX.Element {
     <>
       <AuthPanel />
       {isAuthenticated ? <RigManager /> : undefined}
+      {/* Checklists are scoped to a rig (ADR-0006), so authoring appears only
+          once one is active. */}
+      {isAuthenticated && activeRigId ? (
+        <ChecklistManager rigId={activeRigId} />
+      ) : undefined}
     </>
   );
 }

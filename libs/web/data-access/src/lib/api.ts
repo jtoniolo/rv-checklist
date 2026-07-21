@@ -6,14 +6,18 @@ import {
   type FetchBaseQueryError,
 } from '@reduxjs/toolkit/query/react';
 import {
+  ChecklistSchema,
   OwnerSchema,
   RigSchema,
   TokenPairSchema,
+  type Checklist,
+  type CreateChecklist,
   type CreateRig,
   type Id,
   type Owner,
   type Rig,
   type TokenPair,
+  type UpdateChecklist,
   type UpdateRig,
 } from '@rv-checklist/domain';
 import { Mutex } from 'async-mutex';
@@ -22,6 +26,7 @@ import { signedOut, tokensReceived, type AuthRoot } from './auth.slice.js';
 import { config } from './config.js';
 
 const RigArraySchema = z.array(RigSchema);
+const ChecklistArraySchema = z.array(ChecklistSchema);
 
 /** The raw transport: attaches the bearer access token from the auth slice. */
 const rawBaseQuery = fetchBaseQuery({
@@ -100,7 +105,7 @@ const baseQueryWithReauth: BaseQueryFn<
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Rig', 'Me'],
+  tagTypes: ['Rig', 'Checklist', 'Me'],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
       query: () => '/me',
@@ -177,6 +182,57 @@ export const api = createApi({
         { type: 'Rig', id: 'LIST' },
       ],
     }),
+
+    // Checklists are scoped to a rig (ADR-0006): the list read takes the active
+    // rig's id, and the `LIST` tag is per-rig so a create/delete on one rig
+    // never refetches another's. Responses are validated by the shared schema
+    // (its ADR-0008 step rules included), one source of wire-model truth.
+    listChecklists: builder.query<Checklist[], Id>({
+      query: (rigId) => `/checklists?rigId=${rigId}`,
+      transformResponse: (raw: unknown) => ChecklistArraySchema.parse(raw),
+      providesTags: (result, _error, rigId) =>
+        result
+          ? [
+              ...result.map((c) => ({ type: 'Checklist' as const, id: c.id })),
+              { type: 'Checklist' as const, id: `LIST:${rigId}` },
+            ]
+          : [{ type: 'Checklist' as const, id: `LIST:${rigId}` }],
+    }),
+
+    createChecklist: builder.mutation<Checklist, CreateChecklist>({
+      query: (body) => ({ url: '/checklists', method: 'POST', body }),
+      transformResponse: (raw: unknown) => ChecklistSchema.parse(raw),
+      invalidatesTags: (_result, _error, { rigId }) => [
+        { type: 'Checklist', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    updateChecklist: builder.mutation<
+      Checklist,
+      { id: Id; changes: UpdateChecklist }
+    >({
+      query: ({ id, changes }) => ({
+        url: `/checklists/${id}`,
+        method: 'PATCH',
+        body: changes,
+      }),
+      transformResponse: (raw: unknown) => ChecklistSchema.parse(raw),
+      invalidatesTags: (result, _error, { id }) => [
+        { type: 'Checklist', id },
+        // The list tag is per-rig; `result` carries the rig on success.
+        ...(result
+          ? [{ type: 'Checklist' as const, id: `LIST:${result.rigId}` }]
+          : []),
+      ],
+    }),
+
+    deleteChecklist: builder.mutation<void, Id>({
+      query: (id) => ({ url: `/checklists/${id}`, method: 'DELETE' }),
+      // The per-rig list provides an element tag for each checklist it holds,
+      // so invalidating the deleted id's tag refetches exactly the list that
+      // contained it — no need to know its rig.
+      invalidatesTags: (_result, _error, id) => [{ type: 'Checklist', id }],
+    }),
   }),
 });
 
@@ -188,4 +244,8 @@ export const {
   useCreateRigMutation,
   useUpdateRigMutation,
   useDeleteRigMutation,
+  useListChecklistsQuery,
+  useCreateChecklistMutation,
+  useUpdateChecklistMutation,
+  useDeleteChecklistMutation,
 } = api;

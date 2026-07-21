@@ -7,6 +7,7 @@ import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { ChecklistModule } from './checklist/checklist.module.js';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
 import { validateEnv, type Env } from './config/env.js';
 import { RigModule } from './rig/rig.module.js';
@@ -35,6 +36,7 @@ import { RigModule } from './rig/rig.module.js';
     }),
     AuthModule,
     RigModule,
+    ChecklistModule,
   ],
   controllers: [AppController],
   providers: [
