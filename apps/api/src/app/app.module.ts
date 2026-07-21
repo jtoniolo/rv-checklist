@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildDataSourceOptions } from '@rv-checklist/api-data-access';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { HttpExceptionFilter } from './common/http-exception.filter.js';
 import { validateEnv, type Env } from './config/env.js';
 import { RigModule } from './rig/rig.module.js';
 
@@ -40,6 +41,9 @@ import { RigModule } from './rig/rig.module.js';
     AppService,
     { provide: APP_PIPE, useClass: ZodValidationPipe },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+    // Logs the detail behind server-side failures (nestjs-zod serialization
+    // errors and other 5xx) that Nest's default filter otherwise swallows.
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],
 })
 export class AppModule {}
