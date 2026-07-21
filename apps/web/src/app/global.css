@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 
 /* Scan the shared UI lib (it lives outside this app dir) for class names. */
 @source '../../../../libs/web/ui/src';
@@ -17,6 +18,104 @@
   --color-surface: #f5f7fa;
   --color-surface-dark: #0f1720;
   --color-hairline: #c3ccd8;
+}
+
+/*
+ * shadcn/ui semantic tokens (issue #23, ADR-0014). The vendored controls in
+ * libs/web/ui speak shadcn's vocabulary (background / primary / border / …);
+ * each name is fed by the seven camping tokens above, so a theme switch or
+ * dark mode restyles every control with zero per-theme work.
+ *
+ * The rule is declared on BOTH :root and [data-theme-surface]: custom
+ * properties substitute var() references where they are *declared*, so a
+ * :root-only mapping would freeze the default palette. Re-declaring on the
+ * theme surface re-captures the inline per-theme overrides applied there.
+ */
+:root,
+[data-theme-surface] {
+  --background: var(--color-surface);
+  --foreground: var(--color-ink);
+  --card: var(--color-surface);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-surface);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-brand);
+  --primary-foreground: var(--color-ink-inverted);
+  --secondary: color-mix(
+    in oklab,
+    var(--color-hairline) 45%,
+    var(--color-surface)
+  );
+  --secondary-foreground: var(--color-ink);
+  --muted: color-mix(in oklab, var(--color-hairline) 45%, var(--color-surface));
+  --muted-foreground: var(--color-brand-muted);
+  --accent: color-mix(
+    in oklab,
+    var(--color-hairline) 45%,
+    var(--color-surface)
+  );
+  --accent-foreground: var(--color-ink);
+  /* Tailwind red-600 / red-400 — the palette has no red of its own. */
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: var(--color-hairline);
+  --input: var(--color-hairline);
+  --ring: var(--color-brand);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root,
+  [data-theme-surface] {
+    --background: var(--color-surface-dark);
+    --foreground: var(--color-ink-inverted);
+    --card: var(--color-surface-dark);
+    --card-foreground: var(--color-ink-inverted);
+    --popover: var(--color-surface-dark);
+    --popover-foreground: var(--color-ink-inverted);
+    --secondary: color-mix(
+      in oklab,
+      var(--color-ink-inverted) 12%,
+      var(--color-surface-dark)
+    );
+    --secondary-foreground: var(--color-ink-inverted);
+    --muted: color-mix(
+      in oklab,
+      var(--color-ink-inverted) 12%,
+      var(--color-surface-dark)
+    );
+    --accent: color-mix(
+      in oklab,
+      var(--color-ink-inverted) 12%,
+      var(--color-surface-dark)
+    );
+    --accent-foreground: var(--color-ink-inverted);
+    --destructive: oklch(0.704 0.191 22.216);
+  }
+}
+
+/*
+ * `inline` matters: utilities like `bg-background` emit
+ * `var(--background)` directly, so they re-resolve wherever the theme
+ * surface overrides the camping tokens.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
 @layer base {
