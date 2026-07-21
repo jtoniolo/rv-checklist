@@ -7,7 +7,7 @@ import {
   useHasHydrated,
 } from '@rv-checklist/web-data-access';
 import { Page } from '@rv-checklist/web-ui';
-import type { JSX, ReactNode } from 'react';
+import { useEffect, useMemo, type JSX, type ReactNode } from 'react';
 import { AppShell } from './app-shell';
 import { GoogleOneTap } from './google-one-tap';
 import { themeFor } from './themes';
@@ -59,10 +59,27 @@ function ThemeSurface({
   readonly children: ReactNode;
 }): JSX.Element {
   const themeKey = useAppSelector(selectThemeKey);
-  const vars = themed ? themeFor(themeKey).vars : {};
+  const vars = useMemo(
+    () => (themed ? themeFor(themeKey).vars : {}),
+    [themed, themeKey],
+  );
+  // Radix overlays (dialog, select) portal to document.body — outside this
+  // div — so the picked palette is mirrored onto :root for them to inherit
+  // (issue #23). Client-only by construction: vars is {} until hydration.
+  useEffect(() => {
+    for (const [name, value] of Object.entries(vars)) {
+      document.documentElement.style.setProperty(name, value);
+    }
+    return (): void => {
+      for (const name of Object.keys(vars)) {
+        document.documentElement.style.removeProperty(name);
+      }
+    };
+  }, [vars]);
   return (
     <div
       style={vars}
+      data-theme-surface
       className="min-h-dvh bg-surface text-ink dark:bg-surface-dark dark:text-ink-inverted"
     >
       {children}
