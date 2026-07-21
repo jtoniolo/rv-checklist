@@ -21,7 +21,7 @@
     "@rv-checklist/web-data-access": "workspace:*",
     "@rv-checklist/web-ui": "workspace:*",
     "@tailwindcss/postcss": "4.3.3",
-    "next": "~16.1.6",
+    "next": "~16.2.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-redux": "^9.3.0",
