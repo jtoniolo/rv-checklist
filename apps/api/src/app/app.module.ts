@@ -11,6 +11,7 @@ import { ChecklistModule } from './checklist/checklist.module.js';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
 import { validateEnv, type Env } from './config/env.js';
 import { RigModule } from './rig/rig.module.js';
+import { RunModule } from './run/run.module.js';
 
 /**
  * Root module (issue #13). Loads and validates the environment globally, opens
@@ -37,6 +38,7 @@ import { RigModule } from './rig/rig.module.js';
     AuthModule,
     RigModule,
     ChecklistModule,
+    RunModule,
   ],
   controllers: [AppController],
   providers: [

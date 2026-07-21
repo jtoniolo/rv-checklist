@@ -1,0 +1,23 @@
+import {
+  CreateRunSchema,
+  RunSchema,
+  UpdateRunSchema,
+} from '@rv-checklist/domain';
+import { createZodDto } from 'nestjs-zod';
+
+/**
+ * The run DTOs (ADR-0009): the shared Zod schemas *are* the DTOs. `createZodDto`
+ * wraps each schema as a Nest class so the global `ZodValidationPipe` validates
+ * request bodies (including the ADR-0008 field-source rule and the run's
+ * step-state enum, which live in the schema) and `ZodSerializerDto` validates
+ * responses — one source of truth for the wire model, no hand-written validators.
+ */
+
+/** `POST /runs` body — the client names the checklist; the server copies its steps. */
+export class CreateRunDto extends createZodDto(CreateRunSchema) {}
+
+/** `PATCH /runs/:id` body — any subset; a full `steps` array covers state and answers. */
+export class UpdateRunDto extends createZodDto(UpdateRunSchema) {}
+
+/** The response shape for every run endpoint. */
+export class RunDto extends createZodDto(RunSchema) {}

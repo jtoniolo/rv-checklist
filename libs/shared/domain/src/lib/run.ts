@@ -51,3 +51,50 @@ export const CreateRunSchema = z.object({
   startedOn: IsoDateSchema.optional(),
 });
 export type CreateRun = z.infer<typeof CreateRunSchema>;
+
+/**
+ * Edit body — nothing is locked (CONTEXT.md), so a run stays editable after the fact. The
+ * whole `steps` array travels (like a checklist edit), each carrying its own state and any
+ * captured answers, so marking steps / entering values / correcting a mistake is one save.
+ * The occasion date may be corrected too. Both fields are optional; an empty edit is a
+ * no-op. A run never changes which checklist or rig it belongs to, so neither is editable.
+ */
+export const UpdateRunSchema = z
+  .object({
+    startedOn: IsoDateSchema,
+    steps: z.array(RunStepSchema),
+  })
+  .partial();
+export type UpdateRun = z.infer<typeof UpdateRunSchema>;
+
+/** A run's per-state step tally, and whether work remains. */
+export interface RunProgress {
+  readonly completed: number;
+  readonly skipped: number;
+  readonly incomplete: number;
+  readonly total: number;
+  /** True while any step is still `incomplete` — the run can be resumed. */
+  readonly inProgress: boolean;
+}
+
+/**
+ * Tally a run's steps by state. A run is **in progress** while any step is still
+ * `incomplete` — the "identify and resume" case (story 26): the owner can put
+ * the phone down and come back to what's left. A run with no incomplete steps is
+ * done, whether its steps were completed or deliberately skipped.
+ */
+export function runProgress(run: {
+  readonly steps: readonly { readonly state: StepState }[];
+}): RunProgress {
+  const tally = { completed: 0, skipped: 0, incomplete: 0 };
+  for (const step of run.steps) {
+    if (step.state === 'complete') tally.completed += 1;
+    else if (step.state === 'skipped') tally.skipped += 1;
+    else tally.incomplete += 1;
+  }
+  return {
+    ...tally,
+    total: run.steps.length,
+    inProgress: tally.incomplete > 0,
+  };
+}

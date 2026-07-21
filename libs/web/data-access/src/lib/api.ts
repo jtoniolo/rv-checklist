@@ -9,16 +9,20 @@ import {
   ChecklistSchema,
   OwnerSchema,
   RigSchema,
+  RunSchema,
   TokenPairSchema,
   type Checklist,
   type CreateChecklist,
   type CreateRig,
+  type CreateRun,
   type Id,
   type Owner,
   type Rig,
+  type Run,
   type TokenPair,
   type UpdateChecklist,
   type UpdateRig,
+  type UpdateRun,
 } from '@rv-checklist/domain';
 import { Mutex } from 'async-mutex';
 import { z } from 'zod';
@@ -27,6 +31,7 @@ import { config } from './config.js';
 
 const RigArraySchema = z.array(RigSchema);
 const ChecklistArraySchema = z.array(ChecklistSchema);
+const RunArraySchema = z.array(RunSchema);
 
 /** The raw transport: attaches the bearer access token from the auth slice. */
 const rawBaseQuery = fetchBaseQuery({
@@ -105,7 +110,7 @@ const baseQueryWithReauth: BaseQueryFn<
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Rig', 'Checklist', 'Me'],
+  tagTypes: ['Rig', 'Checklist', 'Run', 'Me'],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
       query: () => '/me',
@@ -233,6 +238,61 @@ export const api = createApi({
       // contained it — no need to know its rig.
       invalidatesTags: (_result, _error, id) => [{ type: 'Checklist', id }],
     }),
+
+    // Runs are dated copies of a checklist's steps (CONTEXT.md). The list read
+    // is per-checklist ("past runs of a checklist"), so its `LIST` tag is keyed
+    // by the checklist id — starting/deleting a run on one checklist never
+    // refetches another's. Responses are validated by the shared schema (its
+    // step-state and ADR-0008 rules included), one source of wire-model truth.
+    listRuns: builder.query<Run[], Id>({
+      query: (checklistId) => `/runs?checklistId=${checklistId}`,
+      transformResponse: (raw: unknown) => RunArraySchema.parse(raw),
+      providesTags: (result, _error, checklistId) =>
+        result
+          ? [
+              ...result.map((r) => ({ type: 'Run' as const, id: r.id })),
+              { type: 'Run' as const, id: `LIST:${checklistId}` },
+            ]
+          : [{ type: 'Run' as const, id: `LIST:${checklistId}` }],
+    }),
+
+    getRun: builder.query<Run, Id>({
+      query: (id) => `/runs/${id}`,
+      transformResponse: (raw: unknown) => RunSchema.parse(raw),
+      providesTags: (_result, _error, id) => [{ type: 'Run', id }],
+    }),
+
+    createRun: builder.mutation<Run, CreateRun>({
+      query: (body) => ({ url: '/runs', method: 'POST', body }),
+      transformResponse: (raw: unknown) => RunSchema.parse(raw),
+      invalidatesTags: (_result, _error, { checklistId }) => [
+        { type: 'Run', id: `LIST:${checklistId}` },
+      ],
+    }),
+
+    updateRun: builder.mutation<Run, { id: Id; changes: UpdateRun }>({
+      query: ({ id, changes }) => ({
+        url: `/runs/${id}`,
+        method: 'PATCH',
+        body: changes,
+      }),
+      transformResponse: (raw: unknown) => RunSchema.parse(raw),
+      invalidatesTags: (result, _error, { id }) => [
+        { type: 'Run', id },
+        // The list tag is per-checklist; `result` carries it on success.
+        ...(result
+          ? [{ type: 'Run' as const, id: `LIST:${result.checklistId}` }]
+          : []),
+      ],
+    }),
+
+    deleteRun: builder.mutation<void, Id>({
+      query: (id) => ({ url: `/runs/${id}`, method: 'DELETE' }),
+      // The per-checklist list provides an element tag for each run it holds, so
+      // invalidating the deleted id's tag refetches exactly the list that
+      // contained it — no need to know its checklist.
+      invalidatesTags: (_result, _error, id) => [{ type: 'Run', id }],
+    }),
   }),
 });
 
@@ -248,4 +308,9 @@ export const {
   useCreateChecklistMutation,
   useUpdateChecklistMutation,
   useDeleteChecklistMutation,
+  useListRunsQuery,
+  useGetRunQuery,
+  useCreateRunMutation,
+  useUpdateRunMutation,
+  useDeleteRunMutation,
 } = api;
