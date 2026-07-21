@@ -3,12 +3,16 @@ import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import {
   ChecklistRepository,
+  LogEntryRepository,
+  MaintenanceTaskRepository,
   RigRepository,
   RunRepository,
 } from '@rv-checklist/api-data-access';
 import type { Checklist, Owner, Rig } from '@rv-checklist/domain';
 import {
   InMemoryChecklistRepository,
+  InMemoryLogEntryRepository,
+  InMemoryMaintenanceTaskRepository,
   InMemoryRigRepository,
   InMemoryRunRepository,
 } from '@rv-checklist/domain/testing';
@@ -72,6 +76,14 @@ describe('RunController over HTTP (through the Zod serializer)', () => {
         { provide: RunRepository, useValue: new InMemoryRunRepository() },
         { provide: ChecklistRepository, useValue: checklists },
         { provide: RigRepository, useValue: rigs },
+        {
+          provide: MaintenanceTaskRepository,
+          useValue: new InMemoryMaintenanceTaskRepository(),
+        },
+        {
+          provide: LogEntryRepository,
+          useValue: new InMemoryLogEntryRepository(),
+        },
         { provide: Clock, useClass: SystemClock },
         { provide: APP_PIPE, useClass: ZodValidationPipe },
         { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },

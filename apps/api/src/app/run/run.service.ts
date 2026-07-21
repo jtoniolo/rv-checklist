@@ -1,19 +1,28 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   ChecklistRepository,
+  LogEntryRepository,
+  MaintenanceTaskRepository,
   ownedOrUndefined,
   RigRepository,
   RunRepository,
 } from '@rv-checklist/api-data-access';
-import type {
-  Checklist,
-  CreateRun,
-  Id,
-  Run,
-  RunStep,
-  Step,
-  UpdateRun,
+import {
+  toLoggedFields,
+  validateFieldValues,
+  type Checklist,
+  type CreateRun,
+  type Id,
+  type MaintenanceTask,
+  type Run,
+  type RunStep,
+  type Step,
+  type UpdateRun,
 } from '@rv-checklist/domain';
 import { Clock } from '../auth/clock.js';
 
@@ -56,6 +65,8 @@ export class RunService {
     private readonly runs: RunRepository,
     private readonly checklists: ChecklistRepository,
     private readonly rigs: RigRepository,
+    private readonly tasks: MaintenanceTaskRepository,
+    private readonly logEntries: LogEntryRepository,
     private readonly clock: Clock,
   ) {}
 
@@ -85,6 +96,88 @@ export class RunService {
   /** Today as an IsoDate (`YYYY-MM-DD`), read from the injected clock. */
   private today(): string {
     return this.clock.now().toISOString().slice(0, 10);
+  }
+
+  /**
+   * The T8 seam (issue #18): a task-linked step's *transition* into `complete`
+   * writes a Log Entry for its task, snapshotting the task's fields **as they
+   * are at completion time** together with the values entered on the step;
+   * leaving `complete` deletes the entry that completion wrote, so an undone or
+   * skipped step never falsely logs maintenance. Which entry a completion wrote
+   * rides on the step as `logEntryId` — server-owned bookkeeping, carried over
+   * from the stored run and never taken from the client, so a stale or forged
+   * echo can neither duplicate an entry nor detach one.
+   */
+  private async reconcileMaintenanceLog(
+    run: Run,
+    incoming: readonly RunStep[],
+    performedOn: string,
+  ): Promise<RunStep[]> {
+    const stored = new Map(run.steps.map((step) => [step.id, step]));
+    const alreadyWritten = (step: { readonly id: Id }): Id | undefined =>
+      stored.get(step.id)?.logEntryId;
+
+    // Resolve and validate every completion that will write *before* touching
+    // anything, so a rejected save leaves the run and its entries untouched.
+    // A gone task, or one not on the run's rig (authoring doesn't referentially
+    // constrain `taskId`, and a forged link must never log onto another owner's
+    // task), completes without logging — there is nothing to log against.
+    const tasksToLog = new Map<Id, MaintenanceTask>();
+    for (const step of incoming) {
+      if (
+        step.taskId === undefined ||
+        step.state !== 'complete' ||
+        alreadyWritten(step) !== undefined
+      ) {
+        continue;
+      }
+      const task = await this.tasks.findById(step.taskId);
+      if (task?.rigId !== run.rigId) {
+        continue;
+      }
+      // Required fields must carry a value, exactly as standalone perform enforces.
+      const result = validateFieldValues(task.fieldSchema, step.values ?? []);
+      if (!result.valid) {
+        throw new BadRequestException(result.errors.join('; '));
+      }
+      tasksToLog.set(step.id, task);
+    }
+
+    return Promise.all(
+      incoming.map(async ({ logEntryId: _clientOwned, ...step }) => {
+        if (step.taskId !== undefined && step.state === 'complete') {
+          const task = tasksToLog.get(step.id);
+          const entryId =
+            alreadyWritten(step) ??
+            (task ? await this.writeEntry(task, step, performedOn) : undefined);
+          return {
+            ...step,
+            ...(entryId !== undefined && { logEntryId: entryId }),
+          };
+        }
+        const written = alreadyWritten(step);
+        if (written !== undefined) {
+          await this.logEntries.delete(written);
+        }
+        return step;
+      }),
+    );
+  }
+
+  /** Write the Log Entry for one task-linked completion, returning its id. */
+  private async writeEntry(
+    task: MaintenanceTask,
+    step: Omit<RunStep, 'logEntryId'>,
+    performedOn: string,
+  ): Promise<Id> {
+    const entry = await this.logEntries.save({
+      id: randomUUID(),
+      taskId: task.id,
+      rigId: task.rigId,
+      performedOn,
+      fields: toLoggedFields(task.fieldSchema, step.values),
+    });
+    return entry.id;
   }
 
   /** Start a run over one of the owner's checklists — the server copies its steps. */
@@ -129,11 +222,16 @@ export class RunService {
   /** Apply a partial edit to one of the owner's runs (checklist/rig never change). */
   async update(ownerId: Id, id: Id, changes: UpdateRun): Promise<Run> {
     const existing = await this.get(ownerId, id);
-    return this.runs.save({
-      ...existing,
-      ...(changes.startedOn !== undefined && { startedOn: changes.startedOn }),
-      ...(changes.steps !== undefined && { steps: changes.steps }),
-    });
+    const startedOn = changes.startedOn ?? existing.startedOn;
+    const steps =
+      changes.steps === undefined
+        ? existing.steps
+        : await this.reconcileMaintenanceLog(
+            existing,
+            changes.steps,
+            startedOn,
+          );
+    return this.runs.save({ ...existing, startedOn, steps });
   }
 
   /** Delete one of the owner's runs (e.g. one started by mistake). */

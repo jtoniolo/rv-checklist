@@ -1,7 +1,15 @@
-import { NotFoundException } from '@nestjs/common';
-import type { Checklist, Rig } from '@rv-checklist/domain';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import type {
+  Checklist,
+  MaintenanceTask,
+  Rig,
+  Run,
+  RunStep,
+} from '@rv-checklist/domain';
 import {
   InMemoryChecklistRepository,
+  InMemoryLogEntryRepository,
+  InMemoryMaintenanceTaskRepository,
   InMemoryRigRepository,
   InMemoryRunRepository,
 } from '@rv-checklist/domain/testing';
@@ -49,6 +57,56 @@ const bobChecklist: Checklist = {
   steps: [{ id: stepA, text: 'Do a thing' }],
 };
 
+// The task-linked fixtures (issue #18): a maintenance task with a required
+// field, and a procedure checklist whose first step is linked to it.
+const sealsTaskId = '550e8400-e29b-41d4-a716-446655440040';
+const bobTaskId = '550e8400-e29b-41d4-a716-446655440041';
+const sealsChecklistId = '550e8400-e29b-41d4-a716-446655440023';
+
+const sealsTask: MaintenanceTask = {
+  id: sealsTaskId,
+  rigId: aliceRigId,
+  name: 'Condition slide seals',
+  interval: { months: 12 },
+  fieldSchema: [
+    { name: 'Product used', type: 'text', required: true },
+    { name: 'Notes', type: 'note', required: false },
+  ],
+};
+const bobTask: MaintenanceTask = {
+  id: bobTaskId,
+  rigId: bobRigId,
+  name: 'Repack wheel bearings',
+  fieldSchema: [],
+};
+
+const sealsChecklist: Checklist = {
+  id: sealsChecklistId,
+  rigId: aliceRigId,
+  name: 'Spring opening',
+  tags: ['procedure'],
+  steps: [
+    {
+      id: '550e8400-e29b-41d4-a716-446655440032',
+      text: 'Condition the slide seals',
+      taskId: sealsTaskId,
+    },
+    { id: '550e8400-e29b-41d4-a716-446655440033', text: 'Sweep the roof' },
+  ],
+};
+
+/** The run's steps with one step (found by text) patched. */
+const patchStep = (
+  run: Run,
+  text: string,
+  change: Partial<RunStep>,
+): RunStep[] =>
+  run.steps.map((s) => (s.text === text ? { ...s, ...change } : s));
+
+/** The run's first task-linked step, if any. */
+const taskStepOf = (run: Run): RunStep | undefined =>
+  run.steps.find((s) => s.taskId !== undefined);
+
 /** A clock frozen on a fixed occasion, so a server-dated run is deterministic. */
 class FrozenClock extends Clock {
   now(): Date {
@@ -60,18 +118,34 @@ async function makeService(): Promise<{
   service: RunService;
   runs: InMemoryRunRepository;
   checklists: InMemoryChecklistRepository;
+  tasks: InMemoryMaintenanceTaskRepository;
+  logEntries: InMemoryLogEntryRepository;
 }> {
   const runs = new InMemoryRunRepository();
   const checklists = new InMemoryChecklistRepository();
   const rigs = new InMemoryRigRepository();
+  const tasks = new InMemoryMaintenanceTaskRepository();
+  const logEntries = new InMemoryLogEntryRepository();
   await rigs.save(aliceRig);
   await rigs.save(bobRig);
   await checklists.save(aliceChecklist);
   await checklists.save(bobChecklist);
+  await checklists.save(sealsChecklist);
+  await tasks.save(sealsTask);
+  await tasks.save(bobTask);
   return {
-    service: new RunService(runs, checklists, rigs, new FrozenClock()),
+    service: new RunService(
+      runs,
+      checklists,
+      rigs,
+      tasks,
+      logEntries,
+      new FrozenClock(),
+    ),
     runs,
     checklists,
+    tasks,
+    logEntries,
   };
 }
 
@@ -226,6 +300,322 @@ describe('RunService', () => {
 
       expect(updated.checklistId).toBe(aliceChecklistId);
       expect(updated.rigId).toBe(aliceRigId);
+    });
+  });
+
+  // The T8 seam (issue #18): completing a task-linked step writes a Log Entry;
+  // skipping writes nothing; the snapshot matches the task's fields at
+  // completion time.
+  describe('update — a task-linked step’s completion writes a Log Entry', () => {
+    it('writes an entry snapshotting the task’s fields and the entered values, dated on the run’s occasion', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+        startedOn: '2026-05-01',
+      });
+
+      const updated = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303 Protectant' }],
+        }),
+      });
+
+      const entries = await logEntries.listByTask(sealsTaskId);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({
+        taskId: sealsTaskId,
+        rigId: aliceRigId,
+        // The maintenance was performed on the run's occasion, not the day the
+        // box happened to be ticked (a run stays correctable after the fact).
+        performedOn: '2026-05-01',
+        fields: [
+          {
+            name: 'Product used',
+            type: 'text',
+            required: true,
+            value: '303 Protectant',
+          },
+          { name: 'Notes', type: 'note', required: false },
+        ],
+      });
+      // The run's step remembers which entry its completion wrote.
+      expect(taskStepOf(updated)?.logEntryId).toBe(entries[0]?.id);
+    });
+
+    it('records nothing when the task-linked step is skipped', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+
+      await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'skipped',
+        }),
+      });
+
+      expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(0);
+    });
+
+    it('records nothing when a plain step is completed', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+
+      await service.update(alice, run.id, {
+        steps: patchStep(run, 'Sweep the roof', { state: 'complete' }),
+      });
+
+      expect(await logEntries.listByRig(aliceRigId)).toHaveLength(0);
+    });
+
+    it('snapshots the task’s fields as they are at completion time, and a later task edit never rewrites the entry', async () => {
+      const { service, tasks, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+
+      // The task's fields change after the run started but before completion…
+      await tasks.save({
+        ...sealsTask,
+        fieldSchema: [
+          { name: 'Coats applied', type: 'number', required: false },
+        ],
+      });
+      await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Coats applied', value: 2 }],
+        }),
+      });
+
+      // …so the entry snapshots the fields as they were when completed.
+      const snapshot = [
+        { name: 'Coats applied', type: 'number', required: false, value: 2 },
+      ];
+      const [written] = await logEntries.listByTask(sealsTaskId);
+      expect(written?.fields).toEqual(snapshot);
+
+      // A task edit after completion never rewrites the past entry.
+      await tasks.save(sealsTask);
+      const [afterEdit] = await logEntries.listByTask(sealsTaskId);
+      expect(afterEdit?.fields).toEqual(snapshot);
+    });
+
+    it('writes no second entry when the run is saved again with the step still complete', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+      const completed = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+        }),
+      });
+
+      await service.update(alice, run.id, { steps: completed.steps });
+
+      expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(1);
+    });
+
+    it('keeps the link server-owned: a client echo without it neither duplicates nor loses the entry', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+      const completed = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+        }),
+      });
+
+      // A stale client echoes the steps it has — without the server-assigned link.
+      const echoed = await service.update(alice, run.id, {
+        steps: completed.steps.map(({ logEntryId: _dropped, ...step }) => step),
+      });
+
+      const entries = await logEntries.listByTask(sealsTaskId);
+      expect(entries).toHaveLength(1);
+      expect(taskStepOf(echoed)?.logEntryId).toBe(entries[0]?.id);
+    });
+
+    it('ignores a client-forged link and still writes the real entry', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+      const forged = '550e8400-e29b-41d4-a716-446655440099';
+
+      const updated = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          logEntryId: forged,
+        }),
+      });
+
+      const entries = await logEntries.listByTask(sealsTaskId);
+      expect(entries).toHaveLength(1);
+      expect(taskStepOf(updated)?.logEntryId).toBe(entries[0]?.id);
+      expect(taskStepOf(updated)?.logEntryId).not.toBe(forged);
+    });
+
+    it('deletes the entry it wrote when the step is un-completed, and a re-completion writes a fresh one', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+      const completed = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+        }),
+      });
+      const [first] = await logEntries.listByTask(sealsTaskId);
+
+      const reopened = await service.update(alice, run.id, {
+        steps: patchStep(completed, 'Condition the slide seals', {
+          state: 'incomplete',
+        }),
+      });
+      expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(0);
+      expect(taskStepOf(reopened)?.logEntryId).toBeUndefined();
+
+      await service.update(alice, run.id, {
+        steps: patchStep(reopened, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: 'Slide-out lube' }],
+        }),
+      });
+      const entries = await logEntries.listByTask(sealsTaskId);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.id).not.toBe(first?.id);
+    });
+
+    it('deletes the entry when a mistaken completion is changed to skipped — skipping never falsely logs', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+      const completed = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+        }),
+      });
+
+      await service.update(alice, run.id, {
+        steps: patchStep(completed, 'Condition the slide seals', {
+          state: 'skipped',
+        }),
+      });
+
+      expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(0);
+    });
+
+    it('rejects a completion missing a required field value, writing nothing', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+
+      await expect(
+        service.update(alice, run.id, {
+          steps: patchStep(run, 'Condition the slide seals', {
+            state: 'complete',
+          }),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(0);
+      const reloaded = await service.get(alice, run.id);
+      expect(taskStepOf(reloaded)?.state).toBe('incomplete');
+    });
+
+    it('completes without logging when the linked task no longer exists', async () => {
+      const { service, tasks, logEntries } = await makeService();
+      const run = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+      await tasks.delete(sealsTaskId);
+
+      const updated = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+        }),
+      });
+
+      expect(taskStepOf(updated)?.state).toBe('complete');
+      expect(await logEntries.listByRig(aliceRigId)).toHaveLength(0);
+    });
+
+    it('never logs against a task on someone else’s rig', async () => {
+      const { service, checklists, logEntries } = await makeService();
+      await checklists.save({
+        id: '550e8400-e29b-41d4-a716-446655440024',
+        rigId: aliceRigId,
+        name: 'Sneaky',
+        tags: [],
+        steps: [
+          {
+            id: '550e8400-e29b-41d4-a716-446655440034',
+            text: 'Poke Bob’s bearings',
+            taskId: bobTaskId,
+          },
+        ],
+      });
+      const run = await service.create(alice, {
+        checklistId: '550e8400-e29b-41d4-a716-446655440024',
+      });
+
+      const updated = await service.update(alice, run.id, {
+        steps: patchStep(run, 'Poke Bob’s bearings', { state: 'complete' }),
+      });
+
+      expect(updated.steps[0]?.state).toBe('complete');
+      expect(await logEntries.listByTask(bobTaskId)).toHaveLength(0);
+    });
+
+    it('logs an entry from each run when the same task is referenced from steps on two checklists', async () => {
+      const { service, checklists, logEntries } = await makeService();
+      await checklists.save({
+        id: '550e8400-e29b-41d4-a716-446655440025',
+        rigId: aliceRigId,
+        name: 'Fall closing',
+        tags: [],
+        steps: [
+          {
+            id: '550e8400-e29b-41d4-a716-446655440035',
+            text: 'Condition the seals before storage',
+            taskId: sealsTaskId,
+          },
+        ],
+      });
+
+      const springRun = await service.create(alice, {
+        checklistId: sealsChecklistId,
+      });
+      await service.update(alice, springRun.id, {
+        steps: patchStep(springRun, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+        }),
+      });
+      const fallRun = await service.create(alice, {
+        checklistId: '550e8400-e29b-41d4-a716-446655440025',
+      });
+      await service.update(alice, fallRun.id, {
+        steps: patchStep(fallRun, 'Condition the seals before storage', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+        }),
+      });
+
+      expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(2);
     });
   });
 

@@ -14,7 +14,10 @@ export type StepState = z.infer<typeof StepStateSchema>;
 /**
  * A RunStep — a run's own copy of a checklist step, carrying per-step state and any values
  * captured on completion. Like a checklist step, a task-linked step never defines its own
- * fields (ADR-0008).
+ * fields (ADR-0008). `logEntryId` links a completed task-linked step to the Log Entry its
+ * completion wrote (issue #18); it is **server-managed** — the API assigns it on
+ * completion, clears it (deleting the entry) when the completion is undone, and ignores
+ * whatever a client sends.
  */
 export const RunStepSchema = z
   .object({
@@ -24,6 +27,7 @@ export const RunStepSchema = z
     fieldSchema: FieldSchemaSchema.optional(),
     state: StepStateSchema,
     values: z.array(RecordedFieldValueSchema).optional(),
+    logEntryId: IdSchema.optional(),
   })
   .refine(isFieldSourceValid, taskLinkedFieldsIssue);
 export type RunStep = z.infer<typeof RunStepSchema>;

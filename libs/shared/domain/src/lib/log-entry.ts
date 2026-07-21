@@ -8,6 +8,8 @@ import {
   isUnitOnlyOnNumber,
   PHOTO_FIELD_ISSUE,
   UNIT_ONLY_ON_NUMBER_ISSUE,
+  type FieldDefinition,
+  type FieldValue,
 } from './field-schema.js';
 
 /**
@@ -54,6 +56,24 @@ export const CreateLogEntrySchema = LogEntrySchema.omit({
   rigId: true,
 });
 export type CreateLogEntry = z.infer<typeof CreateLogEntrySchema>;
+
+/**
+ * Snapshot a field schema into log-entry fields, attaching each recorded value to its
+ * definition by name (ADR-0004's copy-with-values). Fields nobody filled stay value-less;
+ * recorded values that name no field are dropped — the schema decides what the entry holds.
+ */
+export function toLoggedFields(
+  schema: readonly FieldDefinition[],
+  values:
+    | readonly { readonly name: string; readonly value: FieldValue }[]
+    | undefined,
+): LoggedField[] {
+  const byName = new Map((values ?? []).map((v) => [v.name, v.value]));
+  return schema.map((field) => {
+    const value = byName.get(field.name);
+    return { ...field, ...(value !== undefined && { value }) };
+  });
+}
 
 /** Edit body — a past entry stays editable (correct a date or a value). */
 export const UpdateLogEntrySchema = z

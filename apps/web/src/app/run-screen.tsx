@@ -2,15 +2,18 @@
 
 import {
   runProgress,
+  validateFieldValues,
   type FieldDefinition,
   type FieldValue,
   type Id,
+  type MaintenanceTask,
   type Run,
   type RunStep,
   type StepState,
 } from '@rv-checklist/domain';
 import {
   useGetRunQuery,
+  useListTasksQuery,
   useUpdateRunMutation,
 } from '@rv-checklist/web-data-access';
 import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
@@ -26,6 +29,13 @@ import { formatIsoDate } from './dates';
  * top. The Skip control is always visible on touch and hover-revealed from
  * `lg` up. A plain step with custom fields shows its inputs; the values are
  * captured onto the run's own copy of that step.
+ *
+ * A task-linked step presents its *task's* fields instead (issue #18 — a
+ * task-linked step defines none of its own, ADR-0008), captured onto the run
+ * step the same way; completing it makes the server write a Log Entry for the
+ * task, so completion is blocked client-side until every required task field
+ * has a value — mirroring the server's rule rather than surfacing its 400.
+ * Skipping needs no values: it records nothing.
  *
  * Every change is persisted straight away (via {@link useUpdateRunMutation}) so
  * the owner can put the phone down and resume later — the whole `steps` array
@@ -107,6 +117,14 @@ function RunWorkspace({
   // clobber an in-flight change back over it.
   const [steps, setSteps] = useState<RunStep[]>(run.steps);
   const [updateRun] = useUpdateRunMutation();
+  // The rig's tasks: a task-linked step takes its fields from its task.
+  const { data: rigTasks } = useListTasksQuery(run.rigId);
+  const taskOf = (step: RunStep): MaintenanceTask | undefined =>
+    step.taskId === undefined
+      ? undefined
+      : rigTasks?.find((t) => t.id === step.taskId);
+  // Steps whose completion was blocked on missing required task fields.
+  const [blocked, setBlocked] = useState<readonly Id[]>([]);
 
   const persist = (next: RunStep[]): void => {
     setSteps(next);
@@ -114,7 +132,26 @@ function RunWorkspace({
   };
 
   const setStepState = (index: number, state: StepState): void => {
-    persist(steps.map((step, i) => (i === index ? { ...step, state } : step)));
+    const step = steps[index];
+    if (!step) {
+      return;
+    }
+    // Completing a task-linked step writes a Log Entry, so the task's required
+    // fields must be filled first — the server would reject the save anyway.
+    if (state === 'complete' && step.taskId !== undefined) {
+      // Until the rig's tasks load there is nothing to validate against; a
+      // no-op beats optimistically completing a save the server will 400.
+      if (!rigTasks) {
+        return;
+      }
+      const fields = taskOf(step)?.fieldSchema;
+      if (fields && !validateFieldValues(fields, step.values ?? []).valid) {
+        setBlocked((ids) => [...ids, step.id]);
+        return;
+      }
+    }
+    setBlocked((ids) => ids.filter((id) => id !== step.id));
+    persist(steps.map((s, i) => (i === index ? { ...s, state } : s)));
   };
 
   const progress = runProgress({ steps });
@@ -154,66 +191,96 @@ function RunWorkspace({
         </p>
       ) : (
         <ol className="overflow-hidden rounded-xl border border-hairline">
-          {displayOrder.map(({ step, index }, position) => (
-            <li
-              key={step.id}
-              className={`group flex flex-col gap-3 px-4 py-3 lg:py-2.5 ${
-                position > 0 ? 'border-t border-hairline' : ''
-              } ${step.state === 'incomplete' ? '' : 'bg-hairline/20'}`}
-            >
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  aria-label={step.text}
-                  checked={step.state === 'complete'}
-                  disabled={step.state === 'skipped'}
-                  onChange={(event) => {
-                    setStepState(
-                      index,
-                      event.target.checked ? 'complete' : 'incomplete',
-                    );
-                  }}
-                  className="size-5 shrink-0 accent-brand lg:size-4"
-                />
-                <span
-                  className={`flex-1 text-base lg:text-sm ${
-                    step.state === 'complete'
-                      ? 'text-brand-muted line-through'
-                      : step.state === 'skipped'
-                        ? 'text-brand-muted italic'
-                        : 'text-brand dark:text-ink-inverted'
-                  }`}
-                >
-                  {step.text}
-                  {step.state === 'skipped' ? ' — skipped' : ''}
-                </span>
-                {/* Skip: always visible on touch, hover-revealed on desktop. */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStepState(
-                      index,
-                      step.state === 'skipped' ? 'incomplete' : 'skipped',
-                    );
-                  }}
-                  className="shrink-0 text-sm font-medium text-brand-muted hover:text-brand lg:text-xs lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 dark:hover:text-ink-inverted"
-                >
-                  {step.state === 'skipped' ? 'Undo' : 'Skip'}
-                </button>
-              </div>
+          {displayOrder.map(({ step, index }, position) => {
+            const task = taskOf(step);
+            const fields =
+              step.taskId === undefined
+                ? (step.fieldSchema ?? [])
+                : (task?.fieldSchema ?? []);
+            return (
+              <li
+                key={step.id}
+                className={`group flex flex-col gap-3 px-4 py-3 lg:py-2.5 ${
+                  position > 0 ? 'border-t border-hairline' : ''
+                } ${step.state === 'incomplete' ? '' : 'bg-hairline/20'}`}
+              >
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    aria-label={step.text}
+                    checked={step.state === 'complete'}
+                    disabled={step.state === 'skipped'}
+                    onChange={(event) => {
+                      setStepState(
+                        index,
+                        event.target.checked ? 'complete' : 'incomplete',
+                      );
+                    }}
+                    className="size-5 shrink-0 accent-brand lg:size-4"
+                  />
+                  <span
+                    className={`flex-1 text-base lg:text-sm ${
+                      step.state === 'complete'
+                        ? 'text-brand-muted line-through'
+                        : step.state === 'skipped'
+                          ? 'text-brand-muted italic'
+                          : 'text-brand dark:text-ink-inverted'
+                    }`}
+                  >
+                    {step.text}
+                    {step.state === 'skipped' ? ' — skipped' : ''}
+                  </span>
+                  {/* Skip: always visible on touch, hover-revealed on desktop. */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStepState(
+                        index,
+                        step.state === 'skipped' ? 'incomplete' : 'skipped',
+                      );
+                    }}
+                    className="shrink-0 text-sm font-medium text-brand-muted hover:text-brand lg:text-xs lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 dark:hover:text-ink-inverted"
+                  >
+                    {step.state === 'skipped' ? 'Undo' : 'Skip'}
+                  </button>
+                </div>
 
-              {step.fieldSchema && step.fieldSchema.length > 0 ? (
-                <StepFields
-                  step={step}
-                  onCommit={(values) => {
-                    persist(
-                      steps.map((s, i) => (i === index ? { ...s, values } : s)),
-                    );
-                  }}
-                />
-              ) : undefined}
-            </li>
-          ))}
+                {step.taskId === undefined ? undefined : (
+                  <p className="pl-8 text-xs text-brand-muted lg:pl-7">
+                    ⚙{' '}
+                    {task
+                      ? `Completing records maintenance: ${task.name}`
+                      : 'The linked maintenance task no longer exists — completing won’t record it.'}
+                  </p>
+                )}
+
+                {fields.length > 0 ? (
+                  <StepFields
+                    fields={fields}
+                    values={step.values}
+                    onCommit={(values) => {
+                      setBlocked((ids) => ids.filter((id) => id !== step.id));
+                      persist(
+                        steps.map((s, i) =>
+                          i === index ? { ...s, values } : s,
+                        ),
+                      );
+                    }}
+                  />
+                ) : undefined}
+
+                {blocked.includes(step.id) ? (
+                  <p
+                    className="pl-8 text-sm text-red-600 lg:pl-7 dark:text-red-400"
+                    role="alert"
+                  >
+                    Fill the required fields to complete this step — completing
+                    it records the maintenance.
+                  </p>
+                ) : undefined}
+              </li>
+            );
+          })}
         </ol>
       )}
     </section>
@@ -260,19 +327,23 @@ function withValue(
 }
 
 /**
- * The custom-field inputs for a plain step. A local draft mirrors the captured
- * values so typing is smooth; free-text/number fields commit on blur, and
- * boolean/date/select fields commit immediately — each commit hands the whole
- * recorded set back up to be persisted onto the run.
+ * The field inputs for one step — a plain step's own `fieldSchema` or a
+ * task-linked step's task fields (the caller decides which; the capture path is
+ * identical, ADR-0008). A local draft mirrors the captured values so typing is
+ * smooth; free-text/number fields commit on blur, and boolean/date/select
+ * fields commit immediately — each commit hands the whole recorded set back up
+ * to be persisted onto the run.
  */
 function StepFields({
-  step,
+  fields,
+  values,
   onCommit,
 }: {
-  readonly step: RunStep;
+  readonly fields: readonly FieldDefinition[];
+  readonly values: readonly RecordedValue[] | undefined;
   readonly onCommit: (values: RecordedValue[]) => void;
 }): JSX.Element {
-  const [draft, setDraft] = useState<RecordedValue[]>(step.values ?? []);
+  const [draft, setDraft] = useState<RecordedValue[]>([...(values ?? [])]);
 
   const commit = (name: string, value: FieldValue | undefined): void => {
     const next = withValue(draft, name, value);
@@ -286,7 +357,7 @@ function StepFields({
 
   return (
     <div className="flex flex-col gap-3 border-t border-hairline pt-3">
-      {(step.fieldSchema ?? []).map((field) => (
+      {fields.map((field) => (
         <FieldInput
           key={field.name}
           field={field}
