@@ -34,11 +34,15 @@ export const CreateMaintenanceTaskSchema = z.object({
 });
 export type CreateMaintenanceTask = z.infer<typeof CreateMaintenanceTaskSchema>;
 
-/** Edit body — any subset of the editable fields (rig membership never changes). */
+/**
+ * Edit body — any subset of the editable fields (rig membership never changes).
+ * An explicit `interval: null` removes the interval, so the task stops being
+ * tracked for due-status; an omitted `interval` leaves it unchanged.
+ */
 export const UpdateMaintenanceTaskSchema = z
   .object({
     name: z.string().min(1),
-    interval: IntervalSchema,
+    interval: IntervalSchema.nullable(),
     fieldSchema: FieldSchemaSchema,
   })
   .partial();

@@ -1,0 +1,48 @@
+import type { FieldSchema } from '@rv-checklist/domain';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+
+/**
+ * A maintenance-task row — a recurring upkeep job on a rig (CONTEXT.md, issue
+ * #17). `rig_id` carries the rig membership (ADR-0006), references its parent
+ * `ON DELETE CASCADE`, and is indexed because the list read (`listByRig`)
+ * filters on it.
+ *
+ * `interval_months` is the optional Interval, flattened to its whole-month
+ * count; SQL NULL means the task is not tracked for due-status (CONTEXT.md) —
+ * due/overdue is computed on read (ADR-0005), so no due date is persisted.
+ * `field_schema` is the task's own custom-field definitions as JSONB
+ * (ADR-0004): embedded owned data, validated by the app, never by the schema.
+ * The API maps between this persistence shape and the
+ * {@link MaintenanceTaskSchema} wire model (ADR-0009).
+ */
+@Entity({ name: 'maintenance_tasks' })
+export class MaintenanceTaskEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column({ name: 'rig_id', type: 'uuid' })
+  rigId!: string;
+
+  @Column({ type: 'text' })
+  name!: string;
+
+  @Column({ name: 'interval_months', type: 'int', nullable: true })
+  intervalMonths!: number | null;
+
+  @Column({ name: 'field_schema', type: 'jsonb', default: () => "'[]'" })
+  fieldSchema!: FieldSchema;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+}

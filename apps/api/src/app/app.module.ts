@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { ChecklistModule } from './checklist/checklist.module.js';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
 import { validateEnv, type Env } from './config/env.js';
+import { MaintenanceModule } from './maintenance/maintenance.module.js';
 import { RigModule } from './rig/rig.module.js';
 import { RunModule } from './run/run.module.js';
 
@@ -39,6 +40,7 @@ import { RunModule } from './run/run.module.js';
     RigModule,
     ChecklistModule,
     RunModule,
+    MaintenanceModule,
   ],
   controllers: [AppController],
   providers: [

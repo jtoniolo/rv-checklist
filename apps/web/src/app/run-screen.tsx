@@ -15,7 +15,7 @@ import {
 } from '@rv-checklist/web-data-access';
 import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
 import { useState, type JSX } from 'react';
-import { formatStartedOn } from './run-dates';
+import { formatIsoDate } from './dates';
 
 /**
  * The run screen (issue #16, reshaped by #22 into an actual checklist). Works
@@ -143,7 +143,7 @@ function RunWorkspace({
           </span>
         </div>
         <p className="text-sm text-brand-muted">
-          Started {formatStartedOn(run.startedOn)}
+          Started {formatIsoDate(run.startedOn)}
         </p>
         <ProgressBar value={fractionDone(progress)} />
       </div>

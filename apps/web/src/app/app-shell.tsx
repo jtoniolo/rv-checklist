@@ -21,14 +21,16 @@ import { useEffect, useState, type JSX } from 'react';
 import { AvatarMenu } from './avatar-menu';
 import { ChecklistsScreen } from './checklists-screen';
 import { HomeScreen } from './home-screen';
+import { MaintenanceScreen } from './maintenance-screen';
 import { RigManager } from './rig-manager';
 
-type Route = 'home' | 'checklists' | 'rig';
+type Route = 'home' | 'checklists' | 'maintenance' | 'rig';
 
-/** The three destinations, driving the desktop nav and the mobile tab bar. */
+/** The four destinations, driving the desktop nav and the mobile tab bar. */
 const NAV_ITEMS: readonly { route: Route; label: string; icon: string }[] = [
   { route: 'home', label: 'Home', icon: '⌂' },
   { route: 'checklists', label: 'Checklists', icon: '☑' },
+  { route: 'maintenance', label: 'Maintenance', icon: '🔧' },
   { route: 'rig', label: 'Rig', icon: '🚐' },
 ];
 
@@ -56,6 +58,7 @@ export function AppShell(): JSX.Element {
   const [route, setRoute] = useState<Route>('home');
   const [openChecklistId, setOpenChecklistId] = useState<Id | undefined>();
   const [openRunId, setOpenRunId] = useState<Id | undefined>();
+  const [openTaskId, setOpenTaskId] = useState<Id | undefined>();
 
   // Reconcile the persisted selection with the server's rigs once they load: a
   // stale id (the rig was deleted elsewhere) falls back to the first rig, and
@@ -79,15 +82,17 @@ export function AppShell(): JSX.Element {
 
   const selectRig = (id: Id): void => {
     dispatch(activeRigSelected(id));
-    // The open checklist / run belonged to the previous rig.
+    // The open checklist / run / task belonged to the previous rig.
     setOpenChecklistId(undefined);
     setOpenRunId(undefined);
+    setOpenTaskId(undefined);
   };
 
   const go = (next: Route): void => {
     setRoute(next);
     setOpenChecklistId(undefined);
     setOpenRunId(undefined);
+    setOpenTaskId(undefined);
   };
 
   const openChecklist = (id: Id): void => {
@@ -194,6 +199,19 @@ export function AppShell(): JSX.Element {
             onBackToList={() => {
               setOpenChecklistId(undefined);
               setOpenRunId(undefined);
+            }}
+            onGoRig={() => {
+              go('rig');
+            }}
+          />
+        ) : undefined}
+        {route === 'maintenance' ? (
+          <MaintenanceScreen
+            activeRig={activeRig}
+            openTaskId={openTaskId}
+            onOpenTask={setOpenTaskId}
+            onBackToList={() => {
+              setOpenTaskId(undefined);
             }}
             onGoRig={() => {
               go('rig');

@@ -12,7 +12,7 @@ import {
   useListRunsQuery,
 } from '@rv-checklist/web-data-access';
 import type { JSX } from 'react';
-import { formatStartedOn } from './run-dates';
+import { formatIsoDate } from './dates';
 
 /**
  * One checklist's runs, inside the detail pane (issue #16, reshaped for the
@@ -99,7 +99,7 @@ function RunRow({
   readonly onDelete: () => void;
 }): JSX.Element {
   const progress = runProgress(run);
-  const dateLabel = formatStartedOn(run.startedOn);
+  const dateLabel = formatIsoDate(run.startedOn);
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-hairline p-3">
