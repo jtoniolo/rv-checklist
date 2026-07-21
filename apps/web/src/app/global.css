@@ -89,6 +89,30 @@
     );
     --accent-foreground: var(--color-ink-inverted);
     --destructive: oklch(0.704 0.191 22.216);
+    /*
+     * The camping palettes' muted/hairline colours are picked against the
+     * LIGHT surface; on the dark one they land close to the background
+     * (algonquin's brown-on-near-black was unreadable). Rebuild the three
+     * form-critical tokens from ink-inverted so fields read in every theme:
+     * muted text mostly-light, the field wash (`dark:bg-input/30` on inputs,
+     * and border-input at full strength) clearly lifted off the surface,
+     * and the focus ring brightened toward the ink.
+     */
+    --muted-foreground: color-mix(
+      in oklab,
+      var(--color-brand-muted) 30%,
+      var(--color-ink-inverted)
+    );
+    --input: color-mix(
+      in oklab,
+      var(--color-ink-inverted) 45%,
+      var(--color-surface-dark)
+    );
+    --ring: color-mix(
+      in oklab,
+      var(--color-brand) 40%,
+      var(--color-ink-inverted)
+    );
   }
 }
 

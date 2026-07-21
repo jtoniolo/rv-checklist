@@ -7,7 +7,18 @@ import {
   type StepPatch,
   type SupportedFieldType,
 } from '@rv-checklist/domain';
-import { useState, type ChangeEvent, type JSX } from 'react';
+import {
+  Button,
+  Checkbox,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@rv-checklist/web-ui';
+import { useState, type JSX } from 'react';
 
 /**
  * The add/edit checklist form (issue #15). Authors a checklist's name, free-form
@@ -21,6 +32,8 @@ import { useState, type ChangeEvent, type JSX } from 'react';
  * number — ADR-0004/0007/0008) are enforced with one source of truth. The same
  * form serves creation (empty initial) and editing (an existing checklist, whose
  * step ids are preserved so a reorder keeps each step's identity).
+ *
+ * Controls are the shared shadcn/ui set (issue #23), matching the rig form.
  */
 
 export interface ChecklistFormValues {
@@ -52,14 +65,8 @@ interface StepDraft {
   fields: FieldDraft[];
 }
 
-// The width is applied per use so the narrow type/unit controls can share the
-// same base without string-rewriting the class list.
-const inputBaseClass =
-  'rounded-md border border-hairline bg-transparent px-3 py-2 text-base text-brand outline-none focus:border-brand dark:text-ink-inverted';
-const inputClass = `w-full ${inputBaseClass}`;
-const labelClass = 'flex flex-col gap-1 text-sm text-brand-muted';
-const smallButtonClass =
-  'rounded-md px-2 py-1 text-xs font-medium text-brand-muted hover:text-brand disabled:opacity-30 dark:hover:text-ink-inverted';
+const labelClass =
+  'flex-col items-start gap-1 font-normal text-muted-foreground';
 
 function newKey(): string {
   return crypto.randomUUID();
@@ -230,29 +237,27 @@ export function ChecklistForm({
       className="flex flex-col gap-4 rounded-xl border border-hairline p-4"
       aria-label={initial ? 'Edit checklist' : 'Add checklist'}
     >
-      <label className={labelClass}>
+      <Label className={labelClass}>
         Name
-        <input
-          className={inputClass}
+        <Input
           value={name}
           onChange={(e) => {
             setName(e.target.value);
           }}
           placeholder="Pre-departure"
         />
-      </label>
+      </Label>
 
-      <label className={labelClass}>
+      <Label className={labelClass}>
         Tags (optional, comma-separated)
-        <input
-          className={inputClass}
+        <Input
           value={tagsText}
           onChange={(e) => {
             setTagsText(e.target.value);
           }}
           placeholder="procedure, departure"
         />
-      </label>
+      </Label>
 
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium text-brand dark:text-ink-inverted">
@@ -260,7 +265,7 @@ export function ChecklistForm({
         </legend>
 
         {steps.length === 0 ? (
-          <p className="text-sm text-brand-muted">
+          <p className="text-sm text-muted-foreground">
             No steps yet — add the first thing to do or pack.
           </p>
         ) : undefined}
@@ -272,11 +277,10 @@ export function ChecklistForm({
               className="flex flex-col gap-2 rounded-lg border border-hairline p-3"
             >
               <div className="flex items-start gap-2">
-                <span className="pt-2 text-sm text-brand-muted">
+                <span className="pt-2 text-sm text-muted-foreground">
                   {index + 1}.
                 </span>
-                <input
-                  className={inputClass}
+                <Input
                   value={step.text}
                   onChange={(e) => {
                     updateStep(step.key, { text: e.target.value });
@@ -285,9 +289,10 @@ export function ChecklistForm({
                   aria-label={`Step ${String(index + 1)} text`}
                 />
                 <div className="flex flex-col">
-                  <button
+                  <Button
                     type="button"
-                    className={smallButtonClass}
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => {
                       moveStep(index, -1);
                     }}
@@ -295,10 +300,11 @@ export function ChecklistForm({
                     aria-label={`Move step ${String(index + 1)} up`}
                   >
                     ↑
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
-                    className={smallButtonClass}
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => {
                       moveStep(index, 1);
                     }}
@@ -306,7 +312,7 @@ export function ChecklistForm({
                     aria-label={`Move step ${String(index + 1)} down`}
                   >
                     ↓
-                  </button>
+                  </Button>
                 </div>
               </div>
 
@@ -317,8 +323,8 @@ export function ChecklistForm({
                       key={field.key}
                       className="flex flex-wrap items-center gap-2"
                     >
-                      <input
-                        className={`${inputClass} flex-1`}
+                      <Input
+                        className="flex-1"
                         value={field.name}
                         onChange={(e) => {
                           updateField(step.key, field.key, {
@@ -328,25 +334,28 @@ export function ChecklistForm({
                         placeholder="Field name"
                         aria-label="Field name"
                       />
-                      <select
-                        className={`w-28 ${inputBaseClass}`}
+                      <Select
                         value={field.type}
-                        onChange={(e: ChangeEvent<HTMLSelectElement>) => {
+                        onValueChange={(value) => {
                           updateField(step.key, field.key, {
-                            type: e.target.value as SupportedFieldType,
+                            type: value as SupportedFieldType,
                           });
                         }}
-                        aria-label="Field type"
                       >
-                        {SUPPORTED_FIELD_TYPES.map((type) => (
-                          <option key={type} value={type}>
-                            {type}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="w-28" aria-label="Field type">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SUPPORTED_FIELD_TYPES.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       {field.type === 'number' ? (
-                        <input
-                          className={`w-20 ${inputBaseClass}`}
+                        <Input
+                          className="w-20"
                           value={field.unit}
                           onChange={(e) => {
                             updateField(step.key, field.key, {
@@ -357,46 +366,50 @@ export function ChecklistForm({
                           aria-label="Field unit"
                         />
                       ) : undefined}
-                      <label className="flex items-center gap-1 text-xs text-brand-muted">
-                        <input
-                          type="checkbox"
+                      <Label className="gap-1.5 text-xs font-normal text-muted-foreground">
+                        <Checkbox
                           checked={field.required}
-                          onChange={(e) => {
+                          onCheckedChange={(checked) => {
                             updateField(step.key, field.key, {
-                              required: e.target.checked,
+                              required: checked === true,
                             });
                           }}
                         />
                         required
-                      </label>
-                      <button
+                      </Label>
+                      <Button
                         type="button"
-                        className={smallButtonClass}
+                        variant="ghost"
+                        size="xs"
+                        className="text-muted-foreground"
                         onClick={() => {
                           removeField(step.key, field.key);
                         }}
                         aria-label="Remove field"
                       >
                         Remove field
-                      </button>
+                      </Button>
                     </li>
                   ))}
                 </ul>
               ) : undefined}
 
-              <div className="flex gap-3 pl-6 text-xs">
-                <button
+              <div className="flex gap-3 pl-6">
+                <Button
                   type="button"
-                  className="font-medium text-brand hover:opacity-80 dark:text-ink-inverted"
+                  variant="ghost"
+                  size="xs"
                   onClick={() => {
                     addField(step.key);
                   }}
                 >
                   Add field
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="font-medium text-red-600 hover:opacity-80 dark:text-red-400"
+                  variant="ghost"
+                  size="xs"
+                  className="text-destructive hover:text-destructive"
                   onClick={() => {
                     setSteps((current) =>
                       current.filter((s) => s.key !== step.key),
@@ -404,44 +417,38 @@ export function ChecklistForm({
                   }}
                 >
                   Delete step
-                </button>
+                </Button>
               </div>
             </li>
           ))}
         </ol>
 
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
           onClick={() => {
             setSteps((current) => [...current, emptyStep()]);
           }}
-          className="self-start rounded-md border border-hairline px-3 py-1.5 text-sm font-medium text-brand hover:border-brand dark:text-ink-inverted"
         >
           Add step
-        </button>
+        </Button>
       </fieldset>
 
       {error ? (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
       ) : undefined}
 
       <div className="flex gap-3 pt-1">
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending}>
           {pending ? 'Saving…' : submitLabel}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-md px-4 py-2 text-sm font-medium text-brand-muted hover:text-brand dark:hover:text-ink-inverted"
-        >
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

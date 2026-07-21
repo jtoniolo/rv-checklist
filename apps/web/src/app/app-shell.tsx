@@ -10,6 +10,13 @@ import {
   useListRigsQuery,
   useMeQuery,
 } from '@rv-checklist/web-data-access';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@rv-checklist/web-ui';
 import { useEffect, useState, type JSX } from 'react';
 import { AvatarMenu } from './avatar-menu';
 import { ChecklistsScreen } from './checklists-screen';
@@ -129,23 +136,25 @@ export function AppShell(): JSX.Element {
           <div className="flex items-center gap-3">
             {/* Desktop: the rig select folded into the header. */}
             {rigs && rigs.length > 0 ? (
-              <label className="hidden items-center gap-1.5 text-sm text-brand-muted lg:flex">
+              <div className="hidden items-center gap-1.5 text-sm text-brand-muted lg:flex">
                 <span aria-hidden>🚐</span>
-                <span className="sr-only">Active rig</span>
-                <select
-                  value={activeRig?.id ?? ''}
-                  onChange={(event) => {
-                    selectRig(event.target.value);
-                  }}
-                  className="rounded-md border border-transparent bg-transparent py-0.5 pr-1 font-semibold text-brand hover:border-hairline dark:text-ink-inverted"
-                >
-                  {rigs.map((rig) => (
-                    <option key={rig.id} value={rig.id}>
-                      {rig.nickname}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <Select value={activeRig?.id ?? ''} onValueChange={selectRig}>
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Active rig"
+                    className="border-transparent bg-transparent font-semibold text-brand shadow-none hover:border-hairline dark:bg-transparent dark:text-ink-inverted dark:hover:bg-transparent"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {rigs.map((rig) => (
+                      <SelectItem key={rig.id} value={rig.id}>
+                        {rig.nickname}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             ) : undefined}
             {owner ? <AvatarMenu owner={owner} /> : undefined}
           </div>
