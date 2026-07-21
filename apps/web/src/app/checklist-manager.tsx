@@ -9,6 +9,7 @@ import {
 } from '@rv-checklist/web-data-access';
 import { useState, type JSX } from 'react';
 import { ChecklistForm, type ChecklistFormValues } from './checklist-form';
+import { RunManager } from './run-manager';
 
 /**
  * A checklist's step as a create-body step: drop the server-assigned id so the
@@ -50,6 +51,7 @@ export function ChecklistManager({
 
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<Id | undefined>(undefined);
+  const [runningId, setRunningId] = useState<Id | undefined>(undefined);
 
   const handleCreate = async (values: ChecklistFormValues): Promise<void> => {
     await createChecklist({ rigId, ...values }).unwrap();
@@ -141,16 +143,33 @@ export function ChecklistManager({
               />
             </li>
           ) : (
-            <li key={checklist.id}>
+            <li key={checklist.id} className="flex flex-col gap-3">
               <ChecklistCard
                 checklist={checklist}
+                runsOpen={runningId === checklist.id}
                 onEdit={() => {
                   setAdding(false);
+                  setRunningId(undefined);
                   setEditingId(checklist.id);
+                }}
+                onRuns={() => {
+                  setAdding(false);
+                  setEditingId(undefined);
+                  setRunningId((current) =>
+                    current === checklist.id ? undefined : checklist.id,
+                  );
                 }}
                 onDuplicate={() => void handleDuplicate(checklist)}
                 onDelete={() => void handleDelete(checklist.id)}
               />
+              {runningId === checklist.id ? (
+                <RunManager
+                  checklist={checklist}
+                  onClose={() => {
+                    setRunningId(undefined);
+                  }}
+                />
+              ) : undefined}
             </li>
           ),
         )}
@@ -161,14 +180,18 @@ export function ChecklistManager({
 
 interface ChecklistCardProps {
   readonly checklist: Checklist;
+  readonly runsOpen: boolean;
   readonly onEdit: () => void;
+  readonly onRuns: () => void;
   readonly onDuplicate: () => void;
   readonly onDelete: () => void;
 }
 
 function ChecklistCard({
   checklist,
+  runsOpen,
   onEdit,
+  onRuns,
   onDuplicate,
   onDelete,
 }: ChecklistCardProps): JSX.Element {
@@ -198,6 +221,14 @@ function ChecklistCard({
         </div>
       </div>
       <div className="flex gap-4 text-sm">
+        <button
+          type="button"
+          onClick={onRuns}
+          aria-expanded={runsOpen}
+          className="font-medium text-brand hover:opacity-80 dark:text-ink-inverted"
+        >
+          {runsOpen ? 'Hide runs' : 'Runs'}
+        </button>
         <button
           type="button"
           onClick={onEdit}
