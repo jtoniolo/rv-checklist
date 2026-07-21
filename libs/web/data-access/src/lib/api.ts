@@ -7,20 +7,28 @@ import {
 } from '@reduxjs/toolkit/query/react';
 import {
   ChecklistSchema,
+  LogEntrySchema,
+  MaintenanceTaskSchema,
   OwnerSchema,
   RigSchema,
   RunSchema,
   TokenPairSchema,
   type Checklist,
   type CreateChecklist,
+  type CreateLogEntry,
+  type CreateMaintenanceTask,
   type CreateRig,
   type CreateRun,
   type Id,
+  type LogEntry,
+  type MaintenanceTask,
   type Owner,
   type Rig,
   type Run,
   type TokenPair,
   type UpdateChecklist,
+  type UpdateLogEntry,
+  type UpdateMaintenanceTask,
   type UpdateRig,
   type UpdateRun,
 } from '@rv-checklist/domain';
@@ -32,6 +40,8 @@ import { config } from './config.js';
 const RigArraySchema = z.array(RigSchema);
 const ChecklistArraySchema = z.array(ChecklistSchema);
 const RunArraySchema = z.array(RunSchema);
+const MaintenanceTaskArraySchema = z.array(MaintenanceTaskSchema);
+const LogEntryArraySchema = z.array(LogEntrySchema);
 
 /** The raw transport: attaches the bearer access token from the auth slice. */
 const rawBaseQuery = fetchBaseQuery({
@@ -110,7 +120,7 @@ const baseQueryWithReauth: BaseQueryFn<
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Rig', 'Checklist', 'Run', 'Me'],
+  tagTypes: ['Rig', 'Checklist', 'Run', 'Task', 'LogEntry', 'Me'],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
       query: () => '/me',
@@ -314,6 +324,121 @@ export const api = createApi({
       // contained it — no need to know its checklist.
       invalidatesTags: (_result, _error, id) => [{ type: 'Run', id }],
     }),
+
+    // Maintenance tasks are scoped to a rig (ADR-0006), so the list read takes
+    // the active rig's id with a per-rig `LIST` tag, exactly as checklists do.
+    // Responses are validated by the shared schema (its ADR-0004 field rules
+    // included), one source of wire-model truth.
+    listTasks: builder.query<MaintenanceTask[], Id>({
+      query: (rigId) => `/tasks?rigId=${rigId}`,
+      transformResponse: (raw: unknown) =>
+        MaintenanceTaskArraySchema.parse(raw),
+      providesTags: (result, _error, rigId) =>
+        result
+          ? [
+              ...result.map((t) => ({ type: 'Task' as const, id: t.id })),
+              { type: 'Task' as const, id: `LIST:${rigId}` },
+            ]
+          : [{ type: 'Task' as const, id: `LIST:${rigId}` }],
+    }),
+
+    createTask: builder.mutation<MaintenanceTask, CreateMaintenanceTask>({
+      query: (body) => ({ url: '/tasks', method: 'POST', body }),
+      transformResponse: (raw: unknown) => MaintenanceTaskSchema.parse(raw),
+      invalidatesTags: (_result, _error, { rigId }) => [
+        { type: 'Task', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    updateTask: builder.mutation<
+      MaintenanceTask,
+      { id: Id; changes: UpdateMaintenanceTask }
+    >({
+      query: ({ id, changes }) => ({
+        url: `/tasks/${id}`,
+        method: 'PATCH',
+        body: changes,
+      }),
+      transformResponse: (raw: unknown) => MaintenanceTaskSchema.parse(raw),
+      invalidatesTags: (result, _error, { id }) => [
+        { type: 'Task', id },
+        // The list tag is per-rig; `result` carries the rig on success.
+        ...(result
+          ? [{ type: 'Task' as const, id: `LIST:${result.rigId}` }]
+          : []),
+      ],
+    }),
+
+    deleteTask: builder.mutation<void, Id>({
+      query: (id) => ({ url: `/tasks/${id}`, method: 'DELETE' }),
+      // The per-rig list provides an element tag for each task it holds, so
+      // invalidating the deleted id's tag refetches exactly the list that
+      // contained it — no need to know its rig.
+      invalidatesTags: (_result, _error, id) => [{ type: 'Task', id }],
+    }),
+
+    // Log entries are read two ways: one task's full history (`?taskId=`) and
+    // a whole rig's entries (`?rigId=`, the due-status read — ADR-0005: the
+    // task list computes each task's standing from the rig's entries without a
+    // request per task). Same two-scope tag layout as runs.
+    listLogEntries: builder.query<LogEntry[], Id>({
+      query: (taskId) => `/log-entries?taskId=${taskId}`,
+      transformResponse: (raw: unknown) => LogEntryArraySchema.parse(raw),
+      providesTags: (result, _error, taskId) =>
+        result
+          ? [
+              ...result.map((e) => ({ type: 'LogEntry' as const, id: e.id })),
+              { type: 'LogEntry' as const, id: `LIST:${taskId}` },
+            ]
+          : [{ type: 'LogEntry' as const, id: `LIST:${taskId}` }],
+    }),
+
+    listLogEntriesByRig: builder.query<LogEntry[], Id>({
+      query: (rigId) => `/log-entries?rigId=${rigId}`,
+      transformResponse: (raw: unknown) => LogEntryArraySchema.parse(raw),
+      providesTags: (result, _error, rigId) =>
+        result
+          ? [
+              ...result.map((e) => ({ type: 'LogEntry' as const, id: e.id })),
+              { type: 'LogEntry' as const, id: `RIG:${rigId}` },
+            ]
+          : [{ type: 'LogEntry' as const, id: `RIG:${rigId}` }],
+    }),
+
+    createLogEntry: builder.mutation<LogEntry, CreateLogEntry>({
+      query: (body) => ({ url: '/log-entries', method: 'POST', body }),
+      transformResponse: (raw: unknown) => LogEntrySchema.parse(raw),
+      invalidatesTags: (result, _error, { taskId }) => [
+        { type: 'LogEntry', id: `LIST:${taskId}` },
+        // A fresh entry has no element tag anywhere yet, so the rig-level list
+        // (due-status) must be invalidated explicitly; `result` carries the
+        // rig on success.
+        ...(result
+          ? [{ type: 'LogEntry' as const, id: `RIG:${result.rigId}` }]
+          : []),
+      ],
+    }),
+
+    updateLogEntry: builder.mutation<
+      LogEntry,
+      { id: Id; changes: UpdateLogEntry }
+    >({
+      query: ({ id, changes }) => ({
+        url: `/log-entries/${id}`,
+        method: 'PATCH',
+        body: changes,
+      }),
+      transformResponse: (raw: unknown) => LogEntrySchema.parse(raw),
+      invalidatesTags: (_result, _error, { id }) => [{ type: 'LogEntry', id }],
+    }),
+
+    deleteLogEntry: builder.mutation<void, Id>({
+      query: (id) => ({ url: `/log-entries/${id}`, method: 'DELETE' }),
+      // Both lists (per-task and per-rig) provide an element tag for each entry
+      // they hold, so invalidating the deleted id's tag refetches exactly the
+      // lists that contained it.
+      invalidatesTags: (_result, _error, id) => [{ type: 'LogEntry', id }],
+    }),
   }),
 });
 
@@ -335,4 +460,13 @@ export const {
   useCreateRunMutation,
   useUpdateRunMutation,
   useDeleteRunMutation,
+  useListTasksQuery,
+  useCreateTaskMutation,
+  useUpdateTaskMutation,
+  useDeleteTaskMutation,
+  useListLogEntriesQuery,
+  useListLogEntriesByRigQuery,
+  useCreateLogEntryMutation,
+  useUpdateLogEntryMutation,
+  useDeleteLogEntryMutation,
 } = api;

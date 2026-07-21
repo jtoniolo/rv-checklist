@@ -15,7 +15,7 @@ import {
 } from '@rv-checklist/web-data-access';
 import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
 import type { JSX } from 'react';
-import { formatStartedOn } from './run-dates';
+import { formatIsoDate } from './dates';
 
 /**
  * The summary homepage (issue #22). Everything on it clicks through — stat
@@ -195,7 +195,7 @@ function ContinueCard({
   readonly checklistName: string | undefined;
   readonly onOpen: () => void;
 }): JSX.Element {
-  const dateLabel = formatStartedOn(run.startedOn);
+  const dateLabel = formatIsoDate(run.startedOn);
   return (
     <button
       type="button"

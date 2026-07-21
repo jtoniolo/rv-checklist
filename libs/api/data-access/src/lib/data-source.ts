@@ -1,5 +1,7 @@
 import { type DataSourceOptions } from 'typeorm';
 import { ChecklistEntity } from './entities/checklist.entity.js';
+import { LogEntryEntity } from './entities/log-entry.entity.js';
+import { MaintenanceTaskEntity } from './entities/maintenance-task.entity.js';
 import { RefreshTokenEntity } from './entities/refresh-token.entity.js';
 import { RigEntity } from './entities/rig.entity.js';
 import { RunEntity } from './entities/run.entity.js';
@@ -9,6 +11,7 @@ import { Rigs1721000100000 } from './migrations/1721000100000-rigs.js';
 import { RigOptionalDetails1721000200000 } from './migrations/1721000200000-rig-optional-details.js';
 import { Checklists1721000300000 } from './migrations/1721000300000-checklists.js';
 import { Runs1721000400000 } from './migrations/1721000400000-runs.js';
+import { Maintenance1721000500000 } from './migrations/1721000500000-maintenance.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -30,6 +33,8 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       RigEntity,
       ChecklistEntity,
       RunEntity,
+      MaintenanceTaskEntity,
+      LogEntryEntity,
     ],
     migrations: [
       Baseline1721000000000,
@@ -37,6 +42,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       RigOptionalDetails1721000200000,
       Checklists1721000300000,
       Runs1721000400000,
+      Maintenance1721000500000,
     ],
     migrationsRun: true,
     synchronize: false,

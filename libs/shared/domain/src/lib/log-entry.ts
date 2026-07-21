@@ -44,8 +44,15 @@ export const LogEntrySchema = z.object({
 });
 export type LogEntry = z.infer<typeof LogEntrySchema>;
 
-/** Create body — `id` is server-assigned. Used for both task-linked and standalone completion. */
-export const CreateLogEntrySchema = LogEntrySchema.omit({ id: true });
+/**
+ * Create body — `id` is server-assigned and `rigId` is derived from the task
+ * (an entry can never land on a rig its task doesn't belong to), so the client
+ * names only the task, the date, and the field snapshot.
+ */
+export const CreateLogEntrySchema = LogEntrySchema.omit({
+  id: true,
+  rigId: true,
+});
 export type CreateLogEntry = z.infer<typeof CreateLogEntrySchema>;
 
 /** Edit body — a past entry stays editable (correct a date or a value). */
