@@ -13,13 +13,18 @@ import {
   useGetRunQuery,
   useUpdateRunMutation,
 } from '@rv-checklist/web-data-access';
+import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
 import { useState, type JSX } from 'react';
+import { formatStartedOn } from './run-dates';
 
 /**
- * The mobile-first run screen (issue #16). Works through one run's steps: each is
- * marked incomplete / complete / skipped and the state switches freely, so a
- * mistake is corrected by tapping another state (CONTEXT.md — step state is not a
- * boolean). A plain step with custom fields shows its inputs; the values are
+ * The run screen (issue #16, reshaped by #22 into an actual checklist). Works
+ * through one run's steps: each row is a checkbox (incomplete ⇄ complete) with
+ * a Skip/Undo beside it, so all three states stay reachable and freely
+ * switchable (CONTEXT.md — step state is not a boolean). Skipped rows dim and
+ * italicise; resolved rows tint; a progress bar and "n of m" counter sit on
+ * top. The Skip control is always visible on touch and hover-revealed from
+ * `lg` up. A plain step with custom fields shows its inputs; the values are
  * captured onto the run's own copy of that step.
  *
  * Every change is persisted straight away (via {@link useUpdateRunMutation}) so
@@ -32,9 +37,12 @@ import { useState, type JSX } from 'react';
  */
 export function RunScreen({
   runId,
+  title,
   onExit,
 }: {
   readonly runId: Id;
+  /** The checklist's name — the run itself holds only ids. */
+  readonly title: string;
   readonly onExit: () => void;
 }): JSX.Element {
   const query = useGetRunQuery(runId);
@@ -53,7 +61,14 @@ export function RunScreen({
     );
   }
   // Remount on a different run so local step state is reseeded from the load.
-  return <RunWorkspace key={query.data.id} run={query.data} onExit={onExit} />;
+  return (
+    <RunWorkspace
+      key={query.data.id}
+      run={query.data}
+      title={title}
+      onExit={onExit}
+    />
+  );
 }
 
 function BackButton({ onExit }: { readonly onExit: () => void }): JSX.Element {
@@ -68,14 +83,6 @@ function BackButton({ onExit }: { readonly onExit: () => void }): JSX.Element {
   );
 }
 
-const STATE_LABELS: Record<StepState, string> = {
-  incomplete: 'To do',
-  complete: 'Done',
-  skipped: 'Skip',
-};
-
-const STATE_ORDER: readonly StepState[] = ['incomplete', 'complete', 'skipped'];
-
 /**
  * Display rank for the sink-resolved-to-bottom sort: still-to-do steps
  * (`incomplete`) rank above resolved ones (`complete` or `skipped`), which a
@@ -87,9 +94,11 @@ function stepRank(step: RunStep): number {
 
 function RunWorkspace({
   run,
+  title,
   onExit,
 }: {
   readonly run: Run;
+  readonly title: string;
   readonly onExit: () => void;
 }): JSX.Element {
   // Seeded once from the fresh load; `RunScreen` keys this component on the run
@@ -120,92 +129,93 @@ function RunWorkspace({
     .toSorted((a, b) => stepRank(a.step) - stepRank(b.step));
 
   return (
-    <section className="flex flex-col gap-4" aria-label="Run">
+    <section className="flex flex-col gap-3" aria-label="Run">
       <div className="flex flex-col gap-2">
         <BackButton onExit={onExit} />
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-xl font-semibold text-brand dark:text-ink-inverted">
-            {new Date(`${run.startedOn}T00:00:00`).toLocaleDateString(
-              undefined,
-              {
-                dateStyle: 'medium',
-              },
-            )}
+          <h2 className="text-2xl font-semibold tracking-tight text-brand lg:text-xl dark:text-ink-inverted">
+            {title}
           </h2>
           <span className="text-sm text-brand-muted" aria-live="polite">
             {progress.inProgress
-              ? `${String(progress.completed + progress.skipped)} of ${String(progress.total)} done`
-              : 'All done'}
+              ? `${String(progress.completed + progress.skipped)} of ${String(progress.total)}`
+              : 'All done ✓'}
           </span>
         </div>
+        <p className="text-sm text-brand-muted">
+          Started {formatStartedOn(run.startedOn)}
+        </p>
+        <ProgressBar value={fractionDone(progress)} />
       </div>
 
       {steps.length === 0 ? (
         <p className="rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted">
           This run has no steps.
         </p>
-      ) : undefined}
-
-      <ol className="flex flex-col gap-3">
-        {displayOrder.map(({ step, index }) => (
-          <li
-            key={step.id}
-            className="flex flex-col gap-3 rounded-xl border border-hairline p-4"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <span
-                className={
-                  step.state === 'complete'
-                    ? 'text-base text-brand-muted line-through dark:text-brand-muted'
-                    : step.state === 'skipped'
-                      ? 'text-base text-brand-muted italic'
-                      : 'text-base text-brand dark:text-ink-inverted'
-                }
-              >
-                {step.text}
-              </span>
-            </div>
-
-            <div
-              className="flex gap-2"
-              role="group"
-              aria-label={`State for “${step.text}”`}
+      ) : (
+        <ol className="overflow-hidden rounded-xl border border-hairline">
+          {displayOrder.map(({ step, index }, position) => (
+            <li
+              key={step.id}
+              className={`group flex flex-col gap-3 px-4 py-3 lg:py-2.5 ${
+                position > 0 ? 'border-t border-hairline' : ''
+              } ${step.state === 'incomplete' ? '' : 'bg-hairline/20'}`}
             >
-              {STATE_ORDER.map((state) => {
-                const isActive = step.state === state;
-                return (
-                  <button
-                    key={state}
-                    type="button"
-                    aria-pressed={isActive}
-                    onClick={() => {
-                      setStepState(index, state);
-                    }}
-                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'border-brand bg-brand text-white'
-                        : 'border-hairline text-brand-muted hover:border-brand dark:hover:text-ink-inverted'
-                    }`}
-                  >
-                    {STATE_LABELS[state]}
-                  </button>
-                );
-              })}
-            </div>
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  aria-label={step.text}
+                  checked={step.state === 'complete'}
+                  disabled={step.state === 'skipped'}
+                  onChange={(event) => {
+                    setStepState(
+                      index,
+                      event.target.checked ? 'complete' : 'incomplete',
+                    );
+                  }}
+                  className="size-5 shrink-0 accent-brand lg:size-4"
+                />
+                <span
+                  className={`flex-1 text-base lg:text-sm ${
+                    step.state === 'complete'
+                      ? 'text-brand-muted line-through'
+                      : step.state === 'skipped'
+                        ? 'text-brand-muted italic'
+                        : 'text-brand dark:text-ink-inverted'
+                  }`}
+                >
+                  {step.text}
+                  {step.state === 'skipped' ? ' — skipped' : ''}
+                </span>
+                {/* Skip: always visible on touch, hover-revealed on desktop. */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStepState(
+                      index,
+                      step.state === 'skipped' ? 'incomplete' : 'skipped',
+                    );
+                  }}
+                  className="shrink-0 text-sm font-medium text-brand-muted hover:text-brand lg:text-xs lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 dark:hover:text-ink-inverted"
+                >
+                  {step.state === 'skipped' ? 'Undo' : 'Skip'}
+                </button>
+              </div>
 
-            {step.fieldSchema && step.fieldSchema.length > 0 ? (
-              <StepFields
-                step={step}
-                onCommit={(values) => {
-                  persist(
-                    steps.map((s, i) => (i === index ? { ...s, values } : s)),
-                  );
-                }}
-              />
-            ) : undefined}
-          </li>
-        ))}
-      </ol>
+              {step.fieldSchema && step.fieldSchema.length > 0 ? (
+                <StepFields
+                  step={step}
+                  onCommit={(values) => {
+                    persist(
+                      steps.map((s, i) => (i === index ? { ...s, values } : s)),
+                    );
+                  }}
+                />
+              ) : undefined}
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }

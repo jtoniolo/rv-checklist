@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -43,16 +44,30 @@ export class RunController {
     return this.runs.create(owner.id, body);
   }
 
-  /** List the past runs of one of the owner's checklists (`?checklistId=`). */
+  /**
+   * List runs — one checklist's history (`?checklistId=`) or a whole rig's
+   * (`?rigId=`, the home summary read, issue #22). Exactly one scope is
+   * required; an unscoped list of "all runs" has no screen.
+   */
   @Get()
   // Array response: the DTO must be wrapped as `[Dto]` so the serializer
   // validates each element against RunSchema (see RigController).
   @ZodSerializerDto([RunDto])
   list(
     @CurrentOwner() owner: Owner,
-    @Query('checklistId', ParseUUIDPipe) checklistId: string,
+    @Query('checklistId', new ParseUUIDPipe({ optional: true }))
+    checklistId?: string,
+    @Query('rigId', new ParseUUIDPipe({ optional: true })) rigId?: string,
   ): Promise<Run[]> {
-    return this.runs.listByChecklist(owner.id, checklistId);
+    if (checklistId && !rigId) {
+      return this.runs.listByChecklist(owner.id, checklistId);
+    }
+    if (rigId && !checklistId) {
+      return this.runs.listByRig(owner.id, rigId);
+    }
+    throw new BadRequestException(
+      'exactly one of checklistId or rigId is required',
+    );
   }
 
   /** Read (resume) one of the owner's runs. */

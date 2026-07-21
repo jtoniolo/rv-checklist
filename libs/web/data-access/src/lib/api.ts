@@ -256,6 +256,22 @@ export const api = createApi({
           : [{ type: 'Run' as const, id: `LIST:${checklistId}` }],
     }),
 
+    // A whole rig's runs across its checklists — the home summary read (issue
+    // #22: the "in progress" tile and continue cards). Keyed by rig id with its
+    // own list tag; each run also provides an element tag, so editing or
+    // deleting a run refetches this list without knowing its rig.
+    listRunsByRig: builder.query<Run[], Id>({
+      query: (rigId) => `/runs?rigId=${rigId}`,
+      transformResponse: (raw: unknown) => RunArraySchema.parse(raw),
+      providesTags: (result, _error, rigId) =>
+        result
+          ? [
+              ...result.map((r) => ({ type: 'Run' as const, id: r.id })),
+              { type: 'Run' as const, id: `RIG:${rigId}` },
+            ]
+          : [{ type: 'Run' as const, id: `RIG:${rigId}` }],
+    }),
+
     getRun: builder.query<Run, Id>({
       query: (id) => `/runs/${id}`,
       transformResponse: (raw: unknown) => RunSchema.parse(raw),
@@ -265,8 +281,13 @@ export const api = createApi({
     createRun: builder.mutation<Run, CreateRun>({
       query: (body) => ({ url: '/runs', method: 'POST', body }),
       transformResponse: (raw: unknown) => RunSchema.parse(raw),
-      invalidatesTags: (_result, _error, { checklistId }) => [
+      invalidatesTags: (result, _error, { checklistId }) => [
         { type: 'Run', id: `LIST:${checklistId}` },
+        // A fresh run has no element tag anywhere yet, so the rig-level list
+        // must be invalidated explicitly; `result` carries the rig on success.
+        ...(result
+          ? [{ type: 'Run' as const, id: `RIG:${result.rigId}` }]
+          : []),
       ],
     }),
 
@@ -309,6 +330,7 @@ export const {
   useUpdateChecklistMutation,
   useDeleteChecklistMutation,
   useListRunsQuery,
+  useListRunsByRigQuery,
   useGetRunQuery,
   useCreateRunMutation,
   useUpdateRunMutation,

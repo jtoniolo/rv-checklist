@@ -1,4 +1,5 @@
 import type { AuthState } from './auth.slice.js';
+import { setOrRemove, storage } from './storage.js';
 
 /**
  * localStorage persistence for the session (ADR-0002: the token pair lives in
@@ -10,20 +11,6 @@ import type { AuthState } from './auth.slice.js';
  */
 const ACCESS_KEY = 'rv.accessToken';
 const REFRESH_KEY = 'rv.refreshToken';
-
-/** The browser's localStorage, or `undefined` on the server / non-DOM contexts. */
-function storage(): Storage | undefined {
-  try {
-    const candidate = (globalThis as { localStorage?: Storage }).localStorage;
-    if (candidate && typeof candidate.getItem === 'function') {
-      return candidate;
-    }
-  } catch {
-    // Accessing localStorage can throw (disabled, or an unconfigured stub) —
-    // treat that the same as "no persistence available".
-  }
-  return undefined;
-}
 
 /** The persisted session, or an empty session when none / not in a browser. */
 export function loadPersistedAuth(): AuthState {
@@ -45,16 +32,4 @@ export function persistAuth(auth: AuthState): void {
   }
   setOrRemove(store, ACCESS_KEY, auth.accessToken);
   setOrRemove(store, REFRESH_KEY, auth.refreshToken);
-}
-
-function setOrRemove(
-  store: Storage,
-  key: string,
-  value: string | undefined,
-): void {
-  if (value === undefined) {
-    store.removeItem(key);
-  } else {
-    store.setItem(key, value);
-  }
 }
