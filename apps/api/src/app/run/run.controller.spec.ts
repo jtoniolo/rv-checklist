@@ -120,6 +120,34 @@ describe('RunController over HTTP (through the Zod serializer)', () => {
     ]);
   });
 
+  it('lists a rig’s runs across checklists via ?rigId= (issue #22)', async () => {
+    const started = await fetch(`${baseUrl}/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checklistId }),
+    });
+    expect(started.status).toBe(201);
+
+    const listed = await fetch(`${baseUrl}/runs?rigId=${rigId}`);
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as { rigId: string }[];
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.length).toBeGreaterThan(0);
+    expect(body.every((run) => run.rigId === rigId)).toBe(true);
+  });
+
+  it('rejects a list request with neither checklistId nor rigId', async () => {
+    const listed = await fetch(`${baseUrl}/runs`);
+    expect(listed.status).toBe(400);
+  });
+
+  it('rejects a list request with both checklistId and rigId', async () => {
+    const listed = await fetch(
+      `${baseUrl}/runs?checklistId=${checklistId}&rigId=${rigId}`,
+    );
+    expect(listed.status).toBe(400);
+  });
+
   it('captures a completed step’s values on PATCH and round-trips them', async () => {
     const started = await fetch(`${baseUrl}/runs`, {
       method: 'POST',

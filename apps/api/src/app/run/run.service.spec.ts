@@ -249,6 +249,35 @@ describe('RunService', () => {
     });
   });
 
+  describe('list — runs across a rig (the home summary read, issue #22)', () => {
+    it('returns every run on the owner’s rig, across its checklists', async () => {
+      const { service, checklists } = await makeService();
+      const secondChecklist: Checklist = {
+        ...aliceChecklist,
+        id: '550e8400-e29b-41d4-a716-446655440022',
+        name: 'Spring opening',
+      };
+      await checklists.save(secondChecklist);
+      await service.create(alice, { checklistId: aliceChecklistId });
+      await service.create(alice, { checklistId: secondChecklist.id });
+
+      const runs = await service.listByRig(alice, aliceRigId);
+
+      expect(runs).toHaveLength(2);
+      expect(new Set(runs.map((run) => run.checklistId))).toEqual(
+        new Set([aliceChecklistId, secondChecklist.id]),
+      );
+    });
+
+    it('refuses to list runs of a rig the owner does not own', async () => {
+      const { service } = await makeService();
+
+      await expect(service.listByRig(alice, bobRigId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
   describe('delete', () => {
     it('removes a run started by mistake', async () => {
       const { service } = await makeService();

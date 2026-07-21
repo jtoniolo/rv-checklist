@@ -114,6 +114,18 @@ export class RunService {
     return this.runs.listByChecklist(checklistId);
   }
 
+  /**
+   * Every run on one of the owner's rigs, across its checklists — the home
+   * summary read (issue #22: the "in progress" tile and continue cards need
+   * the rig's runs without a request per checklist).
+   */
+  async listByRig(ownerId: Id, rigId: Id): Promise<Run[]> {
+    if (!(await this.ownsRig(ownerId, rigId))) {
+      throw new NotFoundException('Rig not found');
+    }
+    return this.runs.listByRig(rigId);
+  }
+
   /** Apply a partial edit to one of the owner's runs (checklist/rig never change). */
   async update(ownerId: Id, id: Id, changes: UpdateRun): Promise<Run> {
     const existing = await this.get(ownerId, id);

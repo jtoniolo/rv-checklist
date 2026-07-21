@@ -1,0 +1,42 @@
+import { Blob } from 'node:buffer';
+import {
+  ReadableStream,
+  TransformStream,
+  WritableStream,
+} from 'node:stream/web';
+import { TextDecoder, TextEncoder } from 'node:util';
+import { MessageChannel, MessagePort } from 'node:worker_threads';
+
+// Give the RTK Query base query an absolute base URL so `fetchBaseQuery` can
+// build a valid `Request` under jsdom (a relative URL throws). Runs before the
+// modules under test are imported, so the data-access `config.ts` reads it.
+Object.assign(process.env, { NEXT_PUBLIC_API_BASE_URL: 'https://api.test' });
+
+// jsdom ships no fetch API; specs that exercise RTK Query need the real
+// constructors (`fetchBaseQuery` builds `Request`s, mocks build `Response`s),
+// so borrow undici's — the same implementation Node's global fetch uses. The
+// encoder globals must land before undici loads (hence `require`, which does
+// not hoist above the assignment the way an `import` would).
+Object.assign(globalThis, {
+  TextDecoder,
+  TextEncoder,
+  ReadableStream,
+  TransformStream,
+  WritableStream,
+  Blob,
+  MessageChannel,
+  MessagePort,
+});
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { Headers, Request, Response } = require('undici') as {
+  Headers: unknown;
+  Request: unknown;
+  Response: unknown;
+};
+// `fetch` itself always rejects: no spec may touch the network. Suites that
+// exercise the API spy on this property and route requests to canned data; a
+// late call that lands after a spy is restored fails fast instead of dialling
+// out (fetchBaseQuery turns the rejection into a query error).
+const noNetwork = (): Promise<never> =>
+  Promise.reject(new Error('No network in tests — mock fetch.'));
+Object.assign(globalThis, { fetch: noNetwork, Headers, Request, Response });

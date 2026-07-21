@@ -11,78 +11,50 @@ import {
   useDeleteRunMutation,
   useListRunsQuery,
 } from '@rv-checklist/web-data-access';
-import { useState, type JSX } from 'react';
-import { RunScreen } from './run-screen';
+import type { JSX } from 'react';
+import { formatStartedOn } from './run-dates';
 
 /**
- * The runs surface for one checklist (issue #16). Starting a run copies the
- * checklist's steps on the server and drops straight into the run screen. Past
- * runs are listed newest-effort-first with their progress, so an in-progress one
- * (still has incomplete steps) is easy to spot and resume, and a run started by
- * mistake can be deleted. Editing a checklist never changes these runs — each
- * holds its own copy of the steps.
+ * One checklist's runs, inside the detail pane (issue #16, reshaped for the
+ * #22 shell). Starting a run copies the checklist's steps on the server —
+ * copy-on-start, never local state — and drops straight into the run screen.
+ * Past runs are listed newest first with their progress, so an in-progress one
+ * is easy to spot and resume, and a run started by mistake can be deleted.
  */
-export function RunManager({
+export function RunHistory({
   checklist,
-  onClose,
+  onOpenRun,
 }: {
   readonly checklist: Checklist;
-  readonly onClose: () => void;
+  readonly onOpenRun: (runId: Id) => void;
 }): JSX.Element {
   const { data: runs, isLoading, isError } = useListRunsQuery(checklist.id);
   const [createRun, { isLoading: isStarting }] = useCreateRunMutation();
   const [deleteRun] = useDeleteRunMutation();
-  const [openRunId, setOpenRunId] = useState<Id | undefined>(undefined);
-
-  // An open run takes over the whole surface, so resolve that before the list.
-  if (openRunId) {
-    return (
-      <div className="rounded-xl border border-hairline p-4">
-        <RunScreen
-          runId={openRunId}
-          onExit={() => {
-            setOpenRunId(undefined);
-          }}
-        />
-      </div>
-    );
-  }
 
   const handleStart = async (): Promise<void> => {
     const run = await createRun({ checklistId: checklist.id }).unwrap();
-    setOpenRunId(run.id);
-  };
-
-  const handleDelete = async (id: Id): Promise<void> => {
-    await deleteRun(id).unwrap();
+    onOpenRun(run.id);
   };
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-xl border border-hairline p-4"
+      className="flex flex-col gap-3"
       aria-label={`Runs of ${checklist.name}`}
     >
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-lg font-semibold text-brand dark:text-ink-inverted">
-          {checklist.name} — runs
+        <h3 className="text-sm font-semibold tracking-wide text-brand-muted uppercase">
+          Runs
         </h3>
         <button
           type="button"
-          onClick={onClose}
-          className="text-sm font-medium text-brand-muted hover:text-brand dark:hover:text-ink-inverted"
+          onClick={() => void handleStart()}
+          disabled={isStarting}
+          className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          Close
+          {isStarting ? 'Starting…' : 'Start a run'}
         </button>
       </div>
-
-      <button
-        type="button"
-        onClick={() => void handleStart()}
-        disabled={isStarting}
-        className="self-start rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        {isStarting ? 'Starting…' : 'Start a run'}
-      </button>
 
       {isLoading ? (
         <p className="text-brand-muted">Loading runs…</p>
@@ -106,9 +78,9 @@ export function RunManager({
             <RunRow
               run={run}
               onOpen={() => {
-                setOpenRunId(run.id);
+                onOpenRun(run.id);
               }}
-              onDelete={() => void handleDelete(run.id)}
+              onDelete={() => void deleteRun(run.id).unwrap()}
             />
           </li>
         ))}
@@ -127,10 +99,7 @@ function RunRow({
   readonly onDelete: () => void;
 }): JSX.Element {
   const progress = runProgress(run);
-  const dateLabel = new Date(`${run.startedOn}T00:00:00`).toLocaleDateString(
-    undefined,
-    { dateStyle: 'medium' },
-  );
+  const dateLabel = formatStartedOn(run.startedOn);
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-hairline p-3">
