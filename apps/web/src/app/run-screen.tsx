@@ -76,6 +76,15 @@ const STATE_LABELS: Record<StepState, string> = {
 
 const STATE_ORDER: readonly StepState[] = ['incomplete', 'complete', 'skipped'];
 
+/**
+ * Display rank for the sink-resolved-to-bottom sort: still-to-do steps
+ * (`incomplete`) rank above resolved ones (`complete` or `skipped`), which a
+ * deliberate skip removes from the active list just as completing does.
+ */
+function stepRank(step: RunStep): number {
+  return step.state === 'incomplete' ? 0 : 1;
+}
+
 function RunWorkspace({
   run,
   onExit,
@@ -100,6 +109,15 @@ function RunWorkspace({
   };
 
   const progress = runProgress({ steps });
+
+  // Resolved steps (complete or skipped) sink to the bottom so what's still
+  // to-do stays at the top — a display-only sort. The persisted `steps` keep
+  // their canonical checklist order; each rendered row carries its original
+  // index so a state/value edit still targets the right step. Sort is stable,
+  // so order within each group is preserved.
+  const displayOrder = steps
+    .map((step, index) => ({ step, index }))
+    .toSorted((a, b) => stepRank(a.step) - stepRank(b.step));
 
   return (
     <section className="flex flex-col gap-4" aria-label="Run">
@@ -129,7 +147,7 @@ function RunWorkspace({
       ) : undefined}
 
       <ol className="flex flex-col gap-3">
-        {steps.map((step, index) => (
+        {displayOrder.map(({ step, index }) => (
           <li
             key={step.id}
             className="flex flex-col gap-3 rounded-xl border border-hairline p-4"
