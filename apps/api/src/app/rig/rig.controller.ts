@@ -41,7 +41,10 @@ export class RigController {
 
   /** List the owner's rigs. */
   @Get()
-  @ZodSerializerDto(RigDto)
+  // Array response: the DTO must be wrapped so the serializer validates each
+  // element against RigSchema. A bare `RigDto` here parses the whole array as a
+  // single object and 500s (nestjs-zod only takes the array path for `[Dto]`).
+  @ZodSerializerDto([RigDto])
   list(@CurrentOwner() owner: Owner): Promise<Rig[]> {
     return this.rigs.list(owner.id);
   }
