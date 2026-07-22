@@ -49,6 +49,7 @@ export class SeedService extends StarterContentSeeder {
       const created = await this.tasks.create(ownerId, {
         rigId: rig.id,
         name: task.name,
+        description: task.description,
         interval: { months: task.intervalMonths },
         fieldSchema: task.fieldSchema,
       });

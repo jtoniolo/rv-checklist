@@ -59,10 +59,16 @@ describe('SeedService.seedStarterContent', () => {
     const [rig] = await repos.rigs.listByOwner(owner);
     const tasks = await repos.tasks.listByRig(rig?.id ?? '');
     expect(tasks).toHaveLength(16);
+    // Every seeded task carries its why/how description through to the row
+    // (issue #26) — the detail screen renders it.
+    for (const task of tasks) {
+      expect(task.description?.trim()).toBeTruthy();
+    }
     const bearings = tasks.find(
       (t) => t.name === 'Repack / inspect wheel bearings',
     );
     expect(bearings?.interval).toEqual({ months: 12 });
+    expect(bearings?.description).toContain('Worn or dry wheel bearings');
     expect(bearings?.fieldSchema).toEqual([
       { name: 'grease type', type: 'text', required: false },
       { name: 'odometer', type: 'number', required: false, unit: 'mi' },

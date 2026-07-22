@@ -31,6 +31,22 @@ describe('seed content (docs/seed-content.md)', () => {
       }
     });
 
+    it('every task ships with a non-blank description (issue #26)', () => {
+      for (const task of SEED_TASKS) {
+        expect(task.description.trim()).not.toBe('');
+      }
+    });
+
+    it('transcribes the doc’s wheel-bearing description verbatim, make/model-agnostic', () => {
+      const byName = new Map(SEED_TASKS.map((t) => [t.name, t.description]));
+      expect(byName.get('Repack / inspect wheel bearings')).toBe(
+        'Worn or dry wheel bearings can seize or fail at speed, risking a wheel coming off the trailer. How: 1) Raise and support the axle so the wheel spins free; 2) Pull the hub and check the bearings and races for pitting, discoloration, or roughness; 3) Clean and repack (or replace) the bearings with fresh grease; 4) Reassemble, set the bearing preload, and confirm the wheel spins smoothly with no play.',
+      );
+      expect(byName.get('Test smoke / CO / propane alarms')).toBe(
+        'Smoke, CO, and propane alarms are life-safety devices that fail silently, so they must be tested and dated. How: 1) Press the test button on each alarm to confirm it sounds; 2) Check the manufacture or expiration date and replace expired units; 3) Replace batteries where applicable; 4) Confirm each detector is securely mounted and unobstructed.',
+      );
+    });
+
     it('carries the doc’s measured fields with their units', () => {
       const byName = new Map(SEED_TASKS.map((t) => [t.name, t.fieldSchema]));
       expect(byName.get('Inspect tires — pressure, tread, age')).toEqual([
