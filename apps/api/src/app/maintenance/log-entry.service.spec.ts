@@ -79,10 +79,19 @@ describe('LogEntryService', () => {
       expect(entry).toMatchObject({
         taskId: sealsTaskId,
         rigId: aliceRigId,
+        taskName: 'Condition slide seals',
         performedOn: '2026-07-21',
         fields: performSeals.fields,
       });
       expect(entry.id).toBeDefined();
+    });
+
+    it('snapshots the task’s name as it was when performed (issue #27)', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, performSeals);
+
+      expect(entry.taskName).toBe(sealsTask.name);
     });
 
     it('rejects an entry missing a value for a required field', async () => {
@@ -121,6 +130,17 @@ describe('LogEntryService', () => {
 
       const reloaded = await service.get(alice, entry.id);
       expect(reloaded.fields).toEqual(performSeals.fields);
+    });
+
+    it('a later rename of the task does not relabel a past entry (issue #27)', async () => {
+      const { service, tasks } = await makeService();
+      const entry = await service.create(alice, performSeals);
+
+      // Rename the task after the completion was logged.
+      await tasks.save({ ...sealsTask, name: 'Recondition slide-out seals' });
+
+      const reloaded = await service.get(alice, entry.id);
+      expect(reloaded.taskName).toBe('Condition slide seals');
     });
   });
 

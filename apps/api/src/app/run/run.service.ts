@@ -174,6 +174,9 @@ export class RunService {
       id: randomUUID(),
       taskId: task.id,
       rigId: task.rigId,
+      // Snapshot the task's name at completion time (issue #27), alongside the
+      // field snapshot — a later rename never rewrites this entry.
+      taskName: task.name,
       performedOn,
       fields: toLoggedFields(task.fieldSchema, step.values),
     });

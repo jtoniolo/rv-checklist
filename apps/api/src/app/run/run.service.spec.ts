@@ -326,6 +326,8 @@ describe('RunService', () => {
       expect(entries[0]).toMatchObject({
         taskId: sealsTaskId,
         rigId: aliceRigId,
+        // The entry snapshots the task's name at completion time (issue #27).
+        taskName: 'Condition slide seals',
         // The maintenance was performed on the run's occasion, not the day the
         // box happened to be ticked (a run stays correctable after the fact).
         performedOn: '2026-05-01',
