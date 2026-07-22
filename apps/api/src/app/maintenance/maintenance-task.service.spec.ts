@@ -61,6 +61,19 @@ describe('MaintenanceTaskService', () => {
       expect(task.interval).toBeUndefined();
     });
 
+    it('creates a task with a description', async () => {
+      const { service } = await makeService();
+
+      const task = await service.create(alice, {
+        ...sealsInput,
+        description: 'Seals dry out in the sun.\nWipe down, then condition.',
+      });
+
+      expect(task.description).toBe(
+        'Seals dry out in the sun.\nWipe down, then condition.',
+      );
+    });
+
     it('refuses to create a task on a rig the owner does not own', async () => {
       const { service } = await makeService();
 
@@ -126,13 +139,46 @@ describe('MaintenanceTaskService', () => {
 
     it('leaves omitted fields unchanged and never changes the rig', async () => {
       const { service } = await makeService();
-      const task = await service.create(alice, sealsInput);
+      const task = await service.create(alice, {
+        ...sealsInput,
+        description: 'Why and how.',
+      });
 
       const updated = await service.update(alice, task.id, { name: 'Seals' });
 
       expect(updated.rigId).toBe(aliceRigId);
       expect(updated.interval).toEqual({ months: 12 });
       expect(updated.fieldSchema).toEqual(sealsInput.fieldSchema);
+      expect(updated.description).toBe('Why and how.');
+    });
+
+    it('writes an edited description', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, sealsInput);
+
+      const updated = await service.update(alice, task.id, {
+        description: 'Wipe down first, then apply conditioner.',
+      });
+
+      expect(updated.description).toBe(
+        'Wipe down first, then apply conditioner.',
+      );
+    });
+
+    it('clears the description with an explicit null, like the interval', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        description: 'Obsolete advice.',
+      });
+
+      const updated = await service.update(alice, task.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        description: null,
+      });
+
+      expect(updated.description).toBeUndefined();
+      expect(updated.name).toBe(sealsInput.name);
     });
   });
 

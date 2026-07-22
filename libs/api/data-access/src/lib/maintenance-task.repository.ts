@@ -30,6 +30,8 @@ function toTask(entity: MaintenanceTaskEntity): MaintenanceTask {
     id: entity.id,
     rigId: entity.rigId,
     name: entity.name,
+    // SQL NULL means no description — absent means absent (issue #25).
+    ...(entity.description !== null && { description: entity.description }),
     // SQL NULL means no interval — the task is untracked (CONTEXT.md).
     ...(entity.intervalMonths !== null && {
       interval: { months: entity.intervalMonths },
@@ -45,7 +47,9 @@ function toRow(task: MaintenanceTask): Partial<MaintenanceTaskEntity> {
     rigId: task.rigId,
     name: task.name,
     // SQL NULL must be written explicitly: `save` skips `undefined` columns,
-    // which would leave a removed interval in place.
+    // which would leave a removed description or interval in place.
+    // eslint-disable-next-line unicorn/no-null
+    description: task.description ?? null,
     // eslint-disable-next-line unicorn/no-null
     intervalMonths: task.interval?.months ?? null,
     fieldSchema: task.fieldSchema,

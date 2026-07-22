@@ -48,6 +48,33 @@ describe('MaintenanceTaskSchema', () => {
     ).toBe(true);
   });
 
+  it('parses a task with a multi-line description', () => {
+    const described = {
+      ...task,
+      description:
+        'Seals dry out in the sun.\nWipe down, then apply conditioner.',
+    };
+    expect(MaintenanceTaskSchema.parse(described)).toEqual(described);
+  });
+
+  it('parses a task with no description — absent means absent', () => {
+    const parsed = MaintenanceTaskSchema.parse(task);
+    expect('description' in parsed).toBe(false);
+  });
+
+  it('rejects an empty-string description (no placeholder is stored)', () => {
+    expect(
+      MaintenanceTaskSchema.safeParse({ ...task, description: '' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a whitespace-only description — absent means absent', () => {
+    expect(
+      MaintenanceTaskSchema.safeParse({ ...task, description: '  \n ' })
+        .success,
+    ).toBe(false);
+  });
+
   it('rejects a photo field', () => {
     expect(
       MaintenanceTaskSchema.safeParse({
@@ -79,6 +106,15 @@ describe('CreateMaintenanceTaskSchema', () => {
     expect(parsed.fieldSchema).toEqual([]);
     expect('id' in parsed).toBe(false);
   });
+
+  it('accepts an optional description', () => {
+    const parsed = CreateMaintenanceTaskSchema.parse({
+      rigId: id(2),
+      name: 'Grease hitch',
+      description: 'Prevents hitch squeak on tight turns.',
+    });
+    expect(parsed.description).toBe('Prevents hitch squeak on tight turns.');
+  });
 });
 
 describe('UpdateMaintenanceTaskSchema', () => {
@@ -86,5 +122,17 @@ describe('UpdateMaintenanceTaskSchema', () => {
     expect(
       UpdateMaintenanceTaskSchema.parse({ interval: { months: 6 } }),
     ).toEqual({ interval: { months: 6 } });
+  });
+
+  it('accepts editing just the description', () => {
+    expect(
+      UpdateMaintenanceTaskSchema.parse({ description: 'Why and how.' }),
+    ).toEqual({ description: 'Why and how.' });
+  });
+
+  it('accepts `description: null` — the removal marker, like `interval: null`', () => {
+    // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+    const removal = { description: null };
+    expect(UpdateMaintenanceTaskSchema.parse(removal)).toEqual(removal);
   });
 });
