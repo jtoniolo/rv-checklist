@@ -210,6 +210,7 @@ export function AppShell(): JSX.Element {
             activeRig={activeRig}
             openTaskId={openTaskId}
             onOpenTask={setOpenTaskId}
+            onOpenChecklist={openChecklist}
             onBackToList={() => {
               setOpenTaskId(undefined);
             }}

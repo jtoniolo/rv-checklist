@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdSchema } from './common.js';
+import { IdSchema, type Id } from './common.js';
 import { FieldSchemaSchema } from './field-schema.js';
 
 /**
@@ -68,6 +68,29 @@ export const ChecklistSchema = z.object({
   steps: z.array(StepSchema),
 });
 export type Checklist = z.infer<typeof ChecklistSchema>;
+
+/** One checklist a maintenance task appears on, with the steps that link it. */
+export interface TaskAppearance {
+  readonly checklist: Checklist;
+  readonly steps: readonly Step[];
+}
+
+/**
+ * Where a maintenance task appears (issue #24): every checklist with at least
+ * one step linked to the task, each appearing once and carrying all of its
+ * linked steps.
+ */
+export function taskAppearances(
+  checklists: readonly Checklist[],
+  taskId: Id,
+): TaskAppearance[] {
+  return checklists
+    .map((checklist) => ({
+      checklist,
+      steps: checklist.steps.filter((step) => step.taskId === taskId),
+    }))
+    .filter((appearance) => appearance.steps.length > 0);
+}
 
 /** Create body — `id` is server-assigned; tags and steps default to empty. */
 export const CreateChecklistSchema = z.object({

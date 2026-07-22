@@ -2,6 +2,7 @@ import {
   ChecklistSchema,
   CreateChecklistSchema,
   StepSchema,
+  taskAppearances,
   UpdateChecklistSchema,
 } from './checklist.js';
 
@@ -103,6 +104,45 @@ describe('CreateChecklistSchema', () => {
     const parsed = CreateChecklistSchema.parse({ rigId: id(6), name: 'Bare' });
     expect(parsed.tags).toEqual([]);
     expect(parsed.steps).toEqual([]);
+  });
+});
+
+describe('taskAppearances', () => {
+  const taskId = id(9);
+  const makeChecklist = (
+    checklistId: string,
+    name: string,
+    steps: { id: string; text: string; taskId?: string }[],
+  ) => ({ id: checklistId, rigId: id(6), name, tags: [], steps });
+
+  const departure = makeChecklist(id(5), 'Pre-departure', [
+    { id: id(1), text: 'Close roof vents' },
+    { id: id(2), text: 'Battery service — charge & terminals', taskId },
+  ]);
+  const springOpening = makeChecklist(id(7), 'Spring opening', [
+    { id: id(3), text: 'Battery back in & charge', taskId },
+    { id: id(4), text: 'Condition slide seals', taskId: id(8) },
+  ]);
+
+  it('lists every checklist with a step linked to the task, with the linked steps', () => {
+    expect(taskAppearances([departure, springOpening], taskId)).toEqual([
+      { checklist: departure, steps: [departure.steps[1]] },
+      { checklist: springOpening, steps: [springOpening.steps[0]] },
+    ]);
+  });
+
+  it('lists a checklist once when several of its steps link the task', () => {
+    const twice = makeChecklist(id(5), 'Winterizing', [
+      { id: id(1), text: 'Battery out for storage', taskId },
+      { id: id(2), text: 'Battery on the tender', taskId },
+    ]);
+    expect(taskAppearances([twice], taskId)).toEqual([
+      { checklist: twice, steps: twice.steps },
+    ]);
+  });
+
+  it('returns nothing for a task no checklist references', () => {
+    expect(taskAppearances([departure, springOpening], id(0))).toEqual([]);
   });
 });
 
