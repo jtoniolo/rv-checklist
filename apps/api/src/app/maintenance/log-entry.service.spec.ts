@@ -58,6 +58,7 @@ const performSeals = {
 async function makeService(): Promise<{
   service: LogEntryService;
   tasks: InMemoryMaintenanceTaskRepository;
+  logEntries: InMemoryLogEntryRepository;
 }> {
   const logEntries = new InMemoryLogEntryRepository();
   const tasks = new InMemoryMaintenanceTaskRepository();
@@ -66,7 +67,28 @@ async function makeService(): Promise<{
   await rigs.save(bobRig);
   await tasks.save(sealsTask);
   await tasks.save(bobTask);
-  return { service: new LogEntryService(logEntries, tasks, rigs), tasks };
+  return {
+    service: new LogEntryService(logEntries, tasks, rigs),
+    tasks,
+    logEntries,
+  };
+}
+
+/**
+ * Create an entry, then delete its task and null the entry's task_id — the end
+ * state ON DELETE SET NULL yields (issue #28). The in-memory double doesn't
+ * cascade, so we drive that end state here at the contract level.
+ */
+async function orphanOne(): Promise<{
+  service: LogEntryService;
+  entryId: string;
+}> {
+  const { service, tasks, logEntries } = await makeService();
+  const entry = await service.create(alice, performSeals);
+  await tasks.delete(sealsTaskId);
+  // eslint-disable-next-line unicorn/no-null
+  await logEntries.save({ ...entry, taskId: null });
+  return { service, entryId: entry.id };
 }
 
 describe('LogEntryService', () => {
@@ -247,6 +269,63 @@ describe('LogEntryService', () => {
       await service.remove(alice, entry.id);
 
       await expect(service.get(alice, entry.id)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  // Deleting a task must never lose "when did I last do this?" — its entries are
+  // kept, orphaned (taskId null), owned via the rig (issue #28). The DB does this
+  // by ON DELETE SET NULL; the in-memory double doesn't cascade, so we drive the
+  // same end state at the contract level: delete the task, null out the entry's
+  // taskId, and prove it stays listable, fetchable, editable, and deletable.
+  describe('orphaned entry — task since deleted (issue #28)', () => {
+    it('keeps the entry in the rig’s history, labeled by its snapshotted taskName', async () => {
+      const { service } = await orphanOne();
+
+      const entries = await service.listByRig(alice, aliceRigId);
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.taskId).toBeNull();
+      expect(entries[0]).toMatchObject({
+        rigId: aliceRigId,
+        taskName: 'Condition slide seals',
+      });
+    });
+
+    it('stays fetchable via the rig-ownership path', async () => {
+      const { service, entryId } = await orphanOne();
+
+      const fetched = await service.get(alice, entryId);
+
+      expect(fetched.taskId).toBeNull();
+    });
+
+    it('stays editable — correcting a date leaves it orphaned', async () => {
+      const { service, entryId } = await orphanOne();
+
+      const updated = await service.update(alice, entryId, {
+        performedOn: '2026-07-19',
+      });
+
+      expect(updated.performedOn).toBe('2026-07-19');
+      expect(updated.taskId).toBeNull();
+    });
+
+    it('stays deletable', async () => {
+      const { service, entryId } = await orphanOne();
+
+      await service.remove(alice, entryId);
+
+      await expect(service.get(alice, entryId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('never lets another owner touch it — ownership is still the rig', async () => {
+      const { service, entryId } = await orphanOne();
+
+      await expect(service.get(bob, entryId)).rejects.toBeInstanceOf(
         NotFoundException,
       );
     });

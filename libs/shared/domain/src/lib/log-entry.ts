@@ -31,10 +31,15 @@ export type LoggedField = z.infer<typeof LoggedFieldSchema>;
  * `taskName` — the task's name *as it was when performed* (issue #27). A Log Entry is a
  * true snapshot: renaming the task later must never relabel a past entry, so the name is
  * frozen onto the entry exactly as `fields` is, not read live off the task. Editable.
+ *
+ * `taskId` is nullable: deleting a task must never lose "when did I last do this?", so an
+ * entry outlives its task (issue #28). When the task is gone `taskId` is `null` — the entry
+ * survives, owned via its still-present `rigId` and labeled by its snapshotted `taskName` —
+ * and stays individually editable and deletable. A live entry always names a real task.
  */
 export const LogEntrySchema = z.object({
   id: IdSchema,
-  taskId: IdSchema,
+  taskId: IdSchema.nullable(),
   rigId: IdSchema,
   taskName: z.string().min(1),
   performedOn: IsoDateSchema,
@@ -56,12 +61,16 @@ export type LogEntry = z.infer<typeof LogEntrySchema>;
  * a rig its task doesn't belong to, and the name snapshot must reflect the task
  * as the server sees it, not a value the client could forge), so the client
  * names only the task, the date, and the field snapshot.
+ *
+ * `taskId` is nullable on {@link LogEntrySchema} (a kept entry whose task since
+ * deleted, issue #28), but creating an entry always logs against a *live* task,
+ * so the create body re-requires a real, non-null `taskId`.
  */
 export const CreateLogEntrySchema = LogEntrySchema.omit({
   id: true,
   rigId: true,
   taskName: true,
-});
+}).extend({ taskId: IdSchema });
 export type CreateLogEntry = z.infer<typeof CreateLogEntrySchema>;
 
 /**

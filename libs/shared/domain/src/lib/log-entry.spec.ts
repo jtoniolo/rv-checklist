@@ -69,6 +69,13 @@ describe('LogEntrySchema', () => {
     );
   });
 
+  it('accepts a null taskId — the task was deleted, the entry is kept (issue #28)', () => {
+    // eslint-disable-next-line unicorn/no-null
+    expect(LogEntrySchema.safeParse({ ...entry, taskId: null }).success).toBe(
+      true,
+    );
+  });
+
   it('rejects a non-date performedOn', () => {
     expect(
       LogEntrySchema.safeParse({ ...entry, performedOn: 'today' }).success,
@@ -149,6 +156,26 @@ describe('CreateLogEntrySchema', () => {
       fields: [],
     });
     expect('taskName' in parsed).toBe(false);
+  });
+
+  it('still requires a real, non-null taskId — you always log against a live task (issue #28)', () => {
+    expect(
+      CreateLogEntrySchema.safeParse({
+        // eslint-disable-next-line unicorn/no-null
+        taskId: null,
+        performedOn: '2026-07-19',
+        fields: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an absent taskId', () => {
+    expect(
+      CreateLogEntrySchema.safeParse({
+        performedOn: '2026-07-19',
+        fields: [],
+      }).success,
+    ).toBe(false);
   });
 });
 
