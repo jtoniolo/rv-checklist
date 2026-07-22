@@ -12,6 +12,7 @@ import {
   UserStore,
 } from '@rv-checklist/api-data-access';
 import type { Env } from '../config/env.js';
+import { SeedModule } from '../seed/seed.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { Clock, SystemClock } from './clock.js';
@@ -40,6 +41,8 @@ import { TokenService } from './token.service.js';
       }),
     }),
     TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity]),
+    // First sign-in seeds the starter rig (issue #19).
+    SeedModule,
   ],
   controllers: [AuthController, MeController],
   providers: [

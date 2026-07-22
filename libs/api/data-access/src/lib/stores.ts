@@ -22,10 +22,20 @@ export interface UpsertUserInput {
   readonly picture: string | undefined;
 }
 
+/**
+ * An upsert's outcome: the user, and whether the call created them. `created`
+ * marks the one moment an owner is brand-new — the trigger for first-sign-in
+ * work like starter-content seeding (issue #19).
+ */
+export interface UpsertUserResult {
+  readonly user: UserRecord;
+  readonly created: boolean;
+}
+
 export abstract class UserStore {
   abstract findById(id: string): Promise<UserRecord | undefined>;
   /** Create the user, or update their profile if the Google subject already exists. */
-  abstract upsertByGoogleSub(input: UpsertUserInput): Promise<UserRecord>;
+  abstract upsertByGoogleSub(input: UpsertUserInput): Promise<UpsertUserResult>;
 }
 
 /** A persisted refresh token, minus the secret (only its hash is stored). */

@@ -5,8 +5,10 @@ import {
   type CreateRefreshTokenInput,
   type RefreshTokenRecord,
   type UpsertUserInput,
+  type UpsertUserResult,
   type UserRecord,
 } from '@rv-checklist/api-data-access';
+import { StarterContentSeeder } from '../seed/seed.service.js';
 import { AuthService } from './auth.service.js';
 import { Clock } from './clock.js';
 import type { GoogleProfile } from './google-verifier.js';
@@ -31,7 +33,7 @@ class FakeUserStore extends UserStore {
     return Promise.resolve(this.rows.find((u) => u.id === id));
   }
 
-  upsertByGoogleSub(input: UpsertUserInput): Promise<UserRecord> {
+  upsertByGoogleSub(input: UpsertUserInput): Promise<UpsertUserResult> {
     const existing = this.rows.find((u) => u.googleSub === input.googleSub);
     const record: UserRecord = {
       id: existing?.id ?? `user-${String(++this.seq)}`,
@@ -42,7 +44,7 @@ class FakeUserStore extends UserStore {
     } else {
       this.rows.push(record);
     }
-    return Promise.resolve(record);
+    return Promise.resolve({ user: record, created: existing === undefined });
   }
 
   get count(): number {
@@ -96,6 +98,20 @@ class FakeRefreshStore extends RefreshTokenStore {
   }
 }
 
+/** Records who got seeded instead of dragging the domain stack into auth tests. */
+class FakeSeeder extends StarterContentSeeder {
+  readonly seededOwners: string[] = [];
+  failWith: Error | undefined;
+
+  seedStarterContent(ownerId: string): Promise<void> {
+    if (this.failWith) {
+      return Promise.reject(this.failWith);
+    }
+    this.seededOwners.push(ownerId);
+    return Promise.resolve();
+  }
+}
+
 /** A TokenService wired to a real JwtService/config stand-in — no Nest container. */
 function buildTokenService(): TokenService {
   const jwt = {
@@ -124,12 +140,20 @@ function build(): {
   users: FakeUserStore;
   refresh: FakeRefreshStore;
   clock: FakeClock;
+  seeder: FakeSeeder;
 } {
   const users = new FakeUserStore();
   const refresh = new FakeRefreshStore();
   const clock = new FakeClock(new Date('2026-07-19T00:00:00.000Z'));
-  const service = new AuthService(users, refresh, buildTokenService(), clock);
-  return { service, users, refresh, clock };
+  const seeder = new FakeSeeder();
+  const service = new AuthService(
+    users,
+    refresh,
+    buildTokenService(),
+    clock,
+    seeder,
+  );
+  return { service, users, refresh, clock, seeder };
 }
 
 describe('AuthService.loginWithGoogle', () => {
@@ -157,6 +181,32 @@ describe('AuthService.loginWithGoogle', () => {
     await service.loginWithGoogle({ ...profile, name: 'Renamed' });
     expect(users.count).toBe(1);
     expect(users.bySub('google-123')?.name).toBe('Renamed');
+  });
+
+  it('seeds starter content for a brand-new owner (issue #19)', async () => {
+    const { service, users, seeder } = build();
+
+    await service.loginWithGoogle(profile);
+
+    expect(seeder.seededOwners).toEqual([users.bySub('google-123')?.id]);
+  });
+
+  it('never re-seeds a returning owner', async () => {
+    const { service, seeder } = build();
+
+    await service.loginWithGoogle(profile);
+    await service.loginWithGoogle(profile);
+
+    expect(seeder.seededOwners).toHaveLength(1);
+  });
+
+  it('still signs the owner in when seeding fails (best-effort)', async () => {
+    const { service, seeder } = build();
+    seeder.failWith = new Error('database hiccup');
+
+    const pair = await service.loginWithGoogle(profile);
+
+    expect(pair.accessToken).toContain('user-1');
   });
 });
 

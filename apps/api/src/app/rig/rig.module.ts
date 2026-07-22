@@ -21,5 +21,7 @@ import { RigService } from './rig.service.js';
     RigService,
     { provide: RigRepository, useClass: TypeOrmRigRepository },
   ],
+  // The seed loader (issue #19) creates starter content through this use-case.
+  exports: [RigService],
 })
 export class RigModule {}
