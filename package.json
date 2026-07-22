@@ -2,6 +2,7 @@
   "name": "@rv-checklist/source",
   "version": "0.0.0",
   "license": "MIT",
+  "packageManager": "pnpm@11.14.0",
   "scripts": {},
   "private": true,
   "devDependencies": {
