@@ -74,6 +74,20 @@ describe('MaintenanceTaskService', () => {
       );
     });
 
+    it('creates a one-time task — due from creation, no interval (issue #29)', async () => {
+      const { service } = await makeService();
+
+      const task = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Re-glue loose trim',
+        oneTime: true,
+        fieldSchema: [],
+      });
+
+      expect(task.oneTime).toBe(true);
+      expect(task.interval).toBeUndefined();
+    });
+
     it('refuses to create a task on a rig the owner does not own', async () => {
       const { service } = await makeService();
 
@@ -135,6 +149,55 @@ describe('MaintenanceTaskService', () => {
 
       expect(updated.interval).toBeUndefined();
       expect(updated.name).toBe(sealsInput.name);
+    });
+
+    it('marking a recurring task one-time drops its interval (they are exclusive)', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, sealsInput);
+
+      const updated = await service.update(alice, task.id, {
+        oneTime: true,
+        // eslint-disable-next-line unicorn/no-null -- the form sends the coherent pair
+        interval: null,
+      });
+
+      expect(updated.oneTime).toBe(true);
+      expect(updated.interval).toBeUndefined();
+    });
+
+    it('giving a one-time task an interval drops the one-time marker', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Re-glue loose trim',
+        oneTime: true,
+        fieldSchema: [],
+      });
+
+      const updated = await service.update(alice, task.id, {
+        interval: { months: 12 },
+        // eslint-disable-next-line unicorn/no-null -- the form sends the coherent pair
+        oneTime: null,
+      });
+
+      expect(updated.interval).toEqual({ months: 12 });
+      expect(updated.oneTime).toBeUndefined();
+    });
+
+    it('clears the one-time marker with an explicit null', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Re-glue loose trim',
+        oneTime: true,
+        fieldSchema: [],
+      });
+
+      // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+      const updated = await service.update(alice, task.id, { oneTime: null });
+
+      expect(updated.oneTime).toBeUndefined();
+      expect(updated.interval).toBeUndefined();
     });
 
     it('leaves omitted fields unchanged and never changes the rig', async () => {

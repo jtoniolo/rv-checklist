@@ -36,6 +36,9 @@ function toTask(entity: MaintenanceTaskEntity): MaintenanceTask {
     ...(entity.intervalMonths !== null && {
       interval: { months: entity.intervalMonths },
     }),
+    // TRUE means one-time — due from creation, done once (issue #29). Absent
+    // otherwise, mirroring the wire model's absent-means-absent marker.
+    ...(entity.oneTime && { oneTime: true }),
     fieldSchema: entity.fieldSchema,
   };
 }
@@ -52,6 +55,9 @@ function toRow(task: MaintenanceTask): Partial<MaintenanceTaskEntity> {
     description: task.description ?? null,
     // eslint-disable-next-line unicorn/no-null
     intervalMonths: task.interval?.months ?? null,
+    // The one-time marker persists as a plain boolean (absent on the wire ⇒
+    // false in the row); it never coexists with an interval (issue #29).
+    oneTime: task.oneTime ?? false,
     fieldSchema: task.fieldSchema,
   };
 }

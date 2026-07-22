@@ -99,6 +99,7 @@ export function MaintenanceScreen({
         (rigEntries ?? []).filter((entry) => entry.taskId === task.id),
       ),
       today,
+      task.oneTime,
     );
 
   // Entries whose task was deleted (issue #28): kept, orphaned (taskId null),
@@ -121,9 +122,13 @@ export function MaintenanceScreen({
       ...(values.description !== undefined && {
         description: values.description,
       }),
-      ...(values.intervalMonths !== undefined && {
-        interval: { months: values.intervalMonths },
-      }),
+      // Tracking is one of three exclusive shapes (issue #29): one-time, a
+      // recurring interval, or neither. The form guarantees they never combine.
+      ...(values.oneTime
+        ? { oneTime: true }
+        : values.intervalMonths !== undefined && {
+            interval: { months: values.intervalMonths },
+          }),
       fieldSchema: values.fieldSchema,
     }).unwrap();
     setAdding(false);
@@ -144,11 +149,15 @@ export function MaintenanceScreen({
         // key would mean "leave it unchanged".
         // eslint-disable-next-line unicorn/no-null
         description: values.description ?? null,
+        // interval and oneTime are the exclusive tracking markers (issue #29);
+        // the form sends a coherent pair, one set and the other cleared to null.
         interval:
-          values.intervalMonths === undefined
+          values.oneTime || values.intervalMonths === undefined
             ? // eslint-disable-next-line unicorn/no-null
               null
             : { months: values.intervalMonths },
+        // eslint-disable-next-line unicorn/no-null
+        oneTime: values.oneTime ? true : null,
         fieldSchema: values.fieldSchema,
       },
     }).unwrap();
@@ -305,8 +314,15 @@ function BackToListButton({
   );
 }
 
-/** "Every 12 months" / "Every month" — or undefined for an untracked task. */
+/**
+ * How the task is tracked, as a short label: "Every 12 months" / "Every month"
+ * for a recurring task, "One-time" for a one-time task (issue #29), or undefined
+ * for an untracked one (the caller supplies its own "Not tracked" wording).
+ */
 function intervalLabel(task: MaintenanceTask): string | undefined {
+  if (task.oneTime) {
+    return 'One-time';
+  }
   if (!task.interval) {
     return undefined;
   }
@@ -330,17 +346,27 @@ function DueBadge({
   const [text, tone] =
     status.kind === 'never-performed'
       ? ['Never done', 'bg-hairline text-brand-muted']
-      : status.kind === 'ok'
-        ? [`Due ${formatIsoDate(status.dueOn)}`, 'bg-hairline text-brand-muted']
-        : status.kind === 'due'
+      : // A one-time task is due from creation until it's done (issue #29) — it
+        // wears an attention badge alongside the due/overdue tasks.
+        status.kind === 'one-time'
+        ? [
+            'To do',
+            'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+          ]
+        : status.kind === 'ok'
           ? [
-              'Due today',
-              'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+              `Due ${formatIsoDate(status.dueOn)}`,
+              'bg-hairline text-brand-muted',
             ]
-          : [
-              `Overdue — ${formatIsoDate(status.dueOn)}`,
-              'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-            ];
+          : status.kind === 'due'
+            ? [
+                'Due today',
+                'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+              ]
+            : [
+                `Overdue — ${formatIsoDate(status.dueOn)}`,
+                'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
+              ];
   return (
     <span
       className={`self-start rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tone}`}

@@ -22,10 +22,15 @@ import {
 import { useState, type JSX } from 'react';
 
 /**
- * The add/edit maintenance-task form (issue #17). Authors a task's name, its
- * optional interval (whole months — blank means a one-off task, not tracked for
- * due-status), and its custom `field_schema`: the same field rows the
- * checklist form uses for a plain step (name / type / unit / required).
+ * The add/edit maintenance-task form (issue #17). Authors a task's name, how
+ * it's tracked, and its custom `field_schema`: the same field rows the checklist
+ * form uses for a plain step (name / type / unit / required).
+ *
+ * Tracking is a three-way choice (issue #29), mutually exclusive by
+ * construction: a **one-time** task (due from creation, done once) hides the
+ * interval; otherwise a whole-month interval makes it recurring, and a blank
+ * interval leaves it untracked. So the form never emits both an interval and the
+ * one-time marker.
  *
  * The built field schema is validated by the shared `FieldSchemaSchema` before
  * submit, so the ADR-0004 rules (unique names, supported types, `photo`
@@ -38,8 +43,10 @@ export interface TaskFormValues {
   readonly name: string;
   /** Trimmed free text, or `undefined` when left blank — absent means absent. */
   readonly description: string | undefined;
-  /** Whole months, or `undefined` for an untracked one-off task. */
+  /** Whole months, or `undefined` when untracked or one-time. */
   readonly intervalMonths: number | undefined;
+  /** Marks a one-time task — due from creation, done once (issue #29). */
+  readonly oneTime: boolean;
   readonly fieldSchema: FieldSchema;
 }
 
@@ -105,6 +112,7 @@ export function TaskForm({
   const [monthsText, setMonthsText] = useState(
     initial?.interval ? String(initial.interval.months) : '',
   );
+  const [oneTime, setOneTime] = useState(initial?.oneTime === true);
   const [fields, setFields] = useState<FieldDraft[]>(
     () => initial?.fieldSchema.map(toFieldDraft) ?? [],
   );
@@ -124,8 +132,10 @@ export function TaskForm({
       setError('A maintenance task needs a name.');
       return;
     }
+    // A one-time task never has an interval (issue #29) — the two are exclusive.
     const trimmedMonths = monthsText.trim();
-    const months = trimmedMonths === '' ? undefined : Number(trimmedMonths);
+    const months =
+      oneTime || trimmedMonths === '' ? undefined : Number(trimmedMonths);
     if (
       months !== undefined &&
       (!Number.isSafeInteger(months) || months <= 0)
@@ -147,6 +157,7 @@ export function TaskForm({
       // Blank means no description — never a stored placeholder (issue #25).
       description: trimmedDescription === '' ? undefined : trimmedDescription,
       intervalMonths: months,
+      oneTime,
       fieldSchema: parsed.data,
     });
   };
@@ -186,23 +197,42 @@ export function TaskForm({
         </span>
       </Label>
 
-      <Label className={labelClass}>
-        Repeat every (months)
-        <Input
-          type="number"
-          min={1}
-          step={1}
-          className="w-32"
-          value={monthsText}
-          onChange={(e) => {
-            setMonthsText(e.target.value);
+      <Label className="flex-row items-start gap-2 font-normal text-muted-foreground">
+        <Checkbox
+          checked={oneTime}
+          onCheckedChange={(checked) => {
+            setOneTime(checked === true);
           }}
-          placeholder="12"
+          aria-label="One-time task"
         />
-        <span className="text-xs">
-          Leave blank for a one-off task — it won’t be tracked as due.
+        <span className="flex flex-col gap-0.5">
+          <span>One-time task</span>
+          <span className="text-xs">
+            Something to do once — due now, and cleared from the list once
+            you’ve logged it.
+          </span>
         </span>
       </Label>
+
+      {oneTime ? undefined : (
+        <Label className={labelClass}>
+          Repeat every (months)
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            className="w-32"
+            value={monthsText}
+            onChange={(e) => {
+              setMonthsText(e.target.value);
+            }}
+            placeholder="12"
+          />
+          <span className="text-xs">
+            Leave blank for a one-off task — it won’t be tracked as due.
+          </span>
+        </Label>
+      )}
 
       <fieldset className="flex flex-col gap-3">
         <legend className="text-sm font-medium text-brand dark:text-ink-inverted">

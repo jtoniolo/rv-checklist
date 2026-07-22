@@ -75,6 +75,42 @@ describe('MaintenanceTaskSchema', () => {
     ).toBe(false);
   });
 
+  it('parses a one-time task (due from creation, done once — issue #29)', () => {
+    const oneTime = {
+      id: id(1),
+      rigId: id(2),
+      name: 'Re-glue loose trim',
+      oneTime: true as const,
+      fieldSchema: [],
+    };
+    expect(MaintenanceTaskSchema.parse(oneTime)).toEqual(oneTime);
+  });
+
+  it('rejects a task that is both one-time and recurring — they are exclusive', () => {
+    expect(
+      MaintenanceTaskSchema.safeParse({
+        id: id(1),
+        rigId: id(2),
+        name: 'Confused task',
+        interval: { months: 12 },
+        oneTime: true,
+        fieldSchema: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects `oneTime: false` — absent means not one-time, no false is stored', () => {
+    expect(
+      MaintenanceTaskSchema.safeParse({
+        id: id(1),
+        rigId: id(2),
+        name: 'Recurring',
+        oneTime: false,
+        fieldSchema: [],
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects a photo field', () => {
     expect(
       MaintenanceTaskSchema.safeParse({
@@ -115,6 +151,27 @@ describe('CreateMaintenanceTaskSchema', () => {
     });
     expect(parsed.description).toBe('Prevents hitch squeak on tight turns.');
   });
+
+  it('accepts a one-time create (issue #29)', () => {
+    const parsed = CreateMaintenanceTaskSchema.parse({
+      rigId: id(2),
+      name: 'Replenish first-aid kit',
+      oneTime: true,
+    });
+    expect(parsed.oneTime).toBe(true);
+    expect(parsed.interval).toBeUndefined();
+  });
+
+  it('rejects a create that is both one-time and recurring', () => {
+    expect(
+      CreateMaintenanceTaskSchema.safeParse({
+        rigId: id(2),
+        name: 'Confused',
+        interval: { months: 6 },
+        oneTime: true,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('UpdateMaintenanceTaskSchema', () => {
@@ -133,6 +190,18 @@ describe('UpdateMaintenanceTaskSchema', () => {
   it('accepts `description: null` — the removal marker, like `interval: null`', () => {
     // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
     const removal = { description: null };
+    expect(UpdateMaintenanceTaskSchema.parse(removal)).toEqual(removal);
+  });
+
+  it('accepts marking a task one-time (issue #29)', () => {
+    expect(UpdateMaintenanceTaskSchema.parse({ oneTime: true })).toEqual({
+      oneTime: true,
+    });
+  });
+
+  it('accepts `oneTime: null` — the removal marker for the one-time flag', () => {
+    // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+    const removal = { oneTime: null };
     expect(UpdateMaintenanceTaskSchema.parse(removal)).toEqual(removal);
   });
 });

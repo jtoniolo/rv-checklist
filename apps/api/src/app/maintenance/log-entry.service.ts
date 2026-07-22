@@ -82,7 +82,7 @@ export class LogEntryService {
   async create(ownerId: Id, input: CreateLogEntry): Promise<LogEntry> {
     const task = await this.ownedTask(ownerId, input.taskId);
     assertRequiredValues(input.fields);
-    return this.logEntries.save({
+    const entry = await this.logEntries.save({
       id: randomUUID(),
       taskId: task.id,
       rigId: task.rigId,
@@ -92,6 +92,14 @@ export class LogEntryService {
       performedOn: input.performedOn,
       fields: input.fields,
     });
+    // A one-time task is done once (issue #29): performing it writes this entry,
+    // then the task deletes itself. The entry is the permanent record — it
+    // outlives the task, kept and orphaned via ON DELETE SET NULL (issue #28),
+    // still owned through its rig and labeled by its snapshotted taskName.
+    if (task.oneTime) {
+      await this.tasks.delete(task.id);
+    }
+    return entry;
   }
 
   /** One of the owner's entries, or `NotFound` if missing or another's. */

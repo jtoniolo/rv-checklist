@@ -40,3 +40,18 @@ const { Headers, Request, Response } = require('undici') as {
 const noNetwork = (): Promise<never> =>
   Promise.reject(new Error('No network in tests — mock fetch.'));
 Object.assign(globalThis, { fetch: noNetwork, Headers, Request, Response });
+
+// jsdom has no ResizeObserver; the Radix-based shadcn controls (Checkbox, etc.)
+// observe their size on mount, so provide a no-op stub for the component specs.
+class ResizeObserverStub {
+  observe(): void {
+    // no-op
+  }
+  unobserve(): void {
+    // no-op
+  }
+  disconnect(): void {
+    // no-op
+  }
+}
+Object.assign(globalThis, { ResizeObserver: ResizeObserverStub });

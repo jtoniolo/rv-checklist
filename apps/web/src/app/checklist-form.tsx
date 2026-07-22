@@ -148,6 +148,10 @@ export function ChecklistForm({
 }: ChecklistFormProps): JSX.Element {
   const [name, setName] = useState(initial?.name ?? '');
   const [tagsText, setTagsText] = useState((initial?.tags ?? []).join(', '));
+  // A one-time task is standalone — never linked to a step (issue #29): it's due
+  // once and deletes itself on completion, so it must not be offered as a link
+  // target. The full `tasks` list still backs the linked-name lookup below.
+  const linkableTasks = tasks.filter((task) => !task.oneTime);
   const [steps, setSteps] = useState<StepDraft[]>(
     () => initial?.steps.map(toStepDraft) ?? [],
   );
@@ -453,7 +457,7 @@ export function ChecklistForm({
                 )}
                 {/* Linking a task replaces authored fields (ADR-0008) — the
                     select clears them so the two field sources never coexist. */}
-                {!step.taskId && tasks.length > 0 ? (
+                {!step.taskId && linkableTasks.length > 0 ? (
                   <Select
                     value=""
                     onValueChange={(taskId) => {
@@ -467,7 +471,7 @@ export function ChecklistForm({
                       <SelectValue placeholder="Link task…" />
                     </SelectTrigger>
                     <SelectContent>
-                      {tasks.map((task) => (
+                      {linkableTasks.map((task) => (
                         <SelectItem key={task.id} value={task.id}>
                           {task.name}
                         </SelectItem>

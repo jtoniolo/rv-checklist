@@ -4,11 +4,15 @@ import type { Interval } from './maintenance-task.js';
 /**
  * A task's due/overdue standing, computed on read from its last completion and
  * interval (ADR-0005) — never stored, never scheduled, never notified. A task
- * with no interval is simply not tracked; one with an interval but no log entry
- * yet has no basis for a due date, so it reads as never-performed.
+ * with no interval and no one-time marker is simply not tracked; a one-time task
+ * is due from creation until it's done (issue #29), so it always reads as
+ * `one-time` (needing attention) — completing it deletes it, so a live one-time
+ * task never has a completion to age. A recurring task with an interval but no
+ * log entry yet has no basis for a due date, so it reads as never-performed.
  */
 export type DueStatus =
   | { readonly kind: 'untracked' }
+  | { readonly kind: 'one-time' }
   | { readonly kind: 'never-performed' }
   | {
       readonly kind: 'ok' | 'due' | 'overdue';
@@ -19,13 +23,19 @@ export type DueStatus =
 /**
  * The due/overdue status for one task: `interval` from the task,
  * `lastPerformedOn` from its newest log entry (see {@link latestPerformedOn}),
- * `today` supplied by the caller so the computation stays pure.
+ * `today` supplied by the caller so the computation stays pure, and `isOneTime`
+ * the task's one-time marker (issue #29) — a one-time task needs attention from
+ * creation, so it short-circuits ahead of the interval arithmetic.
  */
 export function dueStatus(
   interval: Interval | undefined,
   lastPerformedOn: IsoDate | undefined,
   today: IsoDate,
+  isOneTime = false,
 ): DueStatus {
+  if (isOneTime) {
+    return { kind: 'one-time' };
+  }
   if (interval === undefined) {
     return { kind: 'untracked' };
   }

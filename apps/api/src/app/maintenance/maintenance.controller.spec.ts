@@ -259,6 +259,41 @@ describe('Maintenance controllers over HTTP (through the Zod serializer)', () =>
     expect(await history.json()).toEqual([entry]);
   });
 
+  it('creates a one-time task, then completing it deletes it (issue #29)', async () => {
+    const created = await fetch(
+      `${baseUrl}/tasks`,
+      jsonPost({ rigId, name: 'Re-glue loose trim', oneTime: true }),
+    );
+    expect(created.status).toBe(201);
+    const task = (await created.json()) as { id: string; oneTime?: boolean };
+    expect(task.oneTime).toBe(true);
+
+    const performed = await fetch(
+      `${baseUrl}/log-entries`,
+      jsonPost({ taskId: task.id, performedOn: '2026-07-22', fields: [] }),
+    );
+    expect(performed.status).toBe(201);
+    const entry = (await performed.json()) as { id: string; taskName: string };
+    expect(entry.taskName).toBe('Re-glue loose trim');
+
+    // The task is gone — a one-time task is done once.
+    const refetched = await fetch(`${baseUrl}/tasks/${task.id}`);
+    expect(refetched.status).toBe(404);
+  });
+
+  it('rejects a task that is both one-time and recurring with a 400', async () => {
+    const created = await fetch(
+      `${baseUrl}/tasks`,
+      jsonPost({
+        rigId,
+        name: 'Confused',
+        interval: { months: 6 },
+        oneTime: true,
+      }),
+    );
+    expect(created.status).toBe(400);
+  });
+
   it('lists a rig’s entries via ?rigId= (the due-status read)', async () => {
     const listed = await fetch(`${baseUrl}/log-entries?rigId=${rigId}`);
     expect(listed.status).toBe(200);
