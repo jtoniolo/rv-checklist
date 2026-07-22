@@ -43,5 +43,7 @@ import { MaintenanceTaskService } from './maintenance-task.service.js';
     { provide: LogEntryRepository, useClass: TypeOrmLogEntryRepository },
     { provide: RigRepository, useClass: TypeOrmRigRepository },
   ],
+  // The seed loader (issue #19) creates starter content through this use-case.
+  exports: [MaintenanceTaskService],
 })
 export class MaintenanceModule {}

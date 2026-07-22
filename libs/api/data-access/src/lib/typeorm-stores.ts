@@ -9,6 +9,7 @@ import {
   type CreateRefreshTokenInput,
   type RefreshTokenRecord,
   type UpsertUserInput,
+  type UpsertUserResult,
   type UserRecord,
 } from './stores.js';
 
@@ -47,7 +48,7 @@ export class TypeOrmUserStore extends UserStore {
     return found ? toUserRecord(found) : undefined;
   }
 
-  async upsertByGoogleSub(input: UpsertUserInput): Promise<UserRecord> {
+  async upsertByGoogleSub(input: UpsertUserInput): Promise<UpsertUserResult> {
     const existing = await this.repo.findOne({
       where: { googleSub: input.googleSub },
     });
@@ -59,7 +60,10 @@ export class TypeOrmUserStore extends UserStore {
     const entity = existing
       ? this.repo.merge(existing, fields)
       : this.repo.create({ googleSub: input.googleSub, ...fields });
-    return toUserRecord(await this.repo.save(entity));
+    return {
+      user: toUserRecord(await this.repo.save(entity)),
+      created: existing === null,
+    };
   }
 }
 

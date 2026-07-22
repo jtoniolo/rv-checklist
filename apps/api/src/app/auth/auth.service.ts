@@ -1,10 +1,11 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import {
   RefreshTokenStore,
   UserStore,
   type UserRecord,
 } from '@rv-checklist/api-data-access';
 import type { TokenPair } from '@rv-checklist/domain';
+import { StarterContentSeeder } from '../seed/seed.service.js';
 import { Clock } from './clock.js';
 import type { GoogleProfile } from './google-verifier.js';
 import { TokenService } from './token.service.js';
@@ -18,11 +19,14 @@ import { TokenService } from './token.service.js';
  */
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly users: UserStore,
     private readonly refreshTokens: RefreshTokenStore,
     private readonly tokens: TokenService,
     private readonly clock: Clock,
+    private readonly seeder: StarterContentSeeder,
   ) {}
 
   /** Mint an access JWT and a persisted refresh token for the user. */
@@ -43,17 +47,34 @@ export class AuthService {
     };
   }
 
-  /** Sign in with a verified Google profile: upsert the owner, issue tokens. */
+  /**
+   * Sign in with a verified Google profile: upsert the owner, issue tokens.
+   * A brand-new owner also gets the starter rig seeded (issue #19), so day
+   * one is never an empty app.
+   */
   async loginWithGoogle(profile: GoogleProfile): Promise<TokenPair> {
     if (!profile.emailVerified) {
       throw new UnauthorizedException('Google email is not verified');
     }
-    const user = await this.users.upsertByGoogleSub({
+    const { user, created } = await this.users.upsertByGoogleSub({
       googleSub: profile.sub,
       email: profile.email,
       name: profile.name,
       picture: profile.picture,
     });
+    if (created) {
+      // Best-effort: a seed failure must not fail the sign-in — the owner
+      // lands in a working (if emptier) app rather than a 500, and a retry
+      // can't re-seed anyway (the owner now exists, so `created` stays false).
+      try {
+        await this.seeder.seedStarterContent(user.id);
+      } catch (error) {
+        this.logger.error(
+          `Seeding starter content for new owner ${user.id} failed`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+    }
     const { pair } = await this.issue(user);
     return pair;
   }

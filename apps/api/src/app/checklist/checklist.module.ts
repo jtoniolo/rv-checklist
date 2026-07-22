@@ -27,5 +27,7 @@ import { ChecklistService } from './checklist.service.js';
     { provide: ChecklistRepository, useClass: TypeOrmChecklistRepository },
     { provide: RigRepository, useClass: TypeOrmRigRepository },
   ],
+  // The seed loader (issue #19) creates starter content through this use-case.
+  exports: [ChecklistService],
 })
 export class ChecklistModule {}
