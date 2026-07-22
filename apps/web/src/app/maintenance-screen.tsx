@@ -3,12 +3,14 @@
 import {
   dueStatus,
   latestPerformedOn,
+  taskAppearances,
   type DueStatus,
   type Id,
   type LogEntry,
   type LoggedField,
   type MaintenanceTask,
   type Rig,
+  type TaskAppearance,
 } from '@rv-checklist/domain';
 import {
   skipToken,
@@ -16,6 +18,7 @@ import {
   useCreateTaskMutation,
   useDeleteLogEntryMutation,
   useDeleteTaskMutation,
+  useListChecklistsQuery,
   useListLogEntriesByRigQuery,
   useListLogEntriesQuery,
   useListTasksQuery,
@@ -44,12 +47,14 @@ export function MaintenanceScreen({
   activeRig,
   openTaskId,
   onOpenTask,
+  onOpenChecklist,
   onBackToList,
   onGoRig,
 }: {
   readonly activeRig: Rig | undefined;
   readonly openTaskId: Id | undefined;
   readonly onOpenTask: (id: Id) => void;
+  readonly onOpenChecklist: (id: Id) => void;
   readonly onBackToList: () => void;
   readonly onGoRig: () => void;
 }): JSX.Element {
@@ -60,6 +65,11 @@ export function MaintenanceScreen({
   } = useListTasksQuery(activeRig?.id ?? skipToken);
   // The rig's entries back every row's due badge in one read (ADR-0005).
   const { data: rigEntries } = useListLogEntriesByRigQuery(
+    activeRig?.id ?? skipToken,
+  );
+  // The rig's checklists back the detail's "Appears on" section (issue #24) —
+  // derived client-side from this already-cached list, no task-specific read.
+  const { data: checklists } = useListChecklistsQuery(
     activeRig?.id ?? skipToken,
   );
   const [createTask, { isLoading: isCreating }] = useCreateTaskMutation();
@@ -233,6 +243,11 @@ export function MaintenanceScreen({
                 key={desktopSelected.id}
                 task={desktopSelected}
                 status={statusOf(desktopSelected)}
+                appearances={taskAppearances(
+                  checklists ?? [],
+                  desktopSelected.id,
+                )}
+                onOpenChecklist={onOpenChecklist}
                 onEdit={() => {
                   setEditing(true);
                 }}
@@ -362,11 +377,15 @@ function TaskListRow({
 function TaskDetail({
   task,
   status,
+  appearances,
+  onOpenChecklist,
   onEdit,
   onDelete,
 }: {
   readonly task: MaintenanceTask;
   readonly status: DueStatus;
+  readonly appearances: readonly TaskAppearance[];
+  readonly onOpenChecklist: (id: Id) => void;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }): JSX.Element {
@@ -402,8 +421,64 @@ function TaskDetail({
         </button>
       </div>
 
+      <AppearsOn appearances={appearances} onOpenChecklist={onOpenChecklist} />
+
       <LogHistory task={task} />
     </div>
+  );
+}
+
+/**
+ * Where else this task lives (issue #24): every checklist of the rig with a
+ * step linked to it, each showing the step's own wording — which often differs
+ * from the task's name — and clicking through to that checklist. A checklist
+ * linking the task via several steps appears once, with all of them. A task no
+ * checklist references shows nothing: the section only exists when it has
+ * something to say (the app is pull-based, it never pads).
+ */
+function AppearsOn({
+  appearances,
+  onOpenChecklist,
+}: {
+  readonly appearances: readonly TaskAppearance[];
+  readonly onOpenChecklist: (id: Id) => void;
+}): JSX.Element | undefined {
+  if (appearances.length === 0) {
+    return undefined;
+  }
+  return (
+    <section className="flex flex-col gap-3" aria-label="Appears on">
+      <h3 className="text-sm font-semibold tracking-wide text-brand-muted uppercase">
+        Appears on
+      </h3>
+      <ul className="flex flex-col gap-2">
+        {appearances.map(({ checklist, steps }) => (
+          <li key={checklist.id}>
+            <button
+              type="button"
+              onClick={() => {
+                onOpenChecklist(checklist.id);
+              }}
+              className="flex w-full items-center justify-between gap-3 rounded-lg border border-hairline p-3 text-left hover:border-brand"
+            >
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="font-medium text-brand dark:text-ink-inverted">
+                  {checklist.name}
+                </span>
+                {steps.map((step) => (
+                  <span key={step.id} className="text-sm text-brand-muted">
+                    {step.text}
+                  </span>
+                ))}
+              </span>
+              <span aria-hidden className="shrink-0 text-brand-muted">
+                ›
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
