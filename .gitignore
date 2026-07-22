@@ -58,3 +58,6 @@ test-output
 # Next.js
 .next
 out
+
+# work-backlog run reports
+.reports/
