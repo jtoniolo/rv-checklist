@@ -25,7 +25,7 @@ A dated copy of a checklist's steps, created when the user starts working throug
 _Avoid_: instance, session, execution, snapshot-as-frozen (a run is a copy, not an immutable record)
 
 **Maintenance Task**:
-A recurring upkeep job on a rig (e.g. "condition slide seals"), with an optional interval and user-defined custom fields. It may be referenced by steps on any number of checklists, or performed standalone. No interval means it is not tracked for due-status.
+A recurring upkeep job on a rig (e.g. "condition slide seals"), with an optional free-text description (why it needs doing and how to perform it — absent means absent), an optional interval, and user-defined custom fields. It may be referenced by steps on any number of checklists, or performed standalone. No interval means it is not tracked for due-status.
 _Avoid_: job, chore, todo
 
 **Interval**:

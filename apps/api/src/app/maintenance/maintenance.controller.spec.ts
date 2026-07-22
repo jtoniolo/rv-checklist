@@ -161,6 +161,35 @@ describe('Maintenance controllers over HTTP (through the Zod serializer)', () =>
     expect(updated.interval).toBeUndefined();
   });
 
+  it('round-trips a description and clears it with PATCH `description: null`', async () => {
+    const created = await fetch(
+      `${baseUrl}/tasks`,
+      jsonPost({
+        rigId,
+        name: 'Condition roof seals',
+        description: 'UV bakes the sealant.\nInspect seams, then re-seal.',
+      }),
+    );
+    expect(created.status).toBe(201);
+    const task = (await created.json()) as {
+      id: string;
+      description?: string;
+    };
+    expect(task.description).toBe(
+      'UV bakes the sealant.\nInspect seams, then re-seal.',
+    );
+
+    const cleared = await fetch(`${baseUrl}/tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+      body: JSON.stringify({ description: null }),
+    });
+    expect(cleared.status).toBe(200);
+    const updated = (await cleared.json()) as { description?: unknown };
+    expect(updated.description).toBeUndefined();
+  });
+
   it('performs a task standalone and reads back its log history', async () => {
     const created = await fetch(
       `${baseUrl}/tasks`,
@@ -205,6 +234,29 @@ describe('Maintenance controllers over HTTP (through the Zod serializer)', () =>
         ],
       }),
     ]);
+  });
+
+  it('editing a description leaves existing log entries untouched (issue #25)', async () => {
+    const created = await fetch(
+      `${baseUrl}/tasks`,
+      jsonPost({ rigId, name: 'Inspect brake pads' }),
+    );
+    const task = (await created.json()) as { id: string };
+    const performed = await fetch(
+      `${baseUrl}/log-entries`,
+      jsonPost({ taskId: task.id, performedOn: '2026-06-01', fields: [] }),
+    );
+    const entry: unknown = await performed.json();
+
+    const patched = await fetch(`${baseUrl}/tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ description: 'Squealing means too late.' }),
+    });
+    expect(patched.status).toBe(200);
+
+    const history = await fetch(`${baseUrl}/log-entries?taskId=${task.id}`);
+    expect(await history.json()).toEqual([entry]);
   });
 
   it('lists a rig’s entries via ?rigId= (the due-status read)', async () => {

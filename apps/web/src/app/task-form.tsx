@@ -17,6 +17,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Textarea,
 } from '@rv-checklist/web-ui';
 import { useState, type JSX } from 'react';
 
@@ -35,6 +36,8 @@ import { useState, type JSX } from 'react';
 
 export interface TaskFormValues {
   readonly name: string;
+  /** Trimmed free text, or `undefined` when left blank — absent means absent. */
+  readonly description: string | undefined;
   /** Whole months, or `undefined` for an untracked one-off task. */
   readonly intervalMonths: number | undefined;
   readonly fieldSchema: FieldSchema;
@@ -98,6 +101,7 @@ export function TaskForm({
   onCancel,
 }: TaskFormProps): JSX.Element {
   const [name, setName] = useState(initial?.name ?? '');
+  const [description, setDescription] = useState(initial?.description ?? '');
   const [monthsText, setMonthsText] = useState(
     initial?.interval ? String(initial.interval.months) : '',
   );
@@ -137,8 +141,11 @@ export function TaskForm({
       return;
     }
     setError(undefined);
+    const trimmedDescription = description.trim();
     onSubmit({
       name: trimmedName,
+      // Blank means no description — never a stored placeholder (issue #25).
+      description: trimmedDescription === '' ? undefined : trimmedDescription,
       intervalMonths: months,
       fieldSchema: parsed.data,
     });
@@ -162,6 +169,21 @@ export function TaskForm({
           }}
           placeholder="Condition slide seals"
         />
+      </Label>
+
+      <Label className={labelClass}>
+        Description
+        <Textarea
+          rows={4}
+          value={description}
+          onChange={(e) => {
+            setDescription(e.target.value);
+          }}
+          placeholder="Why this task matters, and how to do it"
+        />
+        <span className="text-xs">
+          Optional — why it needs doing and a basic outline of how.
+        </span>
       </Label>
 
       <Label className={labelClass}>

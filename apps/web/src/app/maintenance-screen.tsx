@@ -111,6 +111,9 @@ export function MaintenanceScreen({
     const created = await createTask({
       rigId: activeRig.id,
       name: values.name,
+      ...(values.description !== undefined && {
+        description: values.description,
+      }),
       ...(values.intervalMonths !== undefined && {
         interval: { months: values.intervalMonths },
       }),
@@ -128,10 +131,12 @@ export function MaintenanceScreen({
       id,
       changes: {
         name: values.name,
-        // An emptied interval is an explicit removal — the task stops being
-        // tracked for due-status. The wire spells that `null` (the schema's
-        // removal marker); an omitted key would mean "leave it unchanged".
-
+        // An emptied optional field is an explicit removal: a blank
+        // description clears it, a blank interval stops due-status tracking.
+        // The wire spells removal `null` (the schema's marker); an omitted
+        // key would mean "leave it unchanged".
+        // eslint-disable-next-line unicorn/no-null
+        description: values.description ?? null,
         interval:
           values.intervalMonths === undefined
             ? // eslint-disable-next-line unicorn/no-null
@@ -403,6 +408,13 @@ function TaskDetail({
           <DueBadge status={status} />
         </div>
       </div>
+
+      {/* The optional why/how (issue #25) — absent renders nothing at all. */}
+      {task.description ? (
+        <p className="text-sm whitespace-pre-line text-brand-muted">
+          {task.description}
+        </p>
+      ) : undefined}
 
       <div className="flex gap-4 text-sm">
         <button

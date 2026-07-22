@@ -69,8 +69,9 @@ export class MaintenanceTaskService {
 
   /**
    * Apply a partial edit to one of the owner's tasks (rig membership never
-   * changes). `interval: null` removes the interval — the task stops being
-   * tracked for due-status (CONTEXT.md).
+   * changes). An explicit `null` removes an optional field: `interval: null`
+   * stops due-status tracking (CONTEXT.md), `description: null` clears the
+   * description (issue #25).
    */
   async update(
     ownerId: Id,
@@ -89,6 +90,11 @@ export class MaintenanceTaskService {
       delete next.interval;
     } else if (changes.interval !== undefined) {
       next.interval = changes.interval;
+    }
+    if (changes.description === null) {
+      delete next.description;
+    } else if (changes.description !== undefined) {
+      next.description = changes.description;
     }
     return this.tasks.save(next);
   }
