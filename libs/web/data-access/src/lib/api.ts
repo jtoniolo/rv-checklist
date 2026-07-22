@@ -419,7 +419,14 @@ export const api = createApi({
         // (due-status) must be invalidated explicitly; `result` carries the
         // rig on success.
         ...(result
-          ? [{ type: 'LogEntry' as const, id: `RIG:${result.rigId}` }]
+          ? [
+              { type: 'LogEntry' as const, id: `RIG:${result.rigId}` },
+              // Completing a one-time task deletes it (issue #29), so refetch the
+              // rig's task list to drop the self-deleted task (and the orphaned
+              // entry then surfaces via the rig log above). A recurring perform
+              // simply refetches an unchanged list — harmless.
+              { type: 'Task' as const, id: `LIST:${result.rigId}` },
+            ]
           : []),
       ],
     }),

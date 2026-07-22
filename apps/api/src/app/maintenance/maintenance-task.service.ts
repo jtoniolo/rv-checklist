@@ -70,8 +70,13 @@ export class MaintenanceTaskService {
   /**
    * Apply a partial edit to one of the owner's tasks (rig membership never
    * changes). An explicit `null` removes an optional field: `interval: null`
-   * stops due-status tracking (CONTEXT.md), `description: null` clears the
-   * description (issue #25).
+   * stops due-status tracking (CONTEXT.md), `oneTime: null` clears the one-time
+   * marker (issue #29), `description: null` clears the description (issue #25).
+   *
+   * `interval` and `oneTime` are mutually exclusive (issue #29): if a single
+   * edit would leave both set, whichever the edit itself set wins and the other
+   * is dropped, so the saved task never holds both — the invariant the wire
+   * schema guards is upheld here before the write.
    */
   async update(
     ownerId: Id,
@@ -90,6 +95,19 @@ export class MaintenanceTaskService {
       delete next.interval;
     } else if (changes.interval !== undefined) {
       next.interval = changes.interval;
+    }
+    if (changes.oneTime === null) {
+      delete next.oneTime;
+    } else if (changes.oneTime === true) {
+      next.oneTime = true;
+    }
+    // Exclusivity: an edit that set both leaves the one it set, drops the other.
+    if (next.oneTime && next.interval !== undefined) {
+      if (changes.oneTime === true) {
+        delete next.interval;
+      } else {
+        delete next.oneTime;
+      }
     }
     if (changes.description === null) {
       delete next.description;

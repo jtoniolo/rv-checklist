@@ -139,6 +139,74 @@ describe('LogEntryService', () => {
     });
   });
 
+  // A one-time task is done once (issue #29): performing it writes a normal Log
+  // Entry, then the task deletes itself. The entry is the permanent record and
+  // outlives the task (issue #28) — labeled by its snapshotted taskName.
+  describe('create — a one-time task deletes itself on completion (issue #29)', () => {
+    const oneTimeTaskId = '550e8400-e29b-41d4-a716-446655440030';
+
+    async function makeWithOneTime(): Promise<{
+      service: LogEntryService;
+      tasks: InMemoryMaintenanceTaskRepository;
+    }> {
+      const { service, tasks } = await makeService();
+      await tasks.save({
+        id: oneTimeTaskId,
+        rigId: aliceRigId,
+        name: 'Re-glue loose trim',
+        oneTime: true,
+        fieldSchema: [{ name: 'Notes', type: 'text', required: false }],
+      });
+      return { service, tasks };
+    }
+
+    const performOneTime = {
+      taskId: oneTimeTaskId,
+      performedOn: '2026-07-22',
+      fields: [
+        {
+          name: 'Notes',
+          type: 'text' as const,
+          required: false,
+          value: 'Re-seated the awning rail',
+        },
+      ],
+    };
+
+    it('writes a normal entry, correctly labeled by the task’s name', async () => {
+      const { service } = await makeWithOneTime();
+
+      const entry = await service.create(alice, performOneTime);
+
+      expect(entry).toMatchObject({
+        taskName: 'Re-glue loose trim',
+        performedOn: '2026-07-22',
+        fields: performOneTime.fields,
+      });
+    });
+
+    it('deletes the task, while the entry remains', async () => {
+      const { service, tasks } = await makeWithOneTime();
+
+      const entry = await service.create(alice, performOneTime);
+
+      expect(await tasks.findById(oneTimeTaskId)).toBeUndefined();
+      // The entry is the permanent record — still fetchable via its rig.
+      await expect(service.get(alice, entry.id)).resolves.toMatchObject({
+        id: entry.id,
+        taskName: 'Re-glue loose trim',
+      });
+    });
+
+    it('leaves a recurring task in place on completion', async () => {
+      const { service, tasks } = await makeService();
+
+      await service.create(alice, performSeals);
+
+      expect(await tasks.findById(sealsTaskId)).toBeDefined();
+    });
+  });
+
   describe('snapshot-to-log (issue #17’s TDD seam)', () => {
     it('a later edit to the task does not rewrite a past entry', async () => {
       const { service, tasks } = await makeService();

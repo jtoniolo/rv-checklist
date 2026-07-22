@@ -17,8 +17,10 @@ import {
  * `interval_months` is the optional Interval, flattened to its whole-month
  * count; SQL NULL means the task is not tracked for due-status (CONTEXT.md) —
  * due/overdue is computed on read (ADR-0005), so no due date is persisted.
- * `description` is the optional free-text why/how (issue #25); SQL NULL means
- * the task has none — no placeholder is ever stored.
+ * `one_time` is the one-time marker (issue #29): TRUE means the task is due from
+ * creation and deletes itself on completion; it and `interval_months` are
+ * mutually exclusive. `description` is the optional free-text why/how (issue
+ * #25); SQL NULL means the task has none — no placeholder is ever stored.
  * `field_schema` is the task's own custom-field definitions as JSONB
  * (ADR-0004): embedded owned data, validated by the app, never by the schema.
  * The API maps between this persistence shape and the
@@ -41,6 +43,9 @@ export class MaintenanceTaskEntity {
 
   @Column({ name: 'interval_months', type: 'int', nullable: true })
   intervalMonths!: number | null;
+
+  @Column({ name: 'one_time', type: 'boolean', default: false })
+  oneTime!: boolean;
 
   @Column({ name: 'field_schema', type: 'jsonb', default: () => "'[]'" })
   fieldSchema!: FieldSchema;

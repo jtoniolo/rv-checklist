@@ -25,11 +25,15 @@ A dated copy of a checklist's steps, created when the user starts working throug
 _Avoid_: instance, session, execution, snapshot-as-frozen (a run is a copy, not an immutable record)
 
 **Maintenance Task**:
-A recurring upkeep job on a rig (e.g. "condition slide seals"), with an optional free-text description (why it needs doing and how to perform it — absent means absent), an optional interval, and user-defined custom fields. It may be referenced by steps on any number of checklists, or performed standalone. No interval means it is not tracked for due-status.
+An upkeep job on a rig (e.g. "condition slide seals"), with an optional free-text description (why it needs doing and how to perform it — absent means absent) and user-defined custom fields. It may be referenced by steps on any number of checklists, or performed standalone. A task is tracked for due-status one of two mutually exclusive ways — by an interval (recurring) or as one-time — or not at all. No interval and no one-time marker means it is simply not tracked.
 _Avoid_: job, chore, todo
 
 **Interval**:
-The optional recurrence period on a maintenance task (e.g. every 12 months). Drives passive due/overdue, computed on read from the last completion. Nothing notifies.
+The recurrence period on a recurring maintenance task (e.g. every 12 months). Optional and mutually exclusive with the one-time marker. Drives passive due/overdue, computed on read from the last completion. Nothing notifies.
+
+**One-time task**:
+A maintenance task noticed once and done once (e.g. trim came loose on the road, a vent-fan remote battery died, replenish the first-aid kit after use). It is an ordinary Maintenance Task — same list, same perform flow, same log — marked one-time instead of carrying an interval. It is due from the moment it's created and surfaces alongside due/overdue maintenance until dealt with; performing it writes a Log Entry like any other completion, then the task deletes itself. The Log Entry remains as the permanent record (name and fields snapshotted, surviving the task's deletion). Standalone only — never linked to a step. Ordinary editable content, custom fields included, until completed.
+_Avoid_: reminder, one-off (reserved for an untracked task with no interval)
 
 **Log Entry**:
 The record that a maintenance task was performed on a date. Carries its own copy of the task's fields as they were when recorded, with the recorded values — so later edits to the task don't alter it. Like everything else, it stays editable; the user can correct past entries.

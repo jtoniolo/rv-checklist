@@ -16,6 +16,15 @@ describe('dueStatus — computed on read from last completion + interval (ADR-00
     });
   });
 
+  // A one-time task is due from creation and done once (issue #29): it always
+  // needs attention, short-circuiting the interval arithmetic. It never carries
+  // an interval, and completing it deletes it, so no completion ever ages it.
+  it('is one-time when the task is flagged one-time', () => {
+    expect(dueStatus(undefined, undefined, '2026-07-21', true)).toEqual({
+      kind: 'one-time',
+    });
+  });
+
   // The boundary (issue #17): last done 2025-07-21, every 12 months ⇒ due on
   // 2026-07-21. The day before is ok, the day itself is due, the day after is
   // overdue.
