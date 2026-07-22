@@ -645,6 +645,11 @@ function LogEntryRow({
         <span className="font-medium text-brand dark:text-ink-inverted">
           {formatIsoDate(entry.performedOn)}
         </span>
+        {/* The task's name as it was when performed (issue #27) — the entry's
+            own snapshot, so a later rename never relabels this record. */}
+        <span className="text-sm font-medium text-brand-muted">
+          {entry.taskName}
+        </span>
         {summary ? (
           <span className="text-sm text-brand-muted">{summary}</span>
         ) : undefined}

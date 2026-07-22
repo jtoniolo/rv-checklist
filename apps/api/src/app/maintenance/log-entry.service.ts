@@ -86,6 +86,9 @@ export class LogEntryService {
       id: randomUUID(),
       taskId: task.id,
       rigId: task.rigId,
+      // Snapshot the task's name as it is now (issue #27) — a later rename must
+      // not relabel this entry, exactly as the field snapshot is frozen.
+      taskName: task.name,
       performedOn: input.performedOn,
       fields: input.fields,
     });

@@ -35,6 +35,11 @@ export class LogEntryEntity {
   @Column({ name: 'rig_id', type: 'uuid' })
   rigId!: string;
 
+  // The task's name as it was when performed (issue #27) — a snapshotted scalar
+  // alongside `fields`, so renaming the task never relabels past entries.
+  @Column({ name: 'task_name', type: 'text' })
+  taskName!: string;
+
   // A calendar day (IsoDate) — postgres `date` round-trips as a 'YYYY-MM-DD'
   // string, which is exactly the wire shape, so no mapping is needed.
   @Column({ name: 'performed_on', type: 'date' })

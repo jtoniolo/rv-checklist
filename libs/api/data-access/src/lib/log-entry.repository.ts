@@ -30,6 +30,7 @@ function toLogEntry(entity: LogEntryEntity): LogEntry {
     id: entity.id,
     taskId: entity.taskId,
     rigId: entity.rigId,
+    taskName: entity.taskName,
     performedOn: entity.performedOn,
     fields: entity.fields,
   };

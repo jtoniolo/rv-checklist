@@ -3,6 +3,7 @@ import {
   LoggedFieldSchema,
   LogEntrySchema,
   toLoggedFields,
+  UpdateLogEntrySchema,
 } from './log-entry.js';
 
 const id = (n: number) => `550e8400-e29b-41d4-a716-44665544000${String(n)}`;
@@ -45,6 +46,7 @@ describe('LogEntrySchema', () => {
     id: id(1),
     taskId: id(2),
     rigId: id(3),
+    taskName: 'Condition slide seals',
     performedOn: '2026-07-19',
     fields: [
       {
@@ -71,6 +73,17 @@ describe('LogEntrySchema', () => {
     expect(
       LogEntrySchema.safeParse({ ...entry, performedOn: 'today' }).success,
     ).toBe(false);
+  });
+
+  it('requires a snapshotted taskName', () => {
+    const { taskName: _dropped, ...withoutName } = entry;
+    expect(LogEntrySchema.safeParse(withoutName).success).toBe(false);
+  });
+
+  it('rejects a blank taskName', () => {
+    expect(LogEntrySchema.safeParse({ ...entry, taskName: '' }).success).toBe(
+      false,
+    );
   });
 
   it('rejects duplicate field names in the snapshot', () => {
@@ -125,5 +138,26 @@ describe('CreateLogEntrySchema', () => {
       fields: [],
     });
     expect('id' in parsed).toBe(false);
+  });
+
+  it('does not carry the taskName — the server snapshots it from the task', () => {
+    const parsed = CreateLogEntrySchema.parse({
+      taskId: id(2),
+      rigId: id(3),
+      taskName: 'Client-supplied, must be dropped',
+      performedOn: '2026-07-19',
+      fields: [],
+    });
+    expect('taskName' in parsed).toBe(false);
+  });
+});
+
+describe('UpdateLogEntrySchema', () => {
+  it('never lets the frozen taskName be edited through an entry update', () => {
+    const parsed = UpdateLogEntrySchema.parse({
+      performedOn: '2026-07-19',
+      taskName: 'Renamed via the entry — must be dropped',
+    });
+    expect('taskName' in parsed).toBe(false);
   });
 });
