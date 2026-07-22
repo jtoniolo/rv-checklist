@@ -1,0 +1,75 @@
+# T-CI (#20) — strict lint/typecheck/build/test gate.
+#
+# Runs on every PR and every push to main. Zero-tolerance: lint runs with
+# --max-warnings=0 (wired in nx.json targetDefaults), and any lint, typecheck,
+# build, or test failure fails the check. Unit tests use the mocked/in-memory
+# repository seam, so CI needs no database, secrets, or external services.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # nrwl/nx-set-shas reads past workflow runs to find the last successful
+  # commit on main to diff against.
+  actions: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `nx affected` can diff against any base SHA.
+          fetch-depth: 0
+
+      # Reads the pnpm version from the "packageManager" field in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Persist the Nx computation cache across runs. Entries are content-
+      # hashed, so restoring a stale cache is safe — unchanged tasks replay,
+      # changed ones re-execute.
+      - name: Restore Nx cache
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+
+      # Derive NX_BASE/NX_HEAD (last successful run on main for pushes, PR
+      # merge-base for PRs). continue-on-error: on a brand-new repo or after a
+      # history rewrite there may be no reference point — the next step then
+      # falls back to a full run-many, so a clean full run is always possible.
+      - name: Derive SHAs for nx affected
+        id: setSHAs
+        uses: nrwl/nx-set-shas@v4
+        continue-on-error: true
+
+      - name: Lint, typecheck, build, test
+        run: |
+          if [ "${{ steps.setSHAs.outcome }}" = "success" ] \
+            && [ -n "${NX_BASE:-}" ] \
+            && git cat-file -e "$NX_BASE" 2>/dev/null; then
+            echo "Running nx affected (base=$NX_BASE head=${NX_HEAD:-HEAD})"
+            pnpm exec nx affected -t lint typecheck build test
+          else
+            echo "No usable base SHA — running the full suite with run-many"
+            pnpm exec nx run-many -t lint typecheck build test
+          fi
