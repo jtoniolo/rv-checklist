@@ -101,6 +101,13 @@ export function MaintenanceScreen({
       today,
     );
 
+  // Entries whose task was deleted (issue #28): kept, orphaned (taskId null),
+  // owned via the rig. They belong to no live task section, so the screen shows
+  // them on their own below the list, labeled by their snapshotted taskName.
+  const orphanedEntries = (rigEntries ?? []).filter(
+    (entry) => entry.taskId === null,
+  );
+
   // Mobile drills down (detail only when explicitly opened); desktop's detail
   // pane always shows something.
   const mobileDetail = tasks?.find((task) => task.id === openTaskId);
@@ -149,123 +156,132 @@ export function MaintenanceScreen({
   };
 
   const handleDelete = async (id: Id): Promise<void> => {
-    await deleteTask(id).unwrap();
+    await deleteTask({ id, rigId: activeRig.id }).unwrap();
     onBackToList();
   };
 
   return (
-    <div className="flex flex-col gap-5 lg:flex-row lg:gap-8">
-      {/* List: hidden on mobile while a detail is open; sidebar on desktop. */}
-      <aside
-        className={`${isDetailOpenOnMobile ? 'hidden lg:flex' : 'flex'} shrink-0 flex-col gap-2 lg:w-64 lg:gap-1`}
-      >
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-brand lg:text-lg dark:text-ink-inverted">
-            Maintenance
-          </h1>
-          <button
-            type="button"
-            onClick={() => {
-              setEditing(false);
-              setAdding(true);
-            }}
-            className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            Add
-          </button>
-        </div>
-
-        {isLoading ? (
-          <p className="text-brand-muted">Loading maintenance tasks…</p>
-        ) : undefined}
-        {isError ? (
-          <p className="text-red-600 dark:text-red-400" role="alert">
-            Couldn’t load maintenance tasks. Please try again.
-          </p>
-        ) : undefined}
-        {tasks?.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted">
-            No maintenance tasks yet — add the first upkeep you want an answer
-            to “when did I last do this?” for.
-          </p>
-        ) : undefined}
-
-        {tasks?.map((task) => (
-          <TaskListRow
-            key={task.id}
-            task={task}
-            status={statusOf(task)}
-            isSelected={task.id === desktopSelected?.id && !adding}
-            onOpen={() => {
-              setAdding(false);
-              setEditing(false);
-              onOpenTask(task.id);
-            }}
-          />
-        ))}
-      </aside>
-
-      {/* Detail: drill-down on mobile, always-on pane on desktop. */}
-      <section
-        className={`${isDetailOpenOnMobile ? 'flex' : 'hidden lg:flex'} min-w-0 flex-1 flex-col gap-4`}
-      >
-        {adding ? (
-          <>
-            <BackToListButton
-              label="‹ All tasks"
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-5 lg:flex-row lg:gap-8">
+        {/* List: hidden on mobile while a detail is open; sidebar on desktop. */}
+        <aside
+          className={`${isDetailOpenOnMobile ? 'hidden lg:flex' : 'flex'} shrink-0 flex-col gap-2 lg:w-64 lg:gap-1`}
+        >
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight text-brand lg:text-lg dark:text-ink-inverted">
+              Maintenance
+            </h1>
+            <button
+              type="button"
               onClick={() => {
+                setEditing(false);
+                setAdding(true);
+              }}
+              className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            >
+              Add
+            </button>
+          </div>
+
+          {isLoading ? (
+            <p className="text-brand-muted">Loading maintenance tasks…</p>
+          ) : undefined}
+          {isError ? (
+            <p className="text-red-600 dark:text-red-400" role="alert">
+              Couldn’t load maintenance tasks. Please try again.
+            </p>
+          ) : undefined}
+          {tasks?.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted">
+              No maintenance tasks yet — add the first upkeep you want an answer
+              to “when did I last do this?” for.
+            </p>
+          ) : undefined}
+
+          {tasks?.map((task) => (
+            <TaskListRow
+              key={task.id}
+              task={task}
+              status={statusOf(task)}
+              isSelected={task.id === desktopSelected?.id && !adding}
+              onOpen={() => {
                 setAdding(false);
-                onBackToList();
+                setEditing(false);
+                onOpenTask(task.id);
               }}
             />
-            <TaskForm
-              submitLabel="Add task"
-              pending={isCreating}
-              onSubmit={(values) => void handleCreate(values)}
-              onCancel={() => {
-                setAdding(false);
-              }}
-            />
-          </>
-        ) : desktopSelected ? (
-          <>
-            <BackToListButton label="‹ All tasks" onClick={onBackToList} />
-            {editing ? (
+          ))}
+        </aside>
+
+        {/* Detail: drill-down on mobile, always-on pane on desktop. */}
+        <section
+          className={`${isDetailOpenOnMobile ? 'flex' : 'hidden lg:flex'} min-w-0 flex-1 flex-col gap-4`}
+        >
+          {adding ? (
+            <>
+              <BackToListButton
+                label="‹ All tasks"
+                onClick={() => {
+                  setAdding(false);
+                  onBackToList();
+                }}
+              />
               <TaskForm
-                initial={desktopSelected}
-                submitLabel="Save changes"
-                pending={isUpdating}
-                onSubmit={(values) =>
-                  void handleUpdate(desktopSelected.id, values)
-                }
+                submitLabel="Add task"
+                pending={isCreating}
+                onSubmit={(values) => void handleCreate(values)}
                 onCancel={() => {
-                  setEditing(false);
+                  setAdding(false);
                 }}
               />
-            ) : (
-              <TaskDetail
-                // Remount on a different task so transient form state resets.
-                key={desktopSelected.id}
-                task={desktopSelected}
-                status={statusOf(desktopSelected)}
-                appearances={taskAppearances(
-                  checklists ?? [],
-                  desktopSelected.id,
-                )}
-                onOpenChecklist={onOpenChecklist}
-                onEdit={() => {
-                  setEditing(true);
-                }}
-                onDelete={() => void handleDelete(desktopSelected.id)}
-              />
-            )}
-          </>
-        ) : (
-          <p className="hidden text-brand-muted lg:block">
-            Select a maintenance task, or add your first one.
-          </p>
-        )}
-      </section>
+            </>
+          ) : desktopSelected ? (
+            <>
+              <BackToListButton label="‹ All tasks" onClick={onBackToList} />
+              {editing ? (
+                <TaskForm
+                  initial={desktopSelected}
+                  submitLabel="Save changes"
+                  pending={isUpdating}
+                  onSubmit={(values) =>
+                    void handleUpdate(desktopSelected.id, values)
+                  }
+                  onCancel={() => {
+                    setEditing(false);
+                  }}
+                />
+              ) : (
+                <TaskDetail
+                  // Remount on a different task so transient form state resets.
+                  key={desktopSelected.id}
+                  task={desktopSelected}
+                  status={statusOf(desktopSelected)}
+                  appearances={taskAppearances(
+                    checklists ?? [],
+                    desktopSelected.id,
+                  )}
+                  onOpenChecklist={onOpenChecklist}
+                  onEdit={() => {
+                    setEditing(true);
+                  }}
+                  onDelete={() => void handleDelete(desktopSelected.id)}
+                />
+              )}
+            </>
+          ) : (
+            <p className="hidden text-brand-muted lg:block">
+              Select a maintenance task, or add your first one.
+            </p>
+          )}
+        </section>
+      </div>
+
+      {orphanedEntries.length > 0 ? (
+        <OrphanedHistory
+          entries={orphanedEntries}
+          className={isDetailOpenOnMobile ? 'hidden lg:flex' : 'flex'}
+        />
+      ) : undefined}
     </div>
   );
 }
@@ -617,6 +633,81 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
                 entry={entry}
                 onEdit={() => {
                   setLogging(false);
+                  setEditingEntryId(entry.id);
+                }}
+                onDelete={() => void deleteEntry(entry.id).unwrap()}
+              />
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * The rig's orphaned maintenance history (issue #28): the entries whose task
+ * has since been deleted (`taskId` null). Deleting a task keeps its entries —
+ * "when did I last do this?" must never lose its answer — so they live on here,
+ * each labeled by its snapshotted `taskName` (issue #27) and still individually
+ * editable and deletable, reusing the same row and form as a live task's log.
+ * The parent renders this only when there are orphaned entries (never empty).
+ */
+function OrphanedHistory({
+  entries,
+  className,
+}: {
+  readonly entries: readonly LogEntry[];
+  readonly className: string;
+}): JSX.Element {
+  const [updateEntry, { isLoading: isCorrecting }] =
+    useUpdateLogEntryMutation();
+  const [deleteEntry] = useDeleteLogEntryMutation();
+  const [editingEntryId, setEditingEntryId] = useState<Id | undefined>();
+
+  const handleCorrect = async (
+    id: Id,
+    performedOn: string,
+    fields: LoggedField[],
+  ): Promise<void> => {
+    await updateEntry({ id, changes: { performedOn, fields } }).unwrap();
+    setEditingEntryId(undefined);
+  };
+
+  return (
+    <section
+      className={`${className} flex-col gap-3`}
+      aria-label="Deleted tasks"
+    >
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-sm font-semibold tracking-wide text-brand-muted uppercase">
+          Deleted tasks
+        </h2>
+        <p className="text-sm text-brand-muted">
+          History kept from tasks you’ve deleted — each labeled by the task’s
+          name at the time.
+        </p>
+      </div>
+      <ul className="flex flex-col gap-2">
+        {entries.map((entry) => (
+          <li key={entry.id}>
+            {editingEntryId === entry.id ? (
+              <LogEntryForm
+                initialFields={entry.fields}
+                initialDate={entry.performedOn}
+                submitLabel="Save correction"
+                pending={isCorrecting}
+                onSubmit={(performedOn, fields) =>
+                  void handleCorrect(entry.id, performedOn, fields)
+                }
+                onCancel={() => {
+                  setEditingEntryId(undefined);
+                }}
+              />
+            ) : (
+              <LogEntryRow
+                entry={entry}
+                onEdit={() => {
                   setEditingEntryId(entry.id);
                 }}
                 onDelete={() => void deleteEntry(entry.id).unwrap()}

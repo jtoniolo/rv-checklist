@@ -369,12 +369,17 @@ export const api = createApi({
       ],
     }),
 
-    deleteTask: builder.mutation<void, Id>({
-      query: (id) => ({ url: `/tasks/${id}`, method: 'DELETE' }),
+    deleteTask: builder.mutation<void, { id: Id; rigId: Id }>({
+      query: ({ id }) => ({ url: `/tasks/${id}`, method: 'DELETE' }),
       // The per-rig list provides an element tag for each task it holds, so
       // invalidating the deleted id's tag refetches exactly the list that
-      // contained it — no need to know its rig.
-      invalidatesTags: (_result, _error, id) => [{ type: 'Task', id }],
+      // contained it. Deleting a task also keeps its log entries, now orphaned
+      // (issue #28) — the rig's log list must refetch so they surface in the
+      // "Deleted tasks" history, so the caller passes the rig id too.
+      invalidatesTags: (_result, _error, { id, rigId }) => [
+        { type: 'Task', id },
+        { type: 'LogEntry', id: `RIG:${rigId}` },
+      ],
     }),
 
     // Log entries are read two ways: one task's full history (`?taskId=`) and

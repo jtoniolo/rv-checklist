@@ -11,9 +11,12 @@ import {
 /**
  * A log-entry row — the dated record that a maintenance task was performed
  * (CONTEXT.md, issue #17). `task_id` names the task ("its log history") and
- * `rig_id` carries the rig membership (ADR-0006); both reference their parent
- * `ON DELETE CASCADE` and are indexed because the list reads (`listByTask`,
- * `listByRig`) filter on them.
+ * `rig_id` carries the rig membership (ADR-0006); both are indexed because the
+ * list reads (`listByTask`, `listByRig`) filter on them. `rig_id` references its
+ * parent `ON DELETE CASCADE`, but `task_id` is nullable and references its parent
+ * `ON DELETE SET NULL` (issue #28): deleting a task must never lose "when did I
+ * last do this?", so an entry outlives its task — when the task is gone `task_id`
+ * is NULL and the entry stays owned via its `rig_id`, labeled by `task_name`.
  *
  * `fields` is JSONB — the entry's **own snapshot** of the task's field
  * definitions with the recorded values (ADR-0004): owned by and read with
@@ -28,8 +31,8 @@ export class LogEntryEntity {
   id!: string;
 
   @Index()
-  @Column({ name: 'task_id', type: 'uuid' })
-  taskId!: string;
+  @Column({ name: 'task_id', type: 'uuid', nullable: true })
+  taskId!: string | null;
 
   @Index()
   @Column({ name: 'rig_id', type: 'uuid' })

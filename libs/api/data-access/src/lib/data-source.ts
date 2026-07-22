@@ -14,6 +14,7 @@ import { Runs1721000400000 } from './migrations/1721000400000-runs.js';
 import { Maintenance1721000500000 } from './migrations/1721000500000-maintenance.js';
 import { TaskDescription1721000600000 } from './migrations/1721000600000-task-description.js';
 import { LogEntryTaskName1721000700000 } from './migrations/1721000700000-log-entry-task-name.js';
+import { LogEntryKeepOnTaskDelete1721000800000 } from './migrations/1721000800000-log-entry-keep-on-task-delete.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -47,6 +48,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       Maintenance1721000500000,
       TaskDescription1721000600000,
       LogEntryTaskName1721000700000,
+      LogEntryKeepOnTaskDelete1721000800000,
     ],
     migrationsRun: true,
     synchronize: false,
