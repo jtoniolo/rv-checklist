@@ -5,8 +5,12 @@ A personal aid for an RV owner whose failure mode is **object permanence** — w
 ## Language
 
 **Rig**:
-An RV owned by a user, identified by VIN, make, model, year, and a nickname. Everything — checklists, tasks, logs — belongs to a rig, not directly to a user. A user may own several.
+An RV owned by a user, identified by VIN, make, model, year, and a nickname. Everything — checklists, tasks, logs — belongs to a rig, not directly to a user. A user may own several. A rig also carries a current **Distance** — the yardstick a distance-based maintenance interval is measured against. Rig type is not modelled: a rig may be towable or driveable, and nothing here assumes one or the other.
 _Avoid_: RV, vehicle, camper
+
+**Distance**:
+How far a rig has travelled — driven or towed — as a running total in **kilometres**, kept current by the owner (a future trip logger may maintain it automatically). It is the yardstick for a distance-based **Interval**: a task due "every 20,000 km" compares the rig's current Distance against the Distance recorded when the task was last performed. Trailers have no odometer, so this is an owner-maintained figure, not an instrument reading.
+_Avoid_: mileage, odometer (a towable rig has no odometer), miles (kilometres only)
 
 **Checklist**:
 A reusable, ordered template of steps for a procedure or packing job (e.g. pre-departure, spring opening, a packing list). Identified by its name, with optional free-form tags for organizing (packing lists vary by trip length; there is no fixed category system). It is a template — it can be edited over time, and running it never modifies it.
@@ -29,12 +33,17 @@ An upkeep job on a rig (e.g. "condition slide seals"), with an optional free-tex
 _Avoid_: job, chore, todo
 
 **Interval**:
-The recurrence period on a recurring maintenance task (e.g. every 12 months). Optional and mutually exclusive with the one-time marker. Drives passive due/overdue, computed on read from the last completion. Nothing notifies.
+The recurrence period on a recurring maintenance task, measured on one of two **bases**: **calendar** time (e.g. every 12 months) or **Distance** (e.g. every 20,000 km). Optional and mutually exclusive with the one-time marker. Drives passive due/overdue, computed on read from when the task was **last performed** — and, for a distance interval, the rig's current Distance. Nothing notifies. A task whose event trigger is "before every trip" or "after any wheel removal" is **not** an interval — that belongs on a checklist as a Step; a season ("each fall") is a calendar interval anchored by its last-performed date, not a basis of its own.
+_Avoid_: schedule (nothing is scheduled), mileage/hours (distance is kilometres; run-hours are out of scope)
+
+**Last performed**:
+The date a maintenance task was most recently performed — the anchor a calendar interval's next due date is computed from. Normally the date of the newest **Log Entry**, but the owner may set it directly, even with no Log Entry, to anchor a task without logging it: a fresh task, a season-anchored one, or an age-based replacement anchored to a manufacture date. When both exist, the **later** of the manual date and the newest Log Entry wins — a real completion always supersedes a guess. Applies to calendar intervals only; a distance interval anchors solely off a logged Distance reading.
+_Avoid_: baseline, anchor date (internal terms — the owner sees "last performed")
 
 **One-time task**:
 A maintenance task noticed once and done once (e.g. trim came loose on the road, a vent-fan remote battery died, replenish the first-aid kit after use). It is an ordinary Maintenance Task — same list, same perform flow, same log — marked one-time instead of carrying an interval. It is due from the moment it's created and surfaces alongside due/overdue maintenance until dealt with; performing it writes a Log Entry like any other completion, then the task deletes itself. The Log Entry remains as the permanent record (name and fields snapshotted, surviving the task's deletion). Standalone only — never linked to a step. Ordinary editable content, custom fields included, until completed.
 _Avoid_: reminder, one-off (reserved for an untracked task with no interval)
 
 **Log Entry**:
-The record that a maintenance task was performed on a date. Carries its own copy of the task's fields as they were when recorded, with the recorded values — so later edits to the task don't alter it. Like everything else, it stays editable; the user can correct past entries.
+The record that a maintenance task was performed on a date. Carries its own copy of the task's fields as they were when recorded, with the recorded values — so later edits to the task don't alter it — and, optionally, the rig's **Distance** reading (km) at the time, the anchor a distance interval's next due is measured from. Like everything else, it stays editable; the user can correct past entries.
 _Avoid_: completion (as a noun for the record), history item

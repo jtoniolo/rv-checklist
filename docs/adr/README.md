@@ -21,6 +21,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0012](0012-google-one-tap-passport-refresh-tokens.md) | Google One Tap + Passport, rotating refresh tokens for long sessions (refines 0002) |
 | [0013](0013-styling-tailwind-mobile-first.md) | Styling — Tailwind CSS v4, mobile-first by construction; shared primitives in `libs/web/ui` |
 | [0014](0014-shadcn-vendored-controls.md) | Controls — shadcn/ui vendored into `libs/web/ui`, semantic tokens bridged to the camping palette (extends 0013) |
+| [0015](0015-multi-basis-maintenance-intervals.md) | Multi-basis maintenance intervals (calendar/distance) + stored due-status inputs (amends 0005) |
 
 The domain model (entities, relationships, ubiquitous language) lives in
 `CONTEXT.md` at the repo root, written as the domain-model ticket (#2) is walked.
