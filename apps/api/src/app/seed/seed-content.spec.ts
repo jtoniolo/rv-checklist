@@ -1,4 +1,4 @@
-import { FieldSchemaSchema } from '@rv-checklist/domain';
+import { FieldSchemaSchema, IntervalSchema } from '@rv-checklist/domain';
 import {
   SEED_CHECKLISTS,
   SEED_RIG_NICKNAME,
@@ -6,17 +6,70 @@ import {
 } from './seed-content.js';
 
 /**
- * The seed data transcribed from `docs/seed-content.md` (issue #19). These
- * tests pin the transcription to the doc's own counts and invariants, so a
- * drift between the doc and the constant is caught here, not in production.
+ * The seed data transcribed from `docs/seed-content.md` (issue #19, rewritten
+ * from the maintenance research in #34). These tests pin the transcription to
+ * the doc's own counts and invariants, so a drift between the doc and the
+ * constant is caught here, not in production.
  */
 describe('seed content (docs/seed-content.md)', () => {
   describe('maintenance tasks', () => {
-    it('defines the 16 tasks, every one on a 12-month interval', () => {
-      expect(SEED_TASKS).toHaveLength(16);
+    it('defines the 35 research-derived tasks', () => {
+      expect(SEED_TASKS).toHaveLength(35);
       for (const task of SEED_TASKS) {
         expect(task.name).not.toBe('');
-        expect(task.intervalMonths).toBe(12);
+      }
+    });
+
+    it('every task carries a valid per-task basis/interval (#34)', () => {
+      for (const task of SEED_TASKS) {
+        // Parses as a real Interval union member (calendar or distance).
+        expect(() => IntervalSchema.parse(task.interval)).not.toThrow();
+        expect(['calendar', 'distance']).toContain(task.interval.basis);
+      }
+    });
+
+    it('distance tasks spec kilometres; the axle jobs use the metric conversions', () => {
+      const byName = new Map(SEED_TASKS.map((t) => [t.name, t.interval]));
+      expect(byName.get('Repack / inspect wheel bearings')).toEqual({
+        basis: 'distance',
+        km: 20_000,
+      });
+      expect(byName.get('Inspect & adjust brakes')).toEqual({
+        basis: 'distance',
+        km: 5000,
+      });
+    });
+
+    it('splits the multi-cadence alarm chore: monthly test vs multi-year replacements', () => {
+      const byName = new Map(SEED_TASKS.map((t) => [t.name, t.interval]));
+      expect(byName.get('Test smoke / CO / LP alarms')).toEqual({
+        basis: 'calendar',
+        months: 1,
+      });
+      expect(byName.get('Replace smoke alarm')).toEqual({
+        basis: 'calendar',
+        months: 120,
+      });
+      expect(byName.get('Replace CO alarm')).toEqual({
+        basis: 'calendar',
+        months: 60,
+      });
+      expect(byName.get('Replace LP gas detector')).toEqual({
+        basis: 'calendar',
+        months: 60,
+      });
+    });
+
+    it('ships no onboard-generator task (cut in #34)', () => {
+      for (const task of SEED_TASKS) {
+        expect(task.name.toLowerCase()).not.toContain('generator');
+      }
+    });
+
+    it('sets no seed last-performed or one-time marker — the owner anchors age-based tasks in-app', () => {
+      for (const task of SEED_TASKS) {
+        expect(task).not.toHaveProperty('lastPerformed');
+        expect(task).not.toHaveProperty('oneTime');
       }
     });
 
@@ -31,6 +84,15 @@ describe('seed content (docs/seed-content.md)', () => {
       }
     });
 
+    it('carries only metric units — no imperial mi and no odometer field', () => {
+      for (const task of SEED_TASKS) {
+        for (const field of task.fieldSchema) {
+          expect(field.unit).not.toBe('mi');
+          expect(field.name.toLowerCase()).not.toBe('odometer');
+        }
+      }
+    });
+
     it('every task ships with a non-blank description (issue #26)', () => {
       for (const task of SEED_TASKS) {
         expect(task.description.trim()).not.toBe('');
@@ -42,20 +104,22 @@ describe('seed content (docs/seed-content.md)', () => {
       expect(byName.get('Repack / inspect wheel bearings')).toBe(
         'Worn or dry wheel bearings can seize or fail at speed, risking a wheel coming off the trailer. How: 1) Raise and support the axle so the wheel spins free; 2) Pull the hub and check the bearings and races for pitting, discoloration, or roughness; 3) Clean and repack (or replace) the bearings with fresh grease; 4) Reassemble, set the bearing preload, and confirm the wheel spins smoothly with no play.',
       );
-      expect(byName.get('Test smoke / CO / propane alarms')).toBe(
-        'Smoke, CO, and propane alarms are life-safety devices that fail silently, so they must be tested and dated. How: 1) Press the test button on each alarm to confirm it sounds; 2) Check the manufacture or expiration date and replace expired units; 3) Replace batteries where applicable; 4) Confirm each detector is securely mounted and unobstructed.',
+      expect(byName.get('Test smoke / CO / LP alarms')).toBe(
+        'Smoke, CO, and propane alarms are life-safety devices that fail silently, so they must be tested regularly. How: 1) Press the test button on each alarm to confirm it sounds; 2) Replace batteries where applicable; 3) Confirm each detector is securely mounted and unobstructed; 4) Note any unit that fails to sound for replacement.',
       );
     });
 
-    it('carries the doc’s measured fields with their units', () => {
+    it('carries the doc’s measured fields with their metric units', () => {
       const byName = new Map(SEED_TASKS.map((t) => [t.name, t.fieldSchema]));
-      expect(byName.get('Inspect tires — pressure, tread, age')).toEqual([
-        { name: 'tread depth', type: 'number', required: false, unit: '/32"' },
-        { name: 'DOT date', type: 'text', required: false },
-        { name: 'set pressure', type: 'number', required: false, unit: 'psi' },
+      expect(byName.get('Check tire pressure & tread')).toEqual([
+        { name: 'tread depth', type: 'number', required: false, unit: 'mm' },
+        { name: 'set pressure', type: 'number', required: false, unit: 'kPa' },
       ]);
       expect(byName.get('Battery service — charge & terminals')).toEqual([
         { name: 'resting voltage', type: 'number', required: false, unit: 'V' },
+      ]);
+      expect(byName.get('Winterize water system')).toEqual([
+        { name: 'antifreeze used', type: 'number', required: false, unit: 'L' },
       ]);
     });
   });
@@ -98,22 +162,35 @@ describe('seed content (docs/seed-content.md)', () => {
       }
     });
 
-    it('pre-links the doc’s 16 ⚙︎ markers: 12 on Spring opening, 4 on Fall closing', () => {
+    it('pre-links the doc’s ⚙︎ markers: 16 on Spring opening, 5 on Fall closing', () => {
       const linksOf = (name: string): number => {
         const checklist = SEED_CHECKLISTS.find((c) => c.name === name);
         expect(checklist).toBeDefined();
         return (checklist?.steps ?? []).filter((s) => s.task !== undefined)
           .length;
       };
-      expect(linksOf('Spring opening')).toBe(12);
-      expect(linksOf('Fall closing / winterization')).toBe(4);
+      expect(linksOf('Spring opening')).toBe(16);
+      expect(linksOf('Fall closing / winterization')).toBe(5);
       const total = SEED_CHECKLISTS.flatMap((c) => c.steps).filter(
         (s) => s.task !== undefined,
       ).length;
-      expect(total).toBe(16);
+      expect(total).toBe(21);
     });
 
-    it('puts the usage readings on Departure as ✎ custom fields', () => {
+    it('carries the event-driven checks as Departure/Pre-trip steps, not tracked tasks (#34)', () => {
+      const taskNames = new Set(SEED_TASKS.map((t) => t.name));
+      // None of these live as maintenance tasks.
+      expect(taskNames).not.toContain('Re-torque lug nuts');
+      const stepText = SEED_CHECKLISTS.flatMap((c) => c.steps).map(
+        (s) => s.text,
+      );
+      const joined = stepText.join('\n').toLowerCase();
+      expect(joined).toContain('breakaway');
+      expect(joined).toContain('safety chains');
+      expect(joined).toContain('re-torque lug nuts');
+    });
+
+    it('puts the usage readings on Departure as ✎ custom fields — no odometer', () => {
       const departure = SEED_CHECKLISTS.find((c) => c.name === 'Departure');
       const fieldSteps = (departure?.steps ?? []).filter(
         (s) => s.fieldSchema !== undefined,
@@ -128,7 +205,6 @@ describe('seed content (docs/seed-content.md)', () => {
           },
         ],
         [{ name: 'Gray / black tank levels', type: 'text', required: false }],
-        [{ name: 'Odometer', type: 'number', required: false, unit: 'mi' }],
       ]);
     });
 

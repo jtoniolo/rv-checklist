@@ -51,27 +51,28 @@ describe('SeedService.seedStarterContent', () => {
     expect(rigs[0]?.nickname).toBe(SEED_RIG_NICKNAME);
   });
 
-  it('creates the 16 maintenance tasks with intervals and field schemas', async () => {
+  it('creates the 35 maintenance tasks with per-task intervals and field schemas', async () => {
     const { seed, repos } = build();
 
     await seed.seedStarterContent(owner);
 
     const [rig] = await repos.rigs.listByOwner(owner);
     const tasks = await repos.tasks.listByRig(rig?.id ?? '');
-    expect(tasks).toHaveLength(16);
+    expect(tasks).toHaveLength(35);
     // Every seeded task carries its why/how description through to the row
     // (issue #26) — the detail screen renders it.
     for (const task of tasks) {
       expect(task.description?.trim()).toBeTruthy();
     }
+    // The wheel-bearing job is distance-based (20,000 km), not the flat calendar
+    // interval, and its ad-hoc odometer field is gone (#34, ADR-0015).
     const bearings = tasks.find(
       (t) => t.name === 'Repack / inspect wheel bearings',
     );
-    expect(bearings?.interval).toEqual({ basis: 'calendar', months: 12 });
+    expect(bearings?.interval).toEqual({ basis: 'distance', km: 20_000 });
     expect(bearings?.description).toContain('Worn or dry wheel bearings');
     expect(bearings?.fieldSchema).toEqual([
       { name: 'grease type', type: 'text', required: false },
-      { name: 'odometer', type: 'number', required: false, unit: 'mi' },
     ]);
   });
 
@@ -86,10 +87,19 @@ describe('SeedService.seedStarterContent', () => {
     const departure = checklists.find((c) => c.name === 'Departure');
     expect(departure?.tags).toEqual(['procedure', 'departure']);
     expect(departure?.steps[0]?.text).toBe('Retract / stow slides');
-    // The ✎ usage readings ride on Departure as plain-step fields.
-    const odometer = departure?.steps.find((s) => s.text === 'Odometer');
-    expect(odometer?.fieldSchema).toEqual([
-      { name: 'Odometer', type: 'number', required: false, unit: 'mi' },
+    // The ✎ usage readings ride on Departure as plain-step fields; the ad-hoc
+    // odometer reading is dropped for the rig's structured Distance (#34).
+    expect(departure?.steps.some((s) => s.text === 'Odometer')).toBe(false);
+    const freshWater = departure?.steps.find(
+      (s) => s.text === 'Fresh water on board',
+    );
+    expect(freshWater?.fieldSchema).toEqual([
+      {
+        name: 'Fresh water on board',
+        type: 'number',
+        required: false,
+        unit: '%',
+      },
     ]);
   });
 
@@ -113,7 +123,7 @@ describe('SeedService.seedStarterContent', () => {
     const linked = checklists
       .flatMap((c) => c.steps)
       .filter((s) => s.taskId !== undefined);
-    expect(linked).toHaveLength(16);
+    expect(linked).toHaveLength(21);
     for (const step of linked) {
       expect(tasksById.has(step.taskId ?? '')).toBe(true);
     }

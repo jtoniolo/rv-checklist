@@ -22,7 +22,7 @@ export abstract class StarterContentSeeder {
 /**
  * The seed loader (issue #19): gives a brand-new owner a towable travel
  * trailer's worth of starter content from `docs/seed-content.md` — one rig,
- * 16 maintenance tasks, and 9 checklists whose ⚙︎ procedure steps are
+ * 35 maintenance tasks, and 9 checklists whose ⚙︎ procedure steps are
  * pre-linked to the tasks they perform. Everything is created through the same
  * use-cases as user content ({@link RigService}, {@link MaintenanceTaskService},
  * {@link ChecklistService}), so the seeds are ordinary editable rows — no
@@ -50,7 +50,7 @@ export class SeedService extends StarterContentSeeder {
         rigId: rig.id,
         name: task.name,
         description: task.description,
-        interval: { basis: 'calendar', months: task.intervalMonths },
+        interval: task.interval,
         fieldSchema: task.fieldSchema,
       });
       taskIdsByName.set(task.name, created.id);
