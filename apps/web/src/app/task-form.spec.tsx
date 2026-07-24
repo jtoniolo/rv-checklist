@@ -182,6 +182,82 @@ describe('TaskForm', () => {
     );
   });
 
+  // The manual last-performed anchor (issue #33): a calendar-only date control.
+  it('submits a manual last-performed anchor on a calendar task', () => {
+    const onSubmit = jest.fn();
+    render(
+      <TaskForm
+        submitLabel="Add task"
+        pending={false}
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Repack wheel bearings' },
+    });
+    fireEvent.change(screen.getByLabelText(/^Repeat every \(months\)/), {
+      target: { value: '12' },
+    });
+    fireEvent.change(screen.getByLabelText('Last performed'), {
+      target: { value: '2025-07-21' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interval: { basis: 'calendar', months: 12 },
+        lastPerformed: '2025-07-21',
+      }),
+    );
+  });
+
+  it('shows the last-performed control for the calendar basis only', () => {
+    const task: MaintenanceTask = {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      rigId: '550e8400-e29b-41d4-a716-446655440002',
+      name: 'Repack wheel bearings',
+      interval: { basis: 'distance', km: 20_000 },
+      fieldSchema: [],
+    };
+    render(
+      <TaskForm
+        initial={task}
+        submitLabel="Save changes"
+        pending={false}
+        onSubmit={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    // Distance basis: no manual anchor (a distance interval has none).
+    expect(screen.queryByLabelText('Last performed')).toBeNull();
+  });
+
+  it('pre-fills the last-performed anchor when editing a calendar task', () => {
+    const task: MaintenanceTask = {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      rigId: '550e8400-e29b-41d4-a716-446655440002',
+      name: 'Flush water heater',
+      interval: { basis: 'calendar', months: 6 },
+      lastPerformed: '2025-07-21',
+      fieldSchema: [],
+    };
+    render(
+      <TaskForm
+        initial={task}
+        submitLabel="Save changes"
+        pending={false}
+        onSubmit={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    const lastPerformed = screen.getByLabelText('Last performed');
+    expect((lastPerformed as HTMLInputElement).value).toBe('2025-07-21');
+  });
+
   it('pre-checks one-time and hides the interval when editing a one-time task', () => {
     const task: MaintenanceTask = {
       id: '550e8400-e29b-41d4-a716-446655440001',

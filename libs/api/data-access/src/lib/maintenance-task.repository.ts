@@ -47,6 +47,11 @@ function toTask(entity: MaintenanceTaskEntity): MaintenanceTask {
     // TRUE means one-time — due from creation, done once (issue #29). Absent
     // otherwise, mirroring the wire model's absent-means-absent marker.
     ...(entity.oneTime && { oneTime: true }),
+    // SQL NULL means no manual anchor — absent means absent (issue #33). Only a
+    // calendar task ever has one; the API service upholds that on the way in.
+    ...(entity.lastPerformed !== null && {
+      lastPerformed: entity.lastPerformed,
+    }),
     fieldSchema: entity.fieldSchema,
   };
 }
@@ -74,6 +79,10 @@ function toRow(task: MaintenanceTask): Partial<MaintenanceTaskEntity> {
     // The one-time marker persists as a plain boolean (absent on the wire ⇒
     // false in the row); it never coexists with an interval (issue #29).
     oneTime: task.oneTime ?? false,
+    // The manual anchor flattens to a nullable date column (issue #33); NULL
+    // must be written explicitly so a cleared anchor persists (see above).
+    // eslint-disable-next-line unicorn/no-null
+    lastPerformed: task.lastPerformed ?? null,
     fieldSchema: task.fieldSchema,
   };
 }

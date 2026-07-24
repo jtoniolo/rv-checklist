@@ -141,6 +141,51 @@ describe('MaintenanceTaskSchema', () => {
     ).toBe(false);
   });
 
+  it('parses a manual last-performed anchor on a calendar task (issue #33)', () => {
+    const anchored = { ...task, lastPerformed: '2025-07-21' };
+    expect(MaintenanceTaskSchema.parse(anchored)).toEqual(anchored);
+  });
+
+  it('parses a task with no last-performed — absent means absent', () => {
+    const parsed = MaintenanceTaskSchema.parse(task);
+    expect('lastPerformed' in parsed).toBe(false);
+  });
+
+  it('rejects last-performed on a distance task — the anchor is calendar-only', () => {
+    expect(
+      MaintenanceTaskSchema.safeParse({
+        ...task,
+        interval: { basis: 'distance', km: 20_000 },
+        lastPerformed: '2025-07-21',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects last-performed on an untracked task — no calendar interval to anchor', () => {
+    expect(
+      MaintenanceTaskSchema.safeParse({
+        id: id(1),
+        rigId: id(2),
+        name: 'Untracked',
+        lastPerformed: '2025-07-21',
+        fieldSchema: [],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects last-performed on a one-time task — the two never combine', () => {
+    expect(
+      MaintenanceTaskSchema.safeParse({
+        id: id(1),
+        rigId: id(2),
+        name: 'One-time',
+        oneTime: true,
+        lastPerformed: '2025-07-21',
+        fieldSchema: [],
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects a photo field', () => {
     expect(
       MaintenanceTaskSchema.safeParse({
@@ -202,6 +247,26 @@ describe('CreateMaintenanceTaskSchema', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('accepts a manual last-performed anchor on a calendar create (issue #33)', () => {
+    const parsed = CreateMaintenanceTaskSchema.parse({
+      rigId: id(2),
+      name: 'Repack bearings',
+      interval: { basis: 'calendar', months: 12 },
+      lastPerformed: '2025-07-21',
+    });
+    expect(parsed.lastPerformed).toBe('2025-07-21');
+  });
+
+  it('rejects a create with last-performed but no calendar interval', () => {
+    expect(
+      CreateMaintenanceTaskSchema.safeParse({
+        rigId: id(2),
+        name: 'Untracked',
+        lastPerformed: '2025-07-21',
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe('UpdateMaintenanceTaskSchema', () => {
@@ -234,6 +299,18 @@ describe('UpdateMaintenanceTaskSchema', () => {
   it('accepts `oneTime: null` — the removal marker for the one-time flag', () => {
     // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
     const removal = { oneTime: null };
+    expect(UpdateMaintenanceTaskSchema.parse(removal)).toEqual(removal);
+  });
+
+  it('accepts setting a manual last-performed anchor (issue #33)', () => {
+    expect(
+      UpdateMaintenanceTaskSchema.parse({ lastPerformed: '2025-07-21' }),
+    ).toEqual({ lastPerformed: '2025-07-21' });
+  });
+
+  it('accepts `lastPerformed: null` — the removal marker for the manual anchor', () => {
+    // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+    const removal = { lastPerformed: null };
     expect(UpdateMaintenanceTaskSchema.parse(removal)).toEqual(removal);
   });
 });

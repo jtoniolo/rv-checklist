@@ -5,6 +5,7 @@ import {
   SUPPORTED_FIELD_TYPES,
   type FieldSchema,
   type Interval,
+  type IsoDate,
   type MaintenanceTask,
   type SupportedFieldType,
 } from '@rv-checklist/domain';
@@ -53,6 +54,13 @@ export interface TaskFormValues {
   readonly interval: Interval | undefined;
   /** Marks a one-time task — due from creation, done once (issue #29). */
   readonly oneTime: boolean;
+  /**
+   * The manual last-performed anchor (issue #33) — a hand-set date for a
+   * *calendar* interval, or `undefined` when unset or the basis isn't calendar.
+   * A real completion still supersedes it; the due engine takes the later of the
+   * two. Emitted only for a calendar interval, never distance or one-time.
+   */
+  readonly lastPerformed: IsoDate | undefined;
   readonly fieldSchema: FieldSchema;
 }
 
@@ -129,6 +137,11 @@ export function TaskForm({
     initial?.interval?.basis === 'distance' ? String(initial.interval.km) : '',
   );
   const [oneTime, setOneTime] = useState(initial?.oneTime === true);
+  // The manual last-performed anchor (issue #33) — a calendar-only date; blank
+  // means unset. Shown and emitted only for the calendar basis.
+  const [lastPerformedText, setLastPerformedText] = useState(
+    initial?.lastPerformed ?? '',
+  );
   const [fields, setFields] = useState<FieldDraft[]>(
     () => initial?.fieldSchema.map(toFieldDraft) ?? [],
   );
@@ -170,6 +183,13 @@ export function TaskForm({
         : basis === 'calendar'
           ? { basis: 'calendar', months: amount }
           : { basis: 'distance', km: amount };
+    // The manual anchor rides only with a calendar interval (issue #33): emit it
+    // only when this is a calendar interval and a date was set, so the form
+    // never sends a stray anchor on a distance, one-time, or untracked task.
+    const lastPerformed: IsoDate | undefined =
+      interval?.basis === 'calendar' && lastPerformedText.trim() !== ''
+        ? lastPerformedText
+        : undefined;
     const parsed = FieldSchemaSchema.safeParse(
       fields.map((draft) => toFieldDefinition(draft)),
     );
@@ -185,6 +205,7 @@ export function TaskForm({
       description: trimmedDescription === '' ? undefined : trimmedDescription,
       interval,
       oneTime,
+      lastPerformed,
       fieldSchema: parsed.data,
     });
   };
@@ -262,23 +283,43 @@ export function TaskForm({
           </Label>
 
           {basis === 'calendar' ? (
-            <Label className={labelClass}>
-              Repeat every (months)
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                className="w-32"
-                value={monthsText}
-                onChange={(e) => {
-                  setMonthsText(e.target.value);
-                }}
-                placeholder="12"
-              />
-              <span className="text-xs">
-                Leave blank for a one-off task — it won’t be tracked as due.
-              </span>
-            </Label>
+            <>
+              <Label className={labelClass}>
+                Repeat every (months)
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  className="w-32"
+                  value={monthsText}
+                  onChange={(e) => {
+                    setMonthsText(e.target.value);
+                  }}
+                  placeholder="12"
+                />
+                <span className="text-xs">
+                  Leave blank for a one-off task — it won’t be tracked as due.
+                </span>
+              </Label>
+
+              <Label className={labelClass}>
+                Last performed
+                <Input
+                  type="date"
+                  className="w-40"
+                  value={lastPerformedText}
+                  onChange={(e) => {
+                    setLastPerformedText(e.target.value);
+                  }}
+                  aria-label="Last performed"
+                />
+                <span className="text-xs">
+                  Optional — anchor the schedule to when it was last done,
+                  before any log entry. A logged completion takes over from
+                  here.
+                </span>
+              </Label>
+            </>
           ) : (
             <Label className={labelClass}>
               Repeat every (km)

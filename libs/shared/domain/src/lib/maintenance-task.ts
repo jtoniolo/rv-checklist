@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdSchema } from './common.js';
+import { IdSchema, IsoDateSchema } from './common.js';
 import { FieldSchemaSchema } from './field-schema.js';
 
 /**
@@ -51,6 +51,15 @@ export type Interval = z.infer<typeof IntervalSchema>;
  * `description` is optional free text (multi-line): why the task needs doing
  * and how to perform it (issue #25). Absent means absent — blank (empty or
  * whitespace-only) is rejected so no placeholder is ever stored.
+ *
+ * `lastPerformed` is the optional **manual** last-performed date (issue #33):
+ * an owner's hand-set anchor for a **calendar** interval, needing no Log Entry —
+ * a task done before the app, a seasonal task anchored to its season, an
+ * age-based replacement anchored to a manufacture date. It rides only with a
+ * calendar interval (never a distance interval or the one-time marker); a real
+ * completion always supersedes it (the due engine takes the later of the two,
+ * ADR-0015), so the owner corrects a wrong completion by editing the Log Entry,
+ * never by forcing this anchor earlier.
  */
 
 /** Trimmed, non-blank free text — the description's shape wherever it appears. */
@@ -78,6 +87,25 @@ const ONE_TIME_INTERVAL_ISSUE = {
   path: ['oneTime'],
 };
 
+/**
+ * The invariant guard: a manual `lastPerformed` anchor rides only with a
+ * calendar interval (issue #33) — a distance interval anchors solely off a
+ * logged Distance reading (ADR-0015), and an untracked or one-time task has no
+ * interval to anchor. Absent `lastPerformed` is always fine.
+ */
+function isLastPerformedCalendarOnly(task: {
+  readonly interval?: { readonly basis?: unknown } | undefined;
+  readonly lastPerformed?: unknown;
+}): boolean {
+  return (
+    task.lastPerformed === undefined || task.interval?.basis === 'calendar'
+  );
+}
+const LAST_PERFORMED_CALENDAR_ISSUE = {
+  message: 'last performed only anchors a calendar interval',
+  path: ['lastPerformed'],
+};
+
 export const MaintenanceTaskSchema = z
   .object({
     id: IdSchema,
@@ -86,9 +114,11 @@ export const MaintenanceTaskSchema = z
     description: DescriptionSchema.optional(),
     interval: IntervalSchema.optional(),
     oneTime: OneTimeSchema.optional(),
+    lastPerformed: IsoDateSchema.optional(),
     fieldSchema: FieldSchemaSchema,
   })
-  .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE);
+  .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE)
+  .refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
 export type MaintenanceTask = z.infer<typeof MaintenanceTaskSchema>;
 
 /** Create body — `id` is server-assigned; the field schema defaults to empty. */
@@ -99,18 +129,23 @@ export const CreateMaintenanceTaskSchema = z
     description: DescriptionSchema.optional(),
     interval: IntervalSchema.optional(),
     oneTime: OneTimeSchema.optional(),
+    lastPerformed: IsoDateSchema.optional(),
     fieldSchema: FieldSchemaSchema.default([]),
   })
-  .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE);
+  .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE)
+  .refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
 export type CreateMaintenanceTask = z.infer<typeof CreateMaintenanceTaskSchema>;
 
 /**
  * Edit body — any subset of the editable fields (rig membership never changes).
  * An explicit `null` removes an optional field — `interval: null` stops
  * due-status tracking, `oneTime: null` clears the one-time marker, `description:
- * null` clears the description — while an omitted key leaves the field
- * unchanged. `interval` and `oneTime` stay mutually exclusive: the service drops
- * whichever the edit didn't set when a change would otherwise leave both.
+ * null` clears the description, `lastPerformed: null` clears the manual anchor
+ * (issue #33) — while an omitted key leaves the field unchanged. `interval` and
+ * `oneTime` stay mutually exclusive: the service drops whichever the edit didn't
+ * set when a change would otherwise leave both. `lastPerformed` anchors a
+ * calendar interval only, so the service also drops it when a change leaves the
+ * task without one — the calendar-only invariant the full schema guards.
  */
 export const UpdateMaintenanceTaskSchema = z
   .object({
@@ -118,6 +153,7 @@ export const UpdateMaintenanceTaskSchema = z
     description: DescriptionSchema.nullable(),
     interval: IntervalSchema.nullable(),
     oneTime: OneTimeSchema.nullable(),
+    lastPerformed: IsoDateSchema.nullable(),
     fieldSchema: FieldSchemaSchema,
   })
   .partial();
