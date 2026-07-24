@@ -254,6 +254,96 @@ describe('MaintenanceTaskService', () => {
       );
     });
 
+    // The manual last-performed anchor (issue #33) rides only with a calendar
+    // interval; the update path sets, clears, and drops it accordingly.
+    it('sets a manual last-performed anchor on a calendar task', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, sealsInput);
+
+      const updated = await service.update(alice, task.id, {
+        lastPerformed: '2025-07-21',
+      });
+
+      expect(updated.lastPerformed).toBe('2025-07-21');
+    });
+
+    it('clears the manual anchor with an explicit null', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        lastPerformed: '2025-07-21',
+      });
+
+      const updated = await service.update(alice, task.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        lastPerformed: null,
+      });
+
+      expect(updated.lastPerformed).toBeUndefined();
+    });
+
+    it('drops the manual anchor when the interval is removed (no calendar interval left)', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        lastPerformed: '2025-07-21',
+      });
+
+      const updated = await service.update(alice, task.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        interval: null,
+      });
+
+      expect(updated.interval).toBeUndefined();
+      expect(updated.lastPerformed).toBeUndefined();
+    });
+
+    it('drops the manual anchor when switching to a distance basis (issue #33)', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        lastPerformed: '2025-07-21',
+      });
+
+      const updated = await service.update(alice, task.id, {
+        interval: { basis: 'distance' as const, km: 20_000 },
+      });
+
+      expect(updated.interval).toEqual({ basis: 'distance', km: 20_000 });
+      expect(updated.lastPerformed).toBeUndefined();
+    });
+
+    it('drops the manual anchor when the task is made one-time', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        lastPerformed: '2025-07-21',
+      });
+
+      const updated = await service.update(alice, task.id, {
+        oneTime: true,
+        // eslint-disable-next-line unicorn/no-null -- the form sends the coherent pair
+        interval: null,
+      });
+
+      expect(updated.oneTime).toBe(true);
+      expect(updated.lastPerformed).toBeUndefined();
+    });
+
+    it('keeps the manual anchor when the calendar interval is only re-tuned', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        lastPerformed: '2025-07-21',
+      });
+
+      const updated = await service.update(alice, task.id, {
+        interval: { basis: 'calendar' as const, months: 6 },
+      });
+
+      expect(updated.lastPerformed).toBe('2025-07-21');
+    });
+
     it('clears the description with an explicit null, like the interval', async () => {
       const { service } = await makeService();
       const task = await service.create(alice, {

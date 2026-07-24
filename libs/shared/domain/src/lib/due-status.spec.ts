@@ -100,6 +100,91 @@ describe('dueStatus — computed on read from last completion + interval (ADR-00
   });
 });
 
+// The manual last-performed anchor (issue #33): an owner's hand-set date, needing
+// no completion, anchors a calendar interval. A real completion always supersedes
+// it — the engine anchors off the *later* of the two, `max(lastPerformed, entry)`.
+describe('dueStatus — manual last-performed anchor (issue #33)', () => {
+  it('anchors a calendar interval off the manual date when there is no completion', () => {
+    // No Log Entry, but the owner set last-performed to 2025-07-21; 12 months
+    // ⇒ due 2026-07-21, so on 2026-07-22 it is overdue — not never-performed.
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: undefined,
+        lastPerformed: '2025-07-21',
+        today: '2026-07-22',
+      }),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  it('reports due/ok from the manual anchor with no completion', () => {
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: undefined,
+        lastPerformed: '2025-07-21',
+        today: '2026-07-20',
+      }),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  it('lets a newer completion override an earlier manual anchor', () => {
+    // Manual anchor 2025-07-21, but a completion on 2026-01-15 is later, so the
+    // due date is measured from the completion: due 2027-01-15, ok on 2026-07-22.
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: '2026-01-15',
+        lastPerformed: '2025-07-21',
+        today: '2026-07-22',
+      }),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'calendar',
+      lastPerformedOn: '2026-01-15',
+      dueOn: '2027-01-15',
+    });
+  });
+
+  it('keeps the manual anchor when it is later than the newest completion', () => {
+    // The manual anchor is the later of the two, so it wins over an older entry.
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: '2024-01-01',
+        lastPerformed: '2025-07-21',
+        today: '2026-07-20',
+      }),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  it('is never-performed with a calendar interval and neither anchor', () => {
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: undefined,
+        lastPerformed: undefined,
+        today: '2026-07-21',
+      }),
+    ).toEqual({ kind: 'never-performed' });
+  });
+});
+
 // A distance task (issue #32) is measured against the rig's Distance, not the
 // calendar. It anchors off the newest completion's Distance reading and is due
 // once the rig reaches that reading plus the interval; with no rig Distance or

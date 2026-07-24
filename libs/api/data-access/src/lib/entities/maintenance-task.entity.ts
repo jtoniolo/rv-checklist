@@ -22,7 +22,11 @@ import {
  * due/overdue is computed on read (ADR-0005), so no due date is persisted.
  * `one_time` is the one-time marker (issue #29): TRUE means the task is due from
  * creation and deletes itself on completion; it and `interval_months` are
- * mutually exclusive. `description` is the optional free-text why/how (issue
+ * mutually exclusive. `last_performed` is the optional manual last-performed
+ * anchor (issue #33): a hand-set date for a *calendar* interval, needing no log
+ * entry; SQL NULL when the owner set none. It rides only with a calendar
+ * interval — the invariant is enforced in the domain schema and API service, not
+ * the DB. `description` is the optional free-text why/how (issue
  * #25); SQL NULL means the task has none — no placeholder is ever stored.
  * `field_schema` is the task's own custom-field definitions as JSONB
  * (ADR-0004): embedded owned data, validated by the app, never by the schema.
@@ -55,6 +59,9 @@ export class MaintenanceTaskEntity {
 
   @Column({ name: 'one_time', type: 'boolean', default: false })
   oneTime!: boolean;
+
+  @Column({ name: 'last_performed', type: 'date', nullable: true })
+  lastPerformed!: string | null;
 
   @Column({ name: 'field_schema', type: 'jsonb', default: () => "'[]'" })
   fieldSchema!: FieldSchema;

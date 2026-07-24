@@ -77,6 +77,12 @@ export class MaintenanceTaskService {
    * edit would leave both set, whichever the edit itself set wins and the other
    * is dropped, so the saved task never holds both — the invariant the wire
    * schema guards is upheld here before the write.
+   *
+   * `lastPerformed` is the manual calendar anchor (issue #33): `null` clears it,
+   * a date sets it. It rides only with a calendar interval, so once the edit's
+   * interval/one-time changes have settled, it is dropped whenever the task no
+   * longer has a calendar interval — the calendar-only invariant the full schema
+   * guards, upheld here before the write.
    */
   async update(
     ownerId: Id,
@@ -108,6 +114,17 @@ export class MaintenanceTaskService {
       } else {
         delete next.oneTime;
       }
+    }
+    if (changes.lastPerformed === null) {
+      delete next.lastPerformed;
+    } else if (changes.lastPerformed !== undefined) {
+      next.lastPerformed = changes.lastPerformed;
+    }
+    // The manual anchor rides only with a calendar interval (issue #33): drop it
+    // whenever this edit leaves the task without one (interval removed, switched
+    // to distance, or made one-time), so the saved task never holds a stray anchor.
+    if (next.interval?.basis !== 'calendar') {
+      delete next.lastPerformed;
     }
     if (changes.description === null) {
       delete next.description;

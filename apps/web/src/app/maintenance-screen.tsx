@@ -104,6 +104,9 @@ export function MaintenanceScreen({
       lastPerformedOn: latestPerformedOn(entries),
       today,
       isOneTime: task.oneTime,
+      // The owner's manual anchor (issue #33): a calendar interval measures from
+      // the later of this and the newest completion — the engine takes the max.
+      lastPerformed: task.lastPerformed,
       // The rig's current Distance is the yardstick a distance task measures
       // against (ADR-0006 — the read already resolves the rig for ownership).
       rigDistanceKm: activeRig.distanceKm,
@@ -137,6 +140,11 @@ export function MaintenanceScreen({
       ...(values.oneTime
         ? { oneTime: true }
         : values.interval !== undefined && { interval: values.interval }),
+      // The manual anchor rides only with a calendar interval (issue #33); the
+      // form emits it only then, so passing it through stays coherent.
+      ...(values.lastPerformed !== undefined && {
+        lastPerformed: values.lastPerformed,
+      }),
       fieldSchema: values.fieldSchema,
     }).unwrap();
     setAdding(false);
@@ -166,6 +174,11 @@ export function MaintenanceScreen({
             : values.interval,
         // eslint-disable-next-line unicorn/no-null
         oneTime: values.oneTime ? true : null,
+        // The manual anchor is calendar-only (issue #33): send the date when the
+        // form emitted one, else null to clear it. The service also drops it on
+        // its own when a change leaves the task without a calendar interval.
+        // eslint-disable-next-line unicorn/no-null
+        lastPerformed: values.lastPerformed ?? null,
         fieldSchema: values.fieldSchema,
       },
     }).unwrap();

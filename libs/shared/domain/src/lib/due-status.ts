@@ -45,7 +45,12 @@ export type DueStatus =
  * - `interval` — the task's Interval (a tagged union on `basis`), or `undefined`
  *   when untracked;
  * - `lastPerformedOn` — the newest log entry's date (see {@link latestPerformedOn}),
- *   the anchor a calendar interval's next due is measured from;
+ *   one of the two anchors a calendar interval's next due is measured from;
+ * - `lastPerformed` — the task's optional **manual** last-performed anchor (issue
+ *   #33), an owner's hand-set date needing no completion. A calendar interval
+ *   anchors off the *later* of this and `lastPerformedOn` — a real completion
+ *   always supersedes the manual guess. Ignored by a distance interval (it never
+ *   carries a manual anchor, ADR-0015);
  * - `today` — supplied by the caller;
  * - `isOneTime` — the task's one-time marker (issue #29): a one-time task needs
  *   attention from creation, so it short-circuits ahead of the interval arithmetic;
@@ -60,6 +65,7 @@ export interface DueStatusInput {
   readonly lastPerformedOn: IsoDate | undefined;
   readonly today: IsoDate;
   readonly isOneTime?: boolean;
+  readonly lastPerformed?: IsoDate | undefined;
   readonly rigDistanceKm?: number | undefined;
   readonly lastReadingKm?: number | undefined;
 }
@@ -70,6 +76,7 @@ export function dueStatus({
   lastPerformedOn,
   today,
   isOneTime = false,
+  lastPerformed,
   rigDistanceKm,
   lastReadingKm,
 }: DueStatusInput): DueStatus {
@@ -101,14 +108,31 @@ export function dueStatus({
           : 'overdue';
     return { kind, basis: 'distance', dueAtKm, currentKm: rigDistanceKm };
   }
-  // A calendar interval anchors off the last completion's date (ADR-0015).
-  if (lastPerformedOn === undefined) {
+  // A calendar interval anchors off the *later* of the newest completion's date
+  // and the owner's manual anchor (issue #33) — a real completion always
+  // supersedes the manual guess. Either or both may be absent.
+  const anchor = laterIsoDate(lastPerformedOn, lastPerformed);
+  if (anchor === undefined) {
     return { kind: 'never-performed' };
   }
-  const dueOn = addMonths(lastPerformedOn, interval.months);
+  const dueOn = addMonths(anchor, interval.months);
   // IsoDates compare correctly as strings ('YYYY-MM-DD' is lexicographic).
   const kind = today < dueOn ? 'ok' : today === dueOn ? 'due' : 'overdue';
-  return { kind, basis: 'calendar', lastPerformedOn, dueOn };
+  return { kind, basis: 'calendar', lastPerformedOn: anchor, dueOn };
+}
+
+/**
+ * The later of two optional IsoDates, or `undefined` when both are absent — the
+ * `max(lastPerformed, newest entry)` a calendar interval anchors off (issue #33).
+ * IsoDates compare correctly as strings ('YYYY-MM-DD' is lexicographic).
+ */
+function laterIsoDate(
+  a: IsoDate | undefined,
+  b: IsoDate | undefined,
+): IsoDate | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return a >= b ? a : b;
 }
 
 /**
