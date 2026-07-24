@@ -15,13 +15,20 @@ describe('IntervalSchema', () => {
     });
   });
 
+  it('parses a distance interval (issue #32)', () => {
+    expect(IntervalSchema.parse({ basis: 'distance', km: 20_000 })).toEqual({
+      basis: 'distance',
+      km: 20_000,
+    });
+  });
+
   it('rejects an untagged { months } interval — a basis is required (ADR-0015)', () => {
     expect(IntervalSchema.safeParse({ months: 12 }).success).toBe(false);
   });
 
   it('rejects an unknown basis', () => {
     expect(
-      IntervalSchema.safeParse({ basis: 'distance', km: 20_000 }).success,
+      IntervalSchema.safeParse({ basis: 'runtime', hours: 100 }).success,
     ).toBe(false);
   });
 
@@ -29,11 +36,17 @@ describe('IntervalSchema', () => {
     expect(
       IntervalSchema.safeParse({ basis: 'calendar', months: 0 }).success,
     ).toBe(false);
+    expect(IntervalSchema.safeParse({ basis: 'distance', km: 0 }).success).toBe(
+      false,
+    );
   });
 
   it('rejects a fractional interval', () => {
     expect(
       IntervalSchema.safeParse({ basis: 'calendar', months: 1.5 }).success,
+    ).toBe(false);
+    expect(
+      IntervalSchema.safeParse({ basis: 'distance', km: 500.5 }).success,
     ).toBe(false);
   });
 });

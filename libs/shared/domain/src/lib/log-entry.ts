@@ -36,6 +36,11 @@ export type LoggedField = z.infer<typeof LoggedFieldSchema>;
  * entry outlives its task (issue #28). When the task is gone `taskId` is `null` — the entry
  * survives, owned via its still-present `rigId` and labeled by its snapshotted `taskName` —
  * and stays individually editable and deletable. A live entry always names a real task.
+ *
+ * `distanceKm` is the rig's **Distance** reading (km) at the time performed
+ * (CONTEXT.md, issue #32): a whole, non-negative kilometre count, the anchor a
+ * distance-based Interval's next due is measured from. Optional — absent means
+ * the completion recorded no reading (a distance task then reads `reading-needed`).
  */
 export const LogEntrySchema = z.object({
   id: IdSchema,
@@ -43,6 +48,7 @@ export const LogEntrySchema = z.object({
   rigId: IdSchema,
   taskName: z.string().min(1),
   performedOn: IsoDateSchema,
+  distanceKm: z.number().int().nonnegative().optional(),
   fields: z.array(LoggedFieldSchema).superRefine((fields, ctx) => {
     for (const { name, index } of duplicateFieldNameIssues(fields)) {
       ctx.addIssue({
@@ -95,10 +101,13 @@ export function toLoggedFields(
  * Edit body — a past entry stays editable (correct a date or a value). The
  * snapshotted `taskName` is deliberately absent: renaming happens on the task,
  * and the entry's frozen name (issue #27) is never rewritten through an edit.
+ * `distanceKm` is additionally nullable: an explicit `null` clears a recorded
+ * Distance reading (issue #32), while an omitted key leaves it unchanged.
  */
 export const UpdateLogEntrySchema = z
   .object({
     performedOn: IsoDateSchema,
+    distanceKm: z.number().int().nonnegative().nullable(),
     fields: LogEntrySchema.shape.fields,
   })
   .partial();

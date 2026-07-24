@@ -137,6 +137,27 @@ describe('LogEntryService', () => {
         service.create(alice, { ...performSeals, taskId: bobTaskId }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    // The rig's Distance reading at the time (issue #32) — the anchor a distance
+    // Interval measures from — rides along on the completion when given.
+    it('records the rig’s Distance reading when given', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, {
+        ...performSeals,
+        distanceKm: 20_000,
+      });
+
+      expect(entry.distanceKm).toBe(20_000);
+    });
+
+    it('records no reading when none is given — absent means absent', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, performSeals);
+
+      expect(entry.distanceKm).toBeUndefined();
+    });
   });
 
   // A one-time task is done once (issue #29): performing it writes a normal Log
@@ -314,6 +335,36 @@ describe('LogEntryService', () => {
           fields: entry.fields.map(({ value: _value, ...field }) => field),
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('sets a Distance reading on a past entry, then clears it with null (issue #32)', async () => {
+      const { service } = await makeService();
+      const entry = await service.create(alice, performSeals);
+
+      const withReading = await service.update(alice, entry.id, {
+        distanceKm: 20_000,
+      });
+      expect(withReading.distanceKm).toBe(20_000);
+
+      const cleared = await service.update(alice, entry.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        distanceKm: null,
+      });
+      expect(cleared.distanceKm).toBeUndefined();
+    });
+
+    it('leaves the Distance reading unchanged when the key is omitted', async () => {
+      const { service } = await makeService();
+      const entry = await service.create(alice, {
+        ...performSeals,
+        distanceKm: 20_000,
+      });
+
+      const updated = await service.update(alice, entry.id, {
+        performedOn: '2026-07-19',
+      });
+
+      expect(updated.distanceKm).toBe(20_000);
     });
 
     it('never changes which task or rig an entry belongs to', async () => {

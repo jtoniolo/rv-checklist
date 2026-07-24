@@ -14,10 +14,11 @@ import {
  * `ON DELETE CASCADE`, and is indexed because the list read (`listByRig`)
  * filters on it.
  *
- * `interval_basis` + `interval_months` are the optional Interval flattened to
- * typed columns (ADR-0015 — typed, not JSONB): `interval_basis` is the union
- * discriminant (`'calendar'` today), `interval_months` the calendar count. Both
- * SQL NULL means the task is not tracked for due-status (CONTEXT.md) —
+ * `interval_basis` + `interval_months`/`interval_km` are the optional Interval
+ * flattened to typed columns (ADR-0015 — typed, not JSONB): `interval_basis` is
+ * the union discriminant (`'calendar'` or `'distance'`), `interval_months` the
+ * calendar count, `interval_km` the distance count (issue #32). A NULL basis
+ * means the task is not tracked for due-status (CONTEXT.md) —
  * due/overdue is computed on read (ADR-0005), so no due date is persisted.
  * `one_time` is the one-time marker (issue #29): TRUE means the task is due from
  * creation and deletes itself on completion; it and `interval_months` are
@@ -44,10 +45,13 @@ export class MaintenanceTaskEntity {
   description!: string | null;
 
   @Column({ name: 'interval_basis', type: 'text', nullable: true })
-  intervalBasis!: 'calendar' | null;
+  intervalBasis!: 'calendar' | 'distance' | null;
 
   @Column({ name: 'interval_months', type: 'int', nullable: true })
   intervalMonths!: number | null;
+
+  @Column({ name: 'interval_km', type: 'int', nullable: true })
+  intervalKm!: number | null;
 
   @Column({ name: 'one_time', type: 'boolean', default: false })
   oneTime!: boolean;

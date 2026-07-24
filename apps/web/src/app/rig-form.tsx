@@ -25,6 +25,7 @@ interface FormFields {
   model: string;
   year: string;
   nickname: string;
+  distance: string;
 }
 
 function toFields(initial: CreateRig | undefined): FormFields {
@@ -34,6 +35,8 @@ function toFields(initial: CreateRig | undefined): FormFields {
     model: initial?.model ?? '',
     year: initial?.year === undefined ? '' : String(initial.year),
     nickname: initial?.nickname ?? '',
+    distance:
+      initial?.distanceKm === undefined ? '' : String(initial.distanceKm),
   };
 }
 
@@ -58,6 +61,7 @@ export function RigForm({
 
   const submit = (): void => {
     const year = fields.year.trim();
+    const distance = fields.distance.trim();
     // Only the nickname is required; blank details are omitted, not sent empty.
     const parsed = CreateRigSchema.safeParse({
       nickname: fields.nickname.trim(),
@@ -65,6 +69,8 @@ export function RigForm({
       make: fields.make.trim() || undefined,
       model: fields.model.trim() || undefined,
       year: year ? Number(year) : undefined,
+      // The rig's current Distance (issue #32) — blank means unset.
+      distanceKm: distance ? Number(distance) : undefined,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Please check the details.');
@@ -128,6 +134,18 @@ export function RigForm({
           />
         </Label>
       </div>
+      <Label className={`${labelClass} w-40`}>
+        Current distance (km)
+        <Input
+          value={fields.distance}
+          onChange={set('distance')}
+          inputMode="numeric"
+          placeholder="38200"
+        />
+        <span className="text-xs font-normal">
+          Optional — tracks distance-based maintenance.
+        </span>
+      </Label>
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}

@@ -5,9 +5,15 @@ import { FieldSchemaSchema } from './field-schema.js';
 /**
  * An Interval — the optional recurrence period on a maintenance task (CONTEXT.md),
  * measured on one of several **bases** (ADR-0015). It is a tagged union
- * discriminated on `basis` so later slices can add non-calendar bases (distance,
- * #32/#33) without disturbing existing shapes. Today the sole member is
- * **calendar** — a whole, positive count of months (the seed's `intervalMonths`).
+ * discriminated on `basis`, so each basis carries only the field it needs and a
+ * new basis can be added without disturbing the others:
+ *
+ * - **calendar** — a whole, positive count of `months` (the seed's
+ *   `intervalMonths`), anchored off when the task was last performed;
+ * - **distance** — a whole, positive count of `km` (issue #32), anchored solely
+ *   off the rig's Distance reading logged when the task was last performed. A
+ *   distance interval never carries a manual last-performed anchor (ADR-0015).
+ *
  * Drives due/overdue, computed on read (ADR-0005).
  */
 export const CalendarIntervalSchema = z.object({
@@ -16,8 +22,15 @@ export const CalendarIntervalSchema = z.object({
 });
 export type CalendarInterval = z.infer<typeof CalendarIntervalSchema>;
 
+export const DistanceIntervalSchema = z.object({
+  basis: z.literal('distance'),
+  km: z.number().int().positive(),
+});
+export type DistanceInterval = z.infer<typeof DistanceIntervalSchema>;
+
 export const IntervalSchema = z.discriminatedUnion('basis', [
   CalendarIntervalSchema,
+  DistanceIntervalSchema,
 ]);
 export type Interval = z.infer<typeof IntervalSchema>;
 

@@ -95,6 +95,21 @@ describe('MaintenanceTaskService', () => {
         service.create(alice, { ...sealsInput, rigId: bobRigId }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    // A distance interval (issue #32) round-trips through the whole write path,
+    // proving the flattened `interval_km` column maps back to the union member.
+    it('creates a task on a distance basis', async () => {
+      const { service } = await makeService();
+
+      const task = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Repack wheel bearings',
+        interval: { basis: 'distance' as const, km: 20_000 },
+        fieldSchema: [],
+      });
+
+      expect(task.interval).toEqual({ basis: 'distance', km: 20_000 });
+    });
   });
 
   describe('list — a rig’s tasks', () => {
@@ -138,6 +153,17 @@ describe('MaintenanceTaskService', () => {
       expect(updated.name).toBe('Condition all seals');
       expect(updated.interval).toEqual({ basis: 'calendar', months: 6 });
       expect(updated.fieldSchema).toHaveLength(2);
+    });
+
+    it('switches a calendar task to a distance basis (issue #32)', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, sealsInput);
+
+      const updated = await service.update(alice, task.id, {
+        interval: { basis: 'distance' as const, km: 20_000 },
+      });
+
+      expect(updated.interval).toEqual({ basis: 'distance', km: 20_000 });
     });
 
     it('removes the interval with an explicit null — the task stops being tracked', async () => {

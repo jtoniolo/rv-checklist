@@ -54,10 +54,21 @@ export class RigService {
     return rig;
   }
 
-  /** Apply a partial edit to one of the owner's rigs. */
+  /**
+   * Apply a partial edit to one of the owner's rigs. `distanceKm` carries the
+   * removal marker the other optional fields lack: an explicit `null` clears the
+   * rig's current Distance (issue #32), an omitted key leaves it unchanged.
+   */
   async update(ownerId: Id, id: Id, changes: UpdateRig): Promise<Rig> {
     const rig = await this.get(ownerId, id);
-    return this.rigs.save(applyDefined(rig, changes));
+    const { distanceKm, ...rest } = changes;
+    const next = applyDefined(rig, rest);
+    if (distanceKm === null) {
+      delete next.distanceKm;
+    } else if (distanceKm !== undefined) {
+      next.distanceKm = distanceKm;
+    }
+    return this.rigs.save(next);
   }
 
   /** Delete one of the owner's rigs. */

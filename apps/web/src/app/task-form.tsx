@@ -4,6 +4,7 @@ import {
   FieldSchemaSchema,
   SUPPORTED_FIELD_TYPES,
   type FieldSchema,
+  type Interval,
   type MaintenanceTask,
   type SupportedFieldType,
 } from '@rv-checklist/domain';
@@ -28,9 +29,11 @@ import { useState, type JSX } from 'react';
  *
  * Tracking is a three-way choice (issue #29), mutually exclusive by
  * construction: a **one-time** task (due from creation, done once) hides the
- * interval; otherwise a whole-month interval makes it recurring, and a blank
- * interval leaves it untracked. So the form never emits both an interval and the
- * one-time marker.
+ * interval; otherwise a recurring interval measured on a **basis** (calendar
+ * months or Distance km — issue #32) makes it recurring, and a blank interval
+ * leaves it untracked. The basis picker chooses months vs km; only the chosen
+ * basis's field is shown, and only its value is emitted. So the form never emits
+ * both an interval and the one-time marker, nor an interval on two bases.
  *
  * The built field schema is validated by the shared `FieldSchemaSchema` before
  * submit, so the ADR-0004 rules (unique names, supported types, `photo`
@@ -43,8 +46,11 @@ export interface TaskFormValues {
   readonly name: string;
   /** Trimmed free text, or `undefined` when left blank — absent means absent. */
   readonly description: string | undefined;
-  /** Whole months, or `undefined` when untracked or one-time. */
-  readonly intervalMonths: number | undefined;
+  /**
+   * The recurring Interval on its chosen basis (calendar months or Distance km),
+   * or `undefined` when untracked or one-time — the two are exclusive (issue #29).
+   */
+  readonly interval: Interval | undefined;
   /** Marks a one-time task — due from creation, done once (issue #29). */
   readonly oneTime: boolean;
   readonly fieldSchema: FieldSchema;
@@ -109,8 +115,18 @@ export function TaskForm({
 }: TaskFormProps): JSX.Element {
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
+  // The interval's basis (issue #32) and the field value for each — only the
+  // chosen basis's field is shown and emitted. Default calendar for a new task.
+  const [basis, setBasis] = useState<'calendar' | 'distance'>(
+    initial?.interval?.basis ?? 'calendar',
+  );
   const [monthsText, setMonthsText] = useState(
-    initial?.interval ? String(initial.interval.months) : '',
+    initial?.interval?.basis === 'calendar'
+      ? String(initial.interval.months)
+      : '',
+  );
+  const [kmText, setKmText] = useState(
+    initial?.interval?.basis === 'distance' ? String(initial.interval.km) : '',
   );
   const [oneTime, setOneTime] = useState(initial?.oneTime === true);
   const [fields, setFields] = useState<FieldDraft[]>(
@@ -133,16 +149,27 @@ export function TaskForm({
       return;
     }
     // A one-time task never has an interval (issue #29) — the two are exclusive.
-    const trimmedMonths = monthsText.trim();
-    const months =
-      oneTime || trimmedMonths === '' ? undefined : Number(trimmedMonths);
+    // Otherwise the chosen basis's field gives the interval; a blank field
+    // leaves the task untracked (issue #32).
+    const rawAmount = (basis === 'calendar' ? monthsText : kmText).trim();
+    const amount = oneTime || rawAmount === '' ? undefined : Number(rawAmount);
     if (
-      months !== undefined &&
-      (!Number.isSafeInteger(months) || months <= 0)
+      amount !== undefined &&
+      (!Number.isSafeInteger(amount) || amount <= 0)
     ) {
-      setError('The interval must be a whole number of months.');
+      setError(
+        basis === 'calendar'
+          ? 'The interval must be a whole number of months.'
+          : 'The interval must be a whole number of kilometres.',
+      );
       return;
     }
+    const interval: Interval | undefined =
+      amount === undefined
+        ? undefined
+        : basis === 'calendar'
+          ? { basis: 'calendar', months: amount }
+          : { basis: 'distance', km: amount };
     const parsed = FieldSchemaSchema.safeParse(
       fields.map((draft) => toFieldDefinition(draft)),
     );
@@ -156,7 +183,7 @@ export function TaskForm({
       name: trimmedName,
       // Blank means no description — never a stored placeholder (issue #25).
       description: trimmedDescription === '' ? undefined : trimmedDescription,
-      intervalMonths: months,
+      interval,
       oneTime,
       fieldSchema: parsed.data,
     });
@@ -215,23 +242,64 @@ export function TaskForm({
       </Label>
 
       {oneTime ? undefined : (
-        <Label className={labelClass}>
-          Repeat every (months)
-          <Input
-            type="number"
-            min={1}
-            step={1}
-            className="w-32"
-            value={monthsText}
-            onChange={(e) => {
-              setMonthsText(e.target.value);
-            }}
-            placeholder="12"
-          />
-          <span className="text-xs">
-            Leave blank for a one-off task — it won’t be tracked as due.
-          </span>
-        </Label>
+        <div className="flex flex-wrap items-end gap-3">
+          <Label className={labelClass}>
+            Track by
+            <Select
+              value={basis}
+              onValueChange={(value) => {
+                setBasis(value as 'calendar' | 'distance');
+              }}
+            >
+              <SelectTrigger className="w-40" aria-label="Track by">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="calendar">Calendar (months)</SelectItem>
+                <SelectItem value="distance">Distance (km)</SelectItem>
+              </SelectContent>
+            </Select>
+          </Label>
+
+          {basis === 'calendar' ? (
+            <Label className={labelClass}>
+              Repeat every (months)
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                className="w-32"
+                value={monthsText}
+                onChange={(e) => {
+                  setMonthsText(e.target.value);
+                }}
+                placeholder="12"
+              />
+              <span className="text-xs">
+                Leave blank for a one-off task — it won’t be tracked as due.
+              </span>
+            </Label>
+          ) : (
+            <Label className={labelClass}>
+              Repeat every (km)
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                className="w-32"
+                value={kmText}
+                onChange={(e) => {
+                  setKmText(e.target.value);
+                }}
+                placeholder="20000"
+              />
+              <span className="text-xs">
+                Leave blank to leave it untracked. Set the rig’s distance to
+                track it.
+              </span>
+            </Label>
+          )}
+        </div>
       )}
 
       <fieldset className="flex flex-col gap-3">
