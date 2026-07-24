@@ -8,16 +8,33 @@ import {
 const id = (n: number) => `550e8400-e29b-41d4-a716-44665544000${String(n)}`;
 
 describe('IntervalSchema', () => {
-  it('parses a whole-month interval', () => {
-    expect(IntervalSchema.parse({ months: 12 })).toEqual({ months: 12 });
+  it('parses a calendar interval', () => {
+    expect(IntervalSchema.parse({ basis: 'calendar', months: 12 })).toEqual({
+      basis: 'calendar',
+      months: 12,
+    });
+  });
+
+  it('rejects an untagged { months } interval — a basis is required (ADR-0015)', () => {
+    expect(IntervalSchema.safeParse({ months: 12 }).success).toBe(false);
+  });
+
+  it('rejects an unknown basis', () => {
+    expect(
+      IntervalSchema.safeParse({ basis: 'distance', km: 20_000 }).success,
+    ).toBe(false);
   });
 
   it('rejects a zero interval', () => {
-    expect(IntervalSchema.safeParse({ months: 0 }).success).toBe(false);
+    expect(
+      IntervalSchema.safeParse({ basis: 'calendar', months: 0 }).success,
+    ).toBe(false);
   });
 
   it('rejects a fractional interval', () => {
-    expect(IntervalSchema.safeParse({ months: 1.5 }).success).toBe(false);
+    expect(
+      IntervalSchema.safeParse({ basis: 'calendar', months: 1.5 }).success,
+    ).toBe(false);
   });
 });
 
@@ -26,7 +43,7 @@ describe('MaintenanceTaskSchema', () => {
     id: id(1),
     rigId: id(2),
     name: 'Inspect tires',
-    interval: { months: 12 },
+    interval: { basis: 'calendar', months: 12 },
     fieldSchema: [
       { name: 'Tread depth', type: 'number', required: true, unit: '/32"' },
       { name: 'DOT date', type: 'text', required: false },
@@ -92,7 +109,7 @@ describe('MaintenanceTaskSchema', () => {
         id: id(1),
         rigId: id(2),
         name: 'Confused task',
-        interval: { months: 12 },
+        interval: { basis: 'calendar', months: 12 },
         oneTime: true,
         fieldSchema: [],
       }).success,
@@ -167,7 +184,7 @@ describe('CreateMaintenanceTaskSchema', () => {
       CreateMaintenanceTaskSchema.safeParse({
         rigId: id(2),
         name: 'Confused',
-        interval: { months: 6 },
+        interval: { basis: 'calendar', months: 6 },
         oneTime: true,
       }).success,
     ).toBe(false);
@@ -177,8 +194,10 @@ describe('CreateMaintenanceTaskSchema', () => {
 describe('UpdateMaintenanceTaskSchema', () => {
   it('accepts editing just the interval', () => {
     expect(
-      UpdateMaintenanceTaskSchema.parse({ interval: { months: 6 } }),
-    ).toEqual({ interval: { months: 6 } });
+      UpdateMaintenanceTaskSchema.parse({
+        interval: { basis: 'calendar', months: 6 },
+      }),
+    ).toEqual({ interval: { basis: 'calendar', months: 6 } });
   });
 
   it('accepts editing just the description', () => {

@@ -93,7 +93,7 @@ describe('Maintenance controllers over HTTP (through the Zod serializer)', () =>
       jsonPost({
         rigId,
         name: 'Condition slide seals',
-        interval: { months: 12 },
+        interval: { basis: 'calendar', months: 12 },
         fieldSchema: [
           {
             name: 'Tire Pressure',
@@ -146,7 +146,11 @@ describe('Maintenance controllers over HTTP (through the Zod serializer)', () =>
   it('removes the interval with PATCH `interval: null`', async () => {
     const created = await fetch(
       `${baseUrl}/tasks`,
-      jsonPost({ rigId, name: 'Flush water heater', interval: { months: 6 } }),
+      jsonPost({
+        rigId,
+        name: 'Flush water heater',
+        interval: { basis: 'calendar', months: 6 },
+      }),
     );
     const task = (await created.json()) as { id: string };
 
@@ -287,7 +291,7 @@ describe('Maintenance controllers over HTTP (through the Zod serializer)', () =>
       jsonPost({
         rigId,
         name: 'Confused',
-        interval: { months: 6 },
+        interval: { basis: 'calendar', months: 6 },
         oneTime: true,
       }),
     );

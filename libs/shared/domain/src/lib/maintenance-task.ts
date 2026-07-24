@@ -3,12 +3,22 @@ import { IdSchema } from './common.js';
 import { FieldSchemaSchema } from './field-schema.js';
 
 /**
- * An Interval — the optional recurrence period on a maintenance task (CONTEXT.md). Drives
- * due/overdue, computed on read (ADR-0005). Seed intervals are whole months.
+ * An Interval — the optional recurrence period on a maintenance task (CONTEXT.md),
+ * measured on one of several **bases** (ADR-0015). It is a tagged union
+ * discriminated on `basis` so later slices can add non-calendar bases (distance,
+ * #32/#33) without disturbing existing shapes. Today the sole member is
+ * **calendar** — a whole, positive count of months (the seed's `intervalMonths`).
+ * Drives due/overdue, computed on read (ADR-0005).
  */
-export const IntervalSchema = z.object({
+export const CalendarIntervalSchema = z.object({
+  basis: z.literal('calendar'),
   months: z.number().int().positive(),
 });
+export type CalendarInterval = z.infer<typeof CalendarIntervalSchema>;
+
+export const IntervalSchema = z.discriminatedUnion('basis', [
+  CalendarIntervalSchema,
+]);
 export type Interval = z.infer<typeof IntervalSchema>;
 
 /**

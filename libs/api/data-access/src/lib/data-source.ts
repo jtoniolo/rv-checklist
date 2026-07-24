@@ -16,6 +16,7 @@ import { TaskDescription1721000600000 } from './migrations/1721000600000-task-de
 import { LogEntryTaskName1721000700000 } from './migrations/1721000700000-log-entry-task-name.js';
 import { LogEntryKeepOnTaskDelete1721000800000 } from './migrations/1721000800000-log-entry-keep-on-task-delete.js';
 import { TaskOneTime1721000900000 } from './migrations/1721000900000-task-one-time.js';
+import { TaskIntervalBasis1721001000000 } from './migrations/1721001000000-task-interval-basis.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -51,6 +52,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       LogEntryTaskName1721000700000,
       LogEntryKeepOnTaskDelete1721000800000,
       TaskOneTime1721000900000,
+      TaskIntervalBasis1721001000000,
     ],
     migrationsRun: true,
     synchronize: false,

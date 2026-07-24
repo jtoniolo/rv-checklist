@@ -93,14 +93,14 @@ export function MaintenanceScreen({
 
   const today = todayIso();
   const statusOf = (task: MaintenanceTask): DueStatus =>
-    dueStatus(
-      task.interval,
-      latestPerformedOn(
+    dueStatus({
+      interval: task.interval,
+      lastPerformedOn: latestPerformedOn(
         (rigEntries ?? []).filter((entry) => entry.taskId === task.id),
       ),
       today,
-      task.oneTime,
-    );
+      isOneTime: task.oneTime,
+    });
 
   // Entries whose task was deleted (issue #28): kept, orphaned (taskId null),
   // owned via the rig. They belong to no live task section, so the screen shows
@@ -127,7 +127,7 @@ export function MaintenanceScreen({
       ...(values.oneTime
         ? { oneTime: true }
         : values.intervalMonths !== undefined && {
-            interval: { months: values.intervalMonths },
+            interval: { basis: 'calendar', months: values.intervalMonths },
           }),
       fieldSchema: values.fieldSchema,
     }).unwrap();
@@ -155,7 +155,7 @@ export function MaintenanceScreen({
           values.oneTime || values.intervalMonths === undefined
             ? // eslint-disable-next-line unicorn/no-null
               null
-            : { months: values.intervalMonths },
+            : { basis: 'calendar', months: values.intervalMonths },
         // eslint-disable-next-line unicorn/no-null
         oneTime: values.oneTime ? true : null,
         fieldSchema: values.fieldSchema,

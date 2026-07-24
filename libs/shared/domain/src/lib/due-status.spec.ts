@@ -1,35 +1,61 @@
 import { addMonths, dueStatus, latestPerformedOn } from './due-status.js';
 
+const calendar = (months: number) => ({ basis: 'calendar' as const, months });
+
 describe('dueStatus — computed on read from last completion + interval (ADR-0005)', () => {
   it('is untracked with no interval, even when the task has been performed', () => {
-    expect(dueStatus(undefined, '2026-01-15', '2026-07-21')).toEqual({
-      kind: 'untracked',
-    });
-    expect(dueStatus(undefined, undefined, '2026-07-21')).toEqual({
-      kind: 'untracked',
-    });
+    expect(
+      dueStatus({
+        interval: undefined,
+        lastPerformedOn: '2026-01-15',
+        today: '2026-07-21',
+      }),
+    ).toEqual({ kind: 'untracked' });
+    expect(
+      dueStatus({
+        interval: undefined,
+        lastPerformedOn: undefined,
+        today: '2026-07-21',
+      }),
+    ).toEqual({ kind: 'untracked' });
   });
 
-  it('is never-performed with an interval but no completion yet', () => {
-    expect(dueStatus({ months: 12 }, undefined, '2026-07-21')).toEqual({
-      kind: 'never-performed',
-    });
+  it('is never-performed with a calendar interval but no completion yet', () => {
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: undefined,
+        today: '2026-07-21',
+      }),
+    ).toEqual({ kind: 'never-performed' });
   });
 
   // A one-time task is due from creation and done once (issue #29): it always
   // needs attention, short-circuiting the interval arithmetic. It never carries
   // an interval, and completing it deletes it, so no completion ever ages it.
   it('is one-time when the task is flagged one-time', () => {
-    expect(dueStatus(undefined, undefined, '2026-07-21', true)).toEqual({
-      kind: 'one-time',
-    });
+    expect(
+      dueStatus({
+        interval: undefined,
+        lastPerformedOn: undefined,
+        today: '2026-07-21',
+        isOneTime: true,
+      }),
+    ).toEqual({ kind: 'one-time' });
   });
 
-  // The boundary (issue #17): last done 2025-07-21, every 12 months ⇒ due on
-  // 2026-07-21. The day before is ok, the day itself is due, the day after is
-  // overdue.
+  // Parity with the pre-basis engine (ADR-0015 phase A — zero behaviour change):
+  // an existing 12-month task computes exactly as before. The boundary (issue
+  // #17): last done 2025-07-21, every 12 months ⇒ due on 2026-07-21. The day
+  // before is ok, the day itself is due, the day after is overdue.
   it('is ok strictly before the due date', () => {
-    expect(dueStatus({ months: 12 }, '2025-07-21', '2026-07-20')).toEqual({
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-20',
+      }),
+    ).toEqual({
       kind: 'ok',
       lastPerformedOn: '2025-07-21',
       dueOn: '2026-07-21',
@@ -37,7 +63,13 @@ describe('dueStatus — computed on read from last completion + interval (ADR-00
   });
 
   it('is due on exactly the due date', () => {
-    expect(dueStatus({ months: 12 }, '2025-07-21', '2026-07-21')).toEqual({
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-21',
+      }),
+    ).toEqual({
       kind: 'due',
       lastPerformedOn: '2025-07-21',
       dueOn: '2026-07-21',
@@ -45,7 +77,13 @@ describe('dueStatus — computed on read from last completion + interval (ADR-00
   });
 
   it('is overdue past the due date', () => {
-    expect(dueStatus({ months: 12 }, '2025-07-21', '2026-07-22')).toEqual({
+    expect(
+      dueStatus({
+        interval: calendar(12),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-22',
+      }),
+    ).toEqual({
       kind: 'overdue',
       lastPerformedOn: '2025-07-21',
       dueOn: '2026-07-21',

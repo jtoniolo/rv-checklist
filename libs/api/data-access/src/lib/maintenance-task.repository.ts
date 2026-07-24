@@ -32,10 +32,13 @@ function toTask(entity: MaintenanceTaskEntity): MaintenanceTask {
     name: entity.name,
     // SQL NULL means no description — absent means absent (issue #25).
     ...(entity.description !== null && { description: entity.description }),
-    // SQL NULL means no interval — the task is untracked (CONTEXT.md).
-    ...(entity.intervalMonths !== null && {
-      interval: { months: entity.intervalMonths },
-    }),
+    // SQL NULL basis means no interval — the task is untracked (CONTEXT.md).
+    // The basis discriminates the Interval union (ADR-0015); `calendar` reads
+    // its whole-month count from `interval_months`.
+    ...(entity.intervalBasis === 'calendar' &&
+      entity.intervalMonths !== null && {
+        interval: { basis: 'calendar' as const, months: entity.intervalMonths },
+      }),
     // TRUE means one-time — due from creation, done once (issue #29). Absent
     // otherwise, mirroring the wire model's absent-means-absent marker.
     ...(entity.oneTime && { oneTime: true }),
@@ -53,6 +56,11 @@ function toRow(task: MaintenanceTask): Partial<MaintenanceTaskEntity> {
     // which would leave a removed description or interval in place.
     // eslint-disable-next-line unicorn/no-null
     description: task.description ?? null,
+    // The Interval flattens to typed columns (ADR-0015): its basis to
+    // `interval_basis`, a calendar count to `interval_months`. Both NULL when
+    // untracked.
+    // eslint-disable-next-line unicorn/no-null
+    intervalBasis: task.interval?.basis ?? null,
     // eslint-disable-next-line unicorn/no-null
     intervalMonths: task.interval?.months ?? null,
     // The one-time marker persists as a plain boolean (absent on the wire ⇒

@@ -21,24 +21,41 @@ export type DueStatus =
     };
 
 /**
- * The due/overdue status for one task: `interval` from the task,
- * `lastPerformedOn` from its newest log entry (see {@link latestPerformedOn}),
- * `today` supplied by the caller so the computation stays pure, and `isOneTime`
- * the task's one-time marker (issue #29) — a one-time task needs attention from
- * creation, so it short-circuits ahead of the interval arithmetic.
+ * The inputs a due-status read needs, gathered into one context object (ADR-0015)
+ * so later bases can add inputs (e.g. the rig's current distance, #32/#33)
+ * without reshaping every call site. Every field the caller supplies, keeping
+ * the computation pure:
+ *
+ * - `interval` — the task's Interval (a tagged union on `basis`), or `undefined`
+ *   when untracked;
+ * - `lastPerformedOn` — the newest log entry's date (see {@link latestPerformedOn}),
+ *   the anchor a calendar interval's next due is measured from;
+ * - `today` — supplied by the caller;
+ * - `isOneTime` — the task's one-time marker (issue #29): a one-time task needs
+ *   attention from creation, so it short-circuits ahead of the interval arithmetic.
  */
-export function dueStatus(
-  interval: Interval | undefined,
-  lastPerformedOn: IsoDate | undefined,
-  today: IsoDate,
+export interface DueStatusInput {
+  readonly interval: Interval | undefined;
+  readonly lastPerformedOn: IsoDate | undefined;
+  readonly today: IsoDate;
+  readonly isOneTime?: boolean;
+}
+
+/** The due/overdue status for one task, from its {@link DueStatusInput} context. */
+export function dueStatus({
+  interval,
+  lastPerformedOn,
+  today,
   isOneTime = false,
-): DueStatus {
+}: DueStatusInput): DueStatus {
   if (isOneTime) {
     return { kind: 'one-time' };
   }
   if (interval === undefined) {
     return { kind: 'untracked' };
   }
+  // A calendar interval anchors off the last completion (ADR-0015). It is the
+  // only basis today; later bases (distance) branch here on `interval.basis`.
   if (lastPerformedOn === undefined) {
     return { kind: 'never-performed' };
   }
