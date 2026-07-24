@@ -82,6 +82,51 @@ describe('RigService', () => {
       expect(updated).toEqual({ ...created, year: 2022 });
       await expect(service.get(alice, created.id)).resolves.toEqual(updated);
     });
+
+    // The rig's current Distance (issue #32) is set and cleared by the owner.
+    it('sets the rig’s current Distance', async () => {
+      const { service } = makeService();
+      const created = await service.create(alice, airstream);
+
+      const updated = await service.update(alice, created.id, {
+        distanceKm: 38_200,
+      });
+
+      expect(updated.distanceKm).toBe(38_200);
+      await expect(service.get(alice, created.id)).resolves.toMatchObject({
+        distanceKm: 38_200,
+      });
+    });
+
+    it('clears the rig’s Distance with an explicit null', async () => {
+      const { service } = makeService();
+      const created = await service.create(alice, {
+        ...airstream,
+        distanceKm: 38_200,
+      });
+
+      const updated = await service.update(alice, created.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        distanceKm: null,
+      });
+
+      expect(updated.distanceKm).toBeUndefined();
+      await expect(service.get(alice, created.id)).resolves.not.toHaveProperty(
+        'distanceKm',
+      );
+    });
+
+    it('leaves the Distance unchanged when the key is omitted', async () => {
+      const { service } = makeService();
+      const created = await service.create(alice, {
+        ...airstream,
+        distanceKm: 38_200,
+      });
+
+      const updated = await service.update(alice, created.id, { year: 2022 });
+
+      expect(updated.distanceKm).toBe(38_200);
+    });
   });
 
   describe('delete', () => {

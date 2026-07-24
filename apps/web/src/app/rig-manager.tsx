@@ -44,7 +44,13 @@ export function RigManager(): JSX.Element {
   };
 
   const handleUpdate = async (id: Id, values: CreateRig): Promise<void> => {
-    await updateRig({ id, changes: values }).unwrap();
+    await updateRig({
+      id,
+      // A blank distance clears the rig's current Distance (issue #32); the wire
+      // spells removal `null`, so a blank field maps to it rather than "unchanged".
+      // eslint-disable-next-line unicorn/no-null
+      changes: { ...values, distanceKm: values.distanceKm ?? null },
+    }).unwrap();
     setEditingId(undefined);
   };
 
@@ -144,6 +150,7 @@ function toCreateRig(rig: Rig): CreateRig {
     model: rig.model,
     year: rig.year,
     nickname: rig.nickname,
+    distanceKm: rig.distanceKm,
   };
 }
 

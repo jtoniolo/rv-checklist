@@ -1,6 +1,12 @@
-import { addMonths, dueStatus, latestPerformedOn } from './due-status.js';
+import {
+  addMonths,
+  dueStatus,
+  latestPerformedOn,
+  latestReadingKm,
+} from './due-status.js';
 
 const calendar = (months: number) => ({ basis: 'calendar' as const, months });
+const distance = (km: number) => ({ basis: 'distance' as const, km });
 
 describe('dueStatus — computed on read from last completion + interval (ADR-0005)', () => {
   it('is untracked with no interval, even when the task has been performed', () => {
@@ -57,6 +63,7 @@ describe('dueStatus — computed on read from last completion + interval (ADR-00
       }),
     ).toEqual({
       kind: 'ok',
+      basis: 'calendar',
       lastPerformedOn: '2025-07-21',
       dueOn: '2026-07-21',
     });
@@ -71,6 +78,7 @@ describe('dueStatus — computed on read from last completion + interval (ADR-00
       }),
     ).toEqual({
       kind: 'due',
+      basis: 'calendar',
       lastPerformedOn: '2025-07-21',
       dueOn: '2026-07-21',
     });
@@ -85,8 +93,105 @@ describe('dueStatus — computed on read from last completion + interval (ADR-00
       }),
     ).toEqual({
       kind: 'overdue',
+      basis: 'calendar',
       lastPerformedOn: '2025-07-21',
       dueOn: '2026-07-21',
+    });
+  });
+});
+
+// A distance task (issue #32) is measured against the rig's Distance, not the
+// calendar. It anchors off the newest completion's Distance reading and is due
+// once the rig reaches that reading plus the interval; with no rig Distance or
+// no reading on the newest completion, there is no yardstick, so it reads
+// `reading-needed`. `today` is irrelevant to a distance task.
+describe('dueStatus — distance basis (issue #32)', () => {
+  it('is never-performed with a distance interval but no completion yet', () => {
+    expect(
+      dueStatus({
+        interval: distance(20_000),
+        lastPerformedOn: undefined,
+        today: '2026-07-21',
+        rigDistanceKm: 38_200,
+        lastReadingKm: undefined,
+      }),
+    ).toEqual({ kind: 'never-performed' });
+  });
+
+  it('is reading-needed when the rig has no current Distance', () => {
+    expect(
+      dueStatus({
+        interval: distance(20_000),
+        lastPerformedOn: '2026-01-15',
+        today: '2026-07-21',
+        rigDistanceKm: undefined,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({ kind: 'reading-needed' });
+  });
+
+  it('is reading-needed when the newest completion carries no reading', () => {
+    expect(
+      dueStatus({
+        interval: distance(20_000),
+        lastPerformedOn: '2026-01-15',
+        today: '2026-07-21',
+        rigDistanceKm: 38_200,
+        lastReadingKm: undefined,
+      }),
+    ).toEqual({ kind: 'reading-needed' });
+  });
+
+  // Last done at 20,000 km, every 20,000 km ⇒ due at 40,000 km. Before that
+  // reading it is ok; at it, due; past it, overdue.
+  it('is ok before the rig reaches the due reading', () => {
+    expect(
+      dueStatus({
+        interval: distance(20_000),
+        lastPerformedOn: '2026-01-15',
+        today: '2026-07-21',
+        rigDistanceKm: 38_200,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'distance',
+      dueAtKm: 40_000,
+      currentKm: 38_200,
+    });
+  });
+
+  it('is due at exactly the due reading', () => {
+    expect(
+      dueStatus({
+        interval: distance(20_000),
+        lastPerformedOn: '2026-01-15',
+        today: '2026-07-21',
+        rigDistanceKm: 40_000,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'due',
+      basis: 'distance',
+      dueAtKm: 40_000,
+      currentKm: 40_000,
+    });
+  });
+
+  it('is overdue past the due reading', () => {
+    expect(
+      dueStatus({
+        interval: distance(20_000),
+        lastPerformedOn: '2026-01-15',
+        today: '2026-07-21',
+        rigDistanceKm: 41_500,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'distance',
+      dueAtKm: 40_000,
+      currentKm: 41_500,
     });
   });
 });
@@ -121,5 +226,30 @@ describe('latestPerformedOn', () => {
         { performedOn: '2025-12-31' },
       ]),
     ).toBe('2026-07-04');
+  });
+});
+
+describe('latestReadingKm', () => {
+  it('is undefined with no entries', () => {
+    expect(latestReadingKm([])).toBeUndefined();
+  });
+
+  it('returns the Distance reading of the newest completion, regardless of order', () => {
+    expect(
+      latestReadingKm([
+        { performedOn: '2026-03-01', distanceKm: 18_000 },
+        { performedOn: '2026-07-04', distanceKm: 22_500 },
+        { performedOn: '2025-12-31', distanceKm: 12_000 },
+      ]),
+    ).toBe(22_500);
+  });
+
+  it('is undefined when the newest completion carries no reading, even if an older one does', () => {
+    expect(
+      latestReadingKm([
+        { performedOn: '2026-03-01', distanceKm: 18_000 },
+        { performedOn: '2026-07-04' },
+      ]),
+    ).toBeUndefined();
   });
 });

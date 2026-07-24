@@ -3,6 +3,7 @@
 import {
   dueStatus,
   latestPerformedOn,
+  latestReadingKm,
   taskAppearances,
   type DueStatus,
   type Id,
@@ -92,15 +93,23 @@ export function MaintenanceScreen({
   }
 
   const today = todayIso();
-  const statusOf = (task: MaintenanceTask): DueStatus =>
-    dueStatus({
+  const statusOf = (task: MaintenanceTask): DueStatus => {
+    // The task's own completions back both anchors: the newest date (calendar)
+    // and that same completion's Distance reading (distance — issue #32).
+    const entries = (rigEntries ?? []).filter(
+      (entry) => entry.taskId === task.id,
+    );
+    return dueStatus({
       interval: task.interval,
-      lastPerformedOn: latestPerformedOn(
-        (rigEntries ?? []).filter((entry) => entry.taskId === task.id),
-      ),
+      lastPerformedOn: latestPerformedOn(entries),
       today,
       isOneTime: task.oneTime,
+      // The rig's current Distance is the yardstick a distance task measures
+      // against (ADR-0006 — the read already resolves the rig for ownership).
+      rigDistanceKm: activeRig.distanceKm,
+      lastReadingKm: latestReadingKm(entries),
     });
+  };
 
   // Entries whose task was deleted (issue #28): kept, orphaned (taskId null),
   // owned via the rig. They belong to no live task section, so the screen shows
@@ -123,12 +132,11 @@ export function MaintenanceScreen({
         description: values.description,
       }),
       // Tracking is one of three exclusive shapes (issue #29): one-time, a
-      // recurring interval, or neither. The form guarantees they never combine.
+      // recurring interval (on either basis), or neither. The form guarantees
+      // they never combine.
       ...(values.oneTime
         ? { oneTime: true }
-        : values.intervalMonths !== undefined && {
-            interval: { basis: 'calendar', months: values.intervalMonths },
-          }),
+        : values.interval !== undefined && { interval: values.interval }),
       fieldSchema: values.fieldSchema,
     }).unwrap();
     setAdding(false);
@@ -152,10 +160,10 @@ export function MaintenanceScreen({
         // interval and oneTime are the exclusive tracking markers (issue #29);
         // the form sends a coherent pair, one set and the other cleared to null.
         interval:
-          values.oneTime || values.intervalMonths === undefined
+          values.oneTime || values.interval === undefined
             ? // eslint-disable-next-line unicorn/no-null
               null
-            : { basis: 'calendar', months: values.intervalMonths },
+            : values.interval,
         // eslint-disable-next-line unicorn/no-null
         oneTime: values.oneTime ? true : null,
         fieldSchema: values.fieldSchema,
@@ -314,10 +322,16 @@ function BackToListButton({
   );
 }
 
+/** A whole kilometre count with thousands separators, e.g. "40,000 km". */
+function formatKm(km: number): string {
+  return `${km.toLocaleString('en-US')} km`;
+}
+
 /**
  * How the task is tracked, as a short label: "Every 12 months" / "Every month"
- * for a recurring task, "One-time" for a one-time task (issue #29), or undefined
- * for an untracked one (the caller supplies its own "Not tracked" wording).
+ * for a calendar task, "Every 20,000 km" for a distance task (issue #32),
+ * "One-time" for a one-time task (issue #29), or undefined for an untracked one
+ * (the caller supplies its own "Not tracked" wording).
  */
 function intervalLabel(task: MaintenanceTask): string | undefined {
   if (task.oneTime) {
@@ -325,6 +339,9 @@ function intervalLabel(task: MaintenanceTask): string | undefined {
   }
   if (!task.interval) {
     return undefined;
+  }
+  if (task.interval.basis === 'distance') {
+    return `Every ${formatKm(task.interval.km)}`;
   }
   return task.interval.months === 1
     ? 'Every month'
@@ -335,41 +352,69 @@ function intervalLabel(task: MaintenanceTask): string | undefined {
  * The due/overdue standing as a badge (ADR-0005 — shown passively, never
  * pushed). An untracked task wears no badge at all.
  */
+const NEUTRAL_TONE = 'bg-hairline text-brand-muted';
+const ATTENTION_TONE =
+  'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+const OVERDUE_TONE =
+  'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
+
+/** The badge text and tone for a due status, or `undefined` for an untracked task. */
+function badgeOf(status: DueStatus): readonly [string, string] | undefined {
+  switch (status.kind) {
+    case 'untracked': {
+      return undefined;
+    }
+    case 'never-performed': {
+      return ['Never done', NEUTRAL_TONE];
+    }
+    // A one-time task is due from creation until it's done (issue #29) — it wears
+    // an attention badge alongside the due/overdue tasks.
+    case 'one-time': {
+      return ['To do', ATTENTION_TONE];
+    }
+    // A distance task with no yardstick (issue #32): nudge the owner to set one.
+    case 'reading-needed': {
+      return ['Set the rig’s distance to track this', ATTENTION_TONE];
+    }
+    // ok / due / overdue: a distance status carries kilometres, a calendar one
+    // dates — discriminated on the same `basis` tag the Interval union uses.
+    case 'ok': {
+      return status.basis === 'distance'
+        ? [
+            `Due at ${formatKm(status.dueAtKm)} — you’re at ${formatKm(status.currentKm)}`,
+            NEUTRAL_TONE,
+          ]
+        : [`Due ${formatIsoDate(status.dueOn)}`, NEUTRAL_TONE];
+    }
+    case 'due': {
+      return status.basis === 'distance'
+        ? [`Due now — at ${formatKm(status.dueAtKm)}`, ATTENTION_TONE]
+        : ['Due today', ATTENTION_TONE];
+    }
+    case 'overdue': {
+      return status.basis === 'distance'
+        ? [
+            `Overdue — due at ${formatKm(status.dueAtKm)}, you’re at ${formatKm(status.currentKm)}`,
+            OVERDUE_TONE,
+          ]
+        : [`Overdue — ${formatIsoDate(status.dueOn)}`, OVERDUE_TONE];
+    }
+  }
+}
+
 function DueBadge({
   status,
 }: {
   readonly status: DueStatus;
 }): JSX.Element | undefined {
-  if (status.kind === 'untracked') {
+  const badge = badgeOf(status);
+  if (badge === undefined) {
     return undefined;
   }
-  const [text, tone] =
-    status.kind === 'never-performed'
-      ? ['Never done', 'bg-hairline text-brand-muted']
-      : // A one-time task is due from creation until it's done (issue #29) — it
-        // wears an attention badge alongside the due/overdue tasks.
-        status.kind === 'one-time'
-        ? [
-            'To do',
-            'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-          ]
-        : status.kind === 'ok'
-          ? [
-              `Due ${formatIsoDate(status.dueOn)}`,
-              'bg-hairline text-brand-muted',
-            ]
-          : status.kind === 'due'
-            ? [
-                'Due today',
-                'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-              ]
-            : [
-                `Overdue — ${formatIsoDate(status.dueOn)}`,
-                'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-              ];
+  const [text, tone] = badge;
   return (
     <span
-      className={`self-start rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tone}`}
+      className={`self-start rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}
     >
       {text}
     </span>
@@ -577,8 +622,15 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
   const handleLog = async (
     performedOn: string,
     fields: LoggedField[],
+    distanceKm: number | undefined,
   ): Promise<void> => {
-    await createEntry({ taskId: task.id, performedOn, fields }).unwrap();
+    await createEntry({
+      taskId: task.id,
+      performedOn,
+      fields,
+      // A recorded reading (issue #32) rides along; absent means absent.
+      ...(distanceKm !== undefined && { distanceKm }),
+    }).unwrap();
     setLogging(false);
   };
 
@@ -586,8 +638,14 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
     id: Id,
     performedOn: string,
     fields: LoggedField[],
+    distanceKm: number | undefined,
   ): Promise<void> => {
-    await updateEntry({ id, changes: { performedOn, fields } }).unwrap();
+    await updateEntry({
+      id,
+      // A blank reading clears it; the wire spells removal `null` (issue #32).
+      // eslint-disable-next-line unicorn/no-null
+      changes: { performedOn, fields, distanceKm: distanceKm ?? null },
+    }).unwrap();
     setEditingEntryId(undefined);
   };
 
@@ -615,8 +673,8 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
           initialDate={todayIso()}
           submitLabel="Log it"
           pending={isLogging}
-          onSubmit={(performedOn, fields) =>
-            void handleLog(performedOn, fields)
+          onSubmit={(performedOn, fields, distanceKm) =>
+            void handleLog(performedOn, fields, distanceKm)
           }
           onCancel={() => {
             setLogging(false);
@@ -645,10 +703,11 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
               <LogEntryForm
                 initialFields={entry.fields}
                 initialDate={entry.performedOn}
+                initialDistanceKm={entry.distanceKm}
                 submitLabel="Save correction"
                 pending={isCorrecting}
-                onSubmit={(performedOn, fields) =>
-                  void handleCorrect(entry.id, performedOn, fields)
+                onSubmit={(performedOn, fields, distanceKm) =>
+                  void handleCorrect(entry.id, performedOn, fields, distanceKm)
                 }
                 onCancel={() => {
                   setEditingEntryId(undefined);
@@ -695,8 +754,14 @@ function OrphanedHistory({
     id: Id,
     performedOn: string,
     fields: LoggedField[],
+    distanceKm: number | undefined,
   ): Promise<void> => {
-    await updateEntry({ id, changes: { performedOn, fields } }).unwrap();
+    await updateEntry({
+      id,
+      // A blank reading clears it; the wire spells removal `null` (issue #32).
+      // eslint-disable-next-line unicorn/no-null
+      changes: { performedOn, fields, distanceKm: distanceKm ?? null },
+    }).unwrap();
     setEditingEntryId(undefined);
   };
 
@@ -721,10 +786,11 @@ function OrphanedHistory({
               <LogEntryForm
                 initialFields={entry.fields}
                 initialDate={entry.performedOn}
+                initialDistanceKm={entry.distanceKm}
                 submitLabel="Save correction"
                 pending={isCorrecting}
-                onSubmit={(performedOn, fields) =>
-                  void handleCorrect(entry.id, performedOn, fields)
+                onSubmit={(performedOn, fields, distanceKm) =>
+                  void handleCorrect(entry.id, performedOn, fields, distanceKm)
                 }
                 onCancel={() => {
                   setEditingEntryId(undefined);
@@ -767,6 +833,12 @@ function LogEntryRow({
         <span className="text-sm font-medium text-brand-muted">
           {entry.taskName}
         </span>
+        {/* The rig's Distance reading at the time, if recorded (issue #32). */}
+        {entry.distanceKm === undefined ? undefined : (
+          <span className="text-sm text-brand-muted">
+            {formatKm(entry.distanceKm)}
+          </span>
+        )}
         {summary ? (
           <span className="text-sm text-brand-muted">{summary}</span>
         ) : undefined}

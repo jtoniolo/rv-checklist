@@ -32,7 +32,20 @@ function toLogEntry(entity: LogEntryEntity): LogEntry {
     rigId: entity.rigId,
     taskName: entity.taskName,
     performedOn: entity.performedOn,
+    // The rig's Distance reading at the time (issue #32) — NULL when none.
+    distanceKm: entity.distanceKm ?? undefined,
     fields: entity.fields,
+  };
+}
+
+/** The wire model with its optional Distance reading flattened to the nullable column. */
+function toRow(entry: LogEntry): Partial<LogEntryEntity> {
+  return {
+    ...entry,
+    // SQL NULL must be written explicitly: `save` skips `undefined` columns,
+    // which would leave a cleared reading in place (issue #32).
+    // eslint-disable-next-line unicorn/no-null
+    distanceKm: entry.distanceKm ?? null,
   };
 }
 
@@ -58,7 +71,7 @@ export class TypeOrmLogEntryRepository extends LogEntryRepository {
   }
 
   async save(entry: LogEntry): Promise<LogEntry> {
-    const saved = await this.repo.save(this.repo.create(entry));
+    const saved = await this.repo.save(this.repo.create(toRow(entry)));
     return toLogEntry(saved);
   }
 

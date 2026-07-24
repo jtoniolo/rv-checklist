@@ -48,6 +48,12 @@ export class LogEntryEntity {
   @Column({ name: 'performed_on', type: 'date' })
   performedOn!: string;
 
+  // The rig's Distance reading (km) at the time performed (issue #32) — the
+  // anchor a distance Interval measures from. Nullable: SQL NULL is no reading,
+  // which the repository maps to the domain's `undefined`.
+  @Column({ name: 'at_distance_km', type: 'integer', nullable: true })
+  distanceKm!: number | null;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   fields!: LoggedField[];
 

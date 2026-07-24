@@ -38,9 +38,19 @@ export interface LogEntryFormProps {
   /** The entry's field snapshot, with any already-recorded values. */
   readonly initialFields: readonly LoggedField[];
   readonly initialDate: IsoDate;
+  /** The rig's Distance reading at the time (km), if the entry recorded one (issue #32). */
+  readonly initialDistanceKm?: number | undefined;
   readonly submitLabel: string;
   readonly pending: boolean;
-  readonly onSubmit: (performedOn: IsoDate, fields: LoggedField[]) => void;
+  /**
+   * `distanceKm` is the optional Distance reading (issue #32): a whole km count,
+   * or `undefined` when the field is left blank — absent means absent.
+   */
+  readonly onSubmit: (
+    performedOn: IsoDate,
+    fields: LoggedField[],
+    distanceKm: number | undefined,
+  ) => void;
   readonly onCancel: () => void;
 }
 
@@ -61,6 +71,7 @@ function withValue(
 export function LogEntryForm({
   initialFields,
   initialDate,
+  initialDistanceKm,
   submitLabel,
   pending,
   onSubmit,
@@ -68,6 +79,9 @@ export function LogEntryForm({
 }: LogEntryFormProps): JSX.Element {
   const [performedOn, setPerformedOn] = useState<string>(initialDate);
   const [fields, setFields] = useState<LoggedField[]>([...initialFields]);
+  const [distanceText, setDistanceText] = useState(
+    initialDistanceKm === undefined ? '' : String(initialDistanceKm),
+  );
   const [error, setError] = useState<string | undefined>(undefined);
 
   const setValue = (name: string, value: FieldValue | undefined): void => {
@@ -91,8 +105,20 @@ export function LogEntryForm({
       setError(required.errors[0]);
       return;
     }
+    // The optional Distance reading (issue #32): blank means none, otherwise a
+    // whole, non-negative km count.
+    const trimmedDistance = distanceText.trim();
+    const distanceKm =
+      trimmedDistance === '' ? undefined : Number(trimmedDistance);
+    if (
+      distanceKm !== undefined &&
+      (!Number.isSafeInteger(distanceKm) || distanceKm < 0)
+    ) {
+      setError('The distance reading must be a whole number of kilometres.');
+      return;
+    }
     setError(undefined);
-    onSubmit(performedOn, fields);
+    onSubmit(performedOn, fields, distanceKm);
   };
 
   return (
@@ -114,6 +140,25 @@ export function LogEntryForm({
             setPerformedOn(e.target.value);
           }}
         />
+      </Label>
+
+      <Label className={labelClass}>
+        Distance (km)
+        <Input
+          type="number"
+          min={0}
+          step={1}
+          className="w-44"
+          value={distanceText}
+          onChange={(e) => {
+            setDistanceText(e.target.value);
+          }}
+          placeholder="38200"
+        />
+        <span className="text-xs">
+          Optional — the rig’s distance now, so distance-based tasks know when
+          they’re next due.
+        </span>
       </Label>
 
       {fields.map((field) => (

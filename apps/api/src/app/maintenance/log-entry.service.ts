@@ -90,6 +90,9 @@ export class LogEntryService {
       // not relabel this entry, exactly as the field snapshot is frozen.
       taskName: task.name,
       performedOn: input.performedOn,
+      // The rig's Distance reading at the time (issue #32), if the owner gave
+      // one — the anchor a distance Interval measures from. Absent means absent.
+      ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
       fields: input.fields,
     });
     // A one-time task is done once (issue #29): performing it writes this entry,
@@ -129,7 +132,12 @@ export class LogEntryService {
     return this.logEntries.listByRig(rigId);
   }
 
-  /** Correct a past entry's date and/or values (task/rig never change). */
+  /**
+   * Correct a past entry's date, Distance reading, and/or values (task/rig never
+   * change). `distanceKm` carries the removal marker the other fields lack: an
+   * explicit `null` clears a recorded reading (issue #32), an omitted key leaves
+   * it unchanged.
+   */
   async update(
     ownerId: Id,
     id: Id,
@@ -139,13 +147,19 @@ export class LogEntryService {
     if (changes.fields !== undefined) {
       assertRequiredValues(changes.fields);
     }
-    return this.logEntries.save({
+    const next: LogEntry = {
       ...existing,
       ...(changes.performedOn !== undefined && {
         performedOn: changes.performedOn,
       }),
       ...(changes.fields !== undefined && { fields: changes.fields }),
-    });
+    };
+    if (changes.distanceKm === null) {
+      delete next.distanceKm;
+    } else if (changes.distanceKm !== undefined) {
+      next.distanceKm = changes.distanceKm;
+    }
+    return this.logEntries.save(next);
   }
 
   /** Delete one of the owner's entries (a mistaken record). */

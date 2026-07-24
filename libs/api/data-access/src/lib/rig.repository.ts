@@ -34,6 +34,19 @@ function toRig(entity: RigEntity): Rig {
     model: entity.model ?? undefined,
     year: entity.year ?? undefined,
     nickname: entity.nickname,
+    // The rig's current Distance (issue #32) — NULL when unset (CONTEXT.md).
+    distanceKm: entity.distanceKm ?? undefined,
+  };
+}
+
+/** The wire model with its optional Distance flattened to the row's nullable column. */
+function toRow(rig: Rig): Partial<RigEntity> {
+  return {
+    ...rig,
+    // SQL NULL must be written explicitly: `save` skips `undefined` columns,
+    // which would leave a cleared Distance in place (issue #32).
+    // eslint-disable-next-line unicorn/no-null
+    distanceKm: rig.distanceKm ?? null,
   };
 }
 
@@ -58,7 +71,7 @@ export class TypeOrmRigRepository extends RigRepository {
   }
 
   async save(rig: Rig): Promise<Rig> {
-    const saved = await this.repo.save(this.repo.create(rig));
+    const saved = await this.repo.save(this.repo.create(toRow(rig)));
     return toRig(saved);
   }
 

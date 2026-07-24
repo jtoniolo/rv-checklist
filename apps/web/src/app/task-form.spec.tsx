@@ -25,7 +25,7 @@ describe('TaskForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Condition slide seals',
       description: 'Seals dry out.\nWipe down, then condition.',
-      intervalMonths: undefined,
+      interval: undefined,
       oneTime: false,
       fieldSchema: [],
     });
@@ -50,7 +50,7 @@ describe('TaskForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Grease hitch',
       description: undefined,
-      intervalMonths: undefined,
+      interval: undefined,
       oneTime: false,
       fieldSchema: [],
     });
@@ -87,7 +87,7 @@ describe('TaskForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Flush water heater',
       description: undefined,
-      intervalMonths: 6,
+      interval: { basis: 'calendar', months: 6 },
       oneTime: false,
       fieldSchema: [],
     });
@@ -113,10 +113,73 @@ describe('TaskForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Replenish first-aid kit',
       description: undefined,
-      intervalMonths: undefined,
+      interval: undefined,
       oneTime: true,
       fieldSchema: [],
     });
+  });
+
+  it('submits a calendar interval on the default basis', () => {
+    const onSubmit = jest.fn();
+    render(
+      <TaskForm
+        submitLabel="Add task"
+        pending={false}
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Flush water heater' },
+    });
+    fireEvent.change(screen.getByLabelText(/^Repeat every \(months\)/), {
+      target: { value: '6' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interval: { basis: 'calendar', months: 6 },
+      }),
+    );
+  });
+
+  // The basis switch (issue #32): a distance task edits on the distance basis —
+  // the km field shows (not the months one), and submitting emits the distance
+  // interval, proving the form drives both bases.
+  it('edits a distance task on the distance basis, emitting a km interval', () => {
+    const task: MaintenanceTask = {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      rigId: '550e8400-e29b-41d4-a716-446655440002',
+      name: 'Repack wheel bearings',
+      interval: { basis: 'distance', km: 20_000 },
+      fieldSchema: [],
+    };
+    const onSubmit = jest.fn();
+    render(
+      <TaskForm
+        initial={task}
+        submitLabel="Save changes"
+        pending={false}
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    // The distance basis is in force: km shown, months hidden.
+    const km = screen.getByLabelText(/^Repeat every \(km\)/);
+    expect((km as HTMLInputElement).value).toBe('20000');
+    expect(screen.queryByLabelText(/^Repeat every \(months\)/)).toBeNull();
+
+    fireEvent.change(km, { target: { value: '25000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interval: { basis: 'distance', km: 25_000 },
+      }),
+    );
   });
 
   it('pre-checks one-time and hides the interval when editing a one-time task', () => {

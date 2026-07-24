@@ -42,6 +42,12 @@ export class RigEntity {
   @Column({ type: 'text' })
   nickname!: string;
 
+  // The rig's current Distance in km (issue #32), owner-maintained — the
+  // yardstick a distance Interval measures against. Nullable: SQL NULL is an
+  // unset Distance, which the repository maps to the domain's `undefined`.
+  @Column({ name: 'distance_km', type: 'integer', nullable: true })
+  distanceKm!: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
