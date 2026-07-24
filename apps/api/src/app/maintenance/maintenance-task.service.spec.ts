@@ -21,7 +21,7 @@ const bobRig: Rig = { id: bobRigId, ownerId: bob, nickname: 'Bob’s Rig' };
 const sealsInput = {
   rigId: aliceRigId,
   name: 'Condition slide seals',
-  interval: { months: 12 },
+  interval: { basis: 'calendar' as const, months: 12 },
   fieldSchema: [
     { name: 'Product used', type: 'text' as const, required: false },
   ],
@@ -128,7 +128,7 @@ describe('MaintenanceTaskService', () => {
 
       const updated = await service.update(alice, task.id, {
         name: 'Condition all seals',
-        interval: { months: 6 },
+        interval: { basis: 'calendar' as const, months: 6 },
         fieldSchema: [
           { name: 'Product used', type: 'text', required: true },
           { name: 'Cost', type: 'number', required: false, unit: '$' },
@@ -136,7 +136,7 @@ describe('MaintenanceTaskService', () => {
       });
 
       expect(updated.name).toBe('Condition all seals');
-      expect(updated.interval).toEqual({ months: 6 });
+      expect(updated.interval).toEqual({ basis: 'calendar', months: 6 });
       expect(updated.fieldSchema).toHaveLength(2);
     });
 
@@ -175,12 +175,12 @@ describe('MaintenanceTaskService', () => {
       });
 
       const updated = await service.update(alice, task.id, {
-        interval: { months: 12 },
+        interval: { basis: 'calendar' as const, months: 12 },
         // eslint-disable-next-line unicorn/no-null -- the form sends the coherent pair
         oneTime: null,
       });
 
-      expect(updated.interval).toEqual({ months: 12 });
+      expect(updated.interval).toEqual({ basis: 'calendar', months: 12 });
       expect(updated.oneTime).toBeUndefined();
     });
 
@@ -210,7 +210,7 @@ describe('MaintenanceTaskService', () => {
       const updated = await service.update(alice, task.id, { name: 'Seals' });
 
       expect(updated.rigId).toBe(aliceRigId);
-      expect(updated.interval).toEqual({ months: 12 });
+      expect(updated.interval).toEqual({ basis: 'calendar', months: 12 });
       expect(updated.fieldSchema).toEqual(sealsInput.fieldSchema);
       expect(updated.description).toBe('Why and how.');
     });

@@ -50,7 +50,7 @@ export class SeedService extends StarterContentSeeder {
         rigId: rig.id,
         name: task.name,
         description: task.description,
-        interval: { months: task.intervalMonths },
+        interval: { basis: 'calendar', months: task.intervalMonths },
         fieldSchema: task.fieldSchema,
       });
       taskIdsByName.set(task.name, created.id);
