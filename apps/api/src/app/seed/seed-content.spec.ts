@@ -30,12 +30,37 @@ describe('seed content (docs/seed-content.md)', () => {
       }
     });
 
-    it('distance tasks spec kilometres; the axle jobs use the metric conversions', () => {
+    it('the axle jobs carry BOTH a calendar and a distance limit (ADR-0016, #36)', () => {
+      // Their real-world spec is "X or Y, whichever comes first": wheel bearings
+      // 12 months OR 12,000 mi (→ 20,000 km); brakes annual inspect OR 3,000 mi
+      // (→ 5,000 km) adjust. Both limits present so the calendar leg catches the
+      // rig that sits and the distance leg catches the rig that travels.
       const byName = new Map(SEED_TASKS.map((t) => [t.name, t.interval]));
       expect(byName.get('Repack / inspect wheel bearings')).toEqual({
+        months: 12,
         km: 20_000,
       });
-      expect(byName.get('Inspect & adjust brakes')).toEqual({ km: 5000 });
+      expect(byName.get('Inspect & adjust brakes')).toEqual({
+        months: 12,
+        km: 5000,
+      });
+    });
+
+    it('leaves single-cadence tasks on one limit — the other stays absent (#36)', () => {
+      const byName = new Map(SEED_TASKS.map((t) => [t.name, t.interval]));
+      // A calendar-only task carries no km leg…
+      expect(byName.get('Check tire pressure & tread')).toEqual({ months: 1 });
+      expect(byName.get('Inspect suspension & grease wet bolts')).toEqual({
+        months: 12,
+      });
+      // …and only the two axle jobs carry a distance leg at all.
+      const withKm = SEED_TASKS.filter((t) => t.interval.km !== undefined).map(
+        (t) => t.name,
+      );
+      expect(withKm).toEqual([
+        'Repack / inspect wheel bearings',
+        'Inspect & adjust brakes',
+      ]);
     });
 
     it('splits the multi-cadence alarm chore: monthly test vs multi-year replacements', () => {

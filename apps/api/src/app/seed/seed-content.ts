@@ -11,7 +11,9 @@ import type { FieldSchema, Interval } from '@rv-checklist/domain';
  *
  * Each task carries a real per-task {@link Interval} (ADR-0015): mostly a
  * calendar `months` cadence — short recurring checks, seasonal tasks, and
- * multi-year age-based replacements alike — plus the two `km` axle jobs. The
+ * multi-year age-based replacements alike — plus the two trailer-axle jobs
+ * (wheel bearings, brakes) that carry BOTH a calendar and a distance limit,
+ * their "X or Y, whichever comes first" spec (ADR-0016, #36). The
  * seed sets **no** last-performed anchor: age-based replacements ship as ordinary
  * calendar tasks the owner anchors to a manufacture date in-app. Event-driven
  * checks (lug re-torque, safety chains, breakaway test) are checklist Steps, not
@@ -44,10 +46,11 @@ export interface SeedChecklist {
 export const SEED_RIG_NICKNAME = 'My Travel Trailer';
 
 // Interval constructors, so a per-task cadence reads at a glance and the metric
-// conversions live in one place (ADR-0015). Each seed task carries a single
-// limit today; the shape supports both at once (ADR-0016) when a task needs it.
+// conversions live in one place (ADR-0015). Most tasks carry a single calendar
+// limit; the two trailer-axle jobs carry BOTH a calendar and a distance limit —
+// their spec is "X or Y, whichever comes first" (ADR-0016, #36).
 const months = (n: number): Interval => ({ months: n });
-const km = (n: number): Interval => ({ km: n });
+const monthsOrKm = (m: number, k: number): Interval => ({ months: m, km: k });
 
 // Task names, as constants so a ⚙︎ reference can't drift from its task.
 const WHEEL_BEARINGS = 'Repack / inspect wheel bearings';
@@ -91,14 +94,14 @@ export const SEED_TASKS: readonly SeedTask[] = [
     name: WHEEL_BEARINGS,
     description:
       'Worn or dry wheel bearings can seize or fail at speed, risking a wheel coming off the trailer. How: 1) Raise and support the axle so the wheel spins free; 2) Pull the hub and check the bearings and races for pitting, discoloration, or roughness; 3) Clean and repack (or replace) the bearings with fresh grease; 4) Reassemble, set the bearing preload, and confirm the wheel spins smoothly with no play.',
-    interval: km(20_000),
+    interval: monthsOrKm(12, 20_000),
     fieldSchema: [{ name: 'grease type', type: 'text', required: false }],
   },
   {
     name: BRAKES,
     description:
       'Trailer brakes that are worn or out of adjustment lengthen stopping distance and overwork the tow vehicle. How: 1) Raise and support each braked wheel; 2) Inspect the linings and drums or rotors for wear and scoring; 3) Adjust the brakes to the correct running clearance; 4) Test operation and confirm even braking across all wheels.',
-    interval: km(5000),
+    interval: monthsOrKm(12, 5000),
     fieldSchema: [{ name: 'measured pad/shoe', type: 'text', required: false }],
   },
   {

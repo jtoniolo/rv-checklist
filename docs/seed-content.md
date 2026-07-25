@@ -15,14 +15,21 @@ Scope decisions made while seeding:
 - **Usage readings** (fresh water, tanks) live as custom fields on **Departure**. Travel **Distance** is *not* a Departure custom field: it is the rig's own structured Distance, recorded on the **Log Entry** when a distance task is performed (ADR-0015). The old ad-hoc `odometer` custom field is gone.
 - **No `photo` field type** in seed tasks — deferred post-MVP (ADR-0010, ADR-0007).
 
-### Interval bases (ADR-0015)
+### Interval limits (ADR-0015, ADR-0016)
 
-Each **Maintenance Task** carries a per-task **Interval** on one **basis**:
+Each **Maintenance Task** carries a per-task **Interval** with two optional
+limits, **at least one** present (ADR-0016):
 
 - **calendar** — a whole number of **months** (short recurring checks, seasonal
   tasks anchored to their season, and multi-year age-based replacements alike);
 - **distance** — a whole number of **kilometres**, measured against the rig's
   **Distance** — trailer-axle service is spec'd by distance, not the clock.
+
+The two **trailer-axle jobs carry BOTH** limits — their spec is "X or Y,
+whichever comes first" (ADR-0016): **wheel bearings** every 12 months **or**
+12,000 mi, and **brakes** inspected annually **or** adjusted every 3,000 mi. The
+calendar leg catches the rig that sits all season; the distance leg catches the
+rig that travels. Every other task carries a single (calendar) limit.
 
 **Metric conversions** applied from the research's imperial specs: wheel bearings
 12,000 mi → **20,000 km**; brake adjustment 3,000 mi → **5,000 km**; tread depth
@@ -49,8 +56,8 @@ The recurring upkeep jobs. Intervals drive due/overdue (computed on read). Steps
 
 | Task | Interval | Basis | Custom fields |
 |---|---|---|---|
-| Repack / inspect wheel bearings | 20,000 km | distance | grease type (text) |
-| Inspect & adjust brakes | 5,000 km | distance | measured pad/shoe (text) |
+| Repack / inspect wheel bearings | 12 months **or** 20,000 km | calendar + distance | grease type (text) |
+| Inspect & adjust brakes | 12 months **or** 5,000 km | calendar + distance | measured pad/shoe (text) |
 | Check tire pressure & tread | 1 month | calendar | tread depth (number, mm), set pressure (number, kPa) |
 | Replace aged tires | 72 months | calendar (age) | DOT date (text) |
 | Inspect suspension & grease wet bolts | 12 months | calendar | — |
