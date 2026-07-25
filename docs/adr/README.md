@@ -22,6 +22,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0013](0013-styling-tailwind-mobile-first.md) | Styling — Tailwind CSS v4, mobile-first by construction; shared primitives in `libs/web/ui` |
 | [0014](0014-shadcn-vendored-controls.md) | Controls — shadcn/ui vendored into `libs/web/ui`, semantic tokens bridged to the camping palette (extends 0013) |
 | [0015](0015-multi-basis-maintenance-intervals.md) | Multi-basis maintenance intervals (calendar/distance) + stored due-status inputs (amends 0005) |
+| [0016](0016-interval-combined-limits.md) | An Interval carries both limits, due on whichever elapses first (amends 0015) |
 
 The domain model (entities, relationships, ubiquitous language) lives in
 `CONTEXT.md` at the repo root, written as the domain-model ticket (#2) is walked.
