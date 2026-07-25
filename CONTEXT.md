@@ -9,7 +9,7 @@ An RV owned by a user, identified by VIN, make, model, year, and a nickname. Eve
 _Avoid_: RV, vehicle, camper
 
 **Distance**:
-How far a rig has travelled — driven or towed — as a running total in **kilometres**, kept current by the owner (a future trip logger may maintain it automatically). It is the yardstick for a distance-based **Interval**: a task due "every 20,000 km" compares the rig's current Distance against the Distance recorded when the task was last performed. Trailers have no odometer, so this is an owner-maintained figure, not an instrument reading.
+How far a rig has travelled — driven or towed — as a running total in **kilometres**, kept current by the owner (a future trip logger may maintain it automatically). It is the yardstick for an **Interval**'s distance limit: a task due "every 20,000 km" compares the rig's current Distance against the Distance recorded when the task was last performed. Trailers have no odometer, so this is an owner-maintained figure, not an instrument reading.
 _Avoid_: mileage, odometer (a towable rig has no odometer), miles (kilometres only)
 
 **Checklist**:
@@ -33,11 +33,11 @@ An upkeep job on a rig (e.g. "condition slide seals"), with an optional free-tex
 _Avoid_: job, chore, todo
 
 **Interval**:
-The recurrence period on a recurring maintenance task, measured on one of two **bases**: **calendar** time (e.g. every 12 months) or **Distance** (e.g. every 20,000 km). Optional and mutually exclusive with the one-time marker. Drives passive due/overdue, computed on read from when the task was **last performed** — and, for a distance interval, the rig's current Distance. Nothing notifies. A task whose event trigger is "before every trip" or "after any wheel removal" is **not** an interval — that belongs on a checklist as a Step; a season ("each fall") is a calendar interval anchored by its last-performed date, not a basis of its own.
-_Avoid_: schedule (nothing is scheduled), mileage/hours (distance is kilometres; run-hours are out of scope)
+The recurrence period on a recurring maintenance task, carrying up to two **limits**: a **calendar** cadence (e.g. every 12 months) and/or a **Distance** cadence (e.g. every 20,000 km). At least one limit is present; either may be omitted (a blank cadence is simply ignored). When both are present the task is due when **whichever elapses first** is reached — the earlier of the two triggers, the way a real distance schedule reads ("every 2 years or 30,000 km, whichever comes first"). Optional as a whole and mutually exclusive with the one-time marker. Drives passive due/overdue, computed on read from when the task was **last performed** — and, for the distance limit, the rig's current Distance. Nothing notifies. A task whose event trigger is "before every trip" or "after any wheel removal" is **not** an interval — that belongs on a checklist as a Step; a season ("each fall") is a calendar limit anchored by its last-performed date, not a limit of its own.
+_Avoid_: schedule (nothing is scheduled), track-by/basis (an interval is not one-of-two — it may carry both limits), mileage/hours (distance is kilometres; run-hours are out of scope)
 
 **Last performed**:
-The date a maintenance task was most recently performed — the anchor a calendar interval's next due date is computed from. Normally the date of the newest **Log Entry**, but the owner may set it directly, even with no Log Entry, to anchor a task without logging it: a fresh task, a season-anchored one, or an age-based replacement anchored to a manufacture date. When both exist, the **later** of the manual date and the newest Log Entry wins — a real completion always supersedes a guess. Applies to calendar intervals only; a distance interval anchors solely off a logged Distance reading.
+The date a maintenance task was most recently performed — the anchor a calendar interval's next due date is computed from. Normally the date of the newest **Log Entry**, but the owner may set it directly, even with no Log Entry, to anchor a task without logging it: a fresh task, a season-anchored one, or an age-based replacement anchored to a manufacture date. When both exist, the **later** of the manual date and the newest Log Entry wins — a real completion always supersedes a guess. Anchors the **calendar** limit only; the distance limit anchors solely off a logged Distance reading, whether or not the same interval also carries a calendar limit.
 _Avoid_: baseline, anchor date (internal terms — the owner sees "last performed")
 
 **One-time task**:
