@@ -69,7 +69,7 @@ describe('SeedService.seedStarterContent', () => {
     const bearings = tasks.find(
       (t) => t.name === 'Repack / inspect wheel bearings',
     );
-    expect(bearings?.interval).toEqual({ basis: 'distance', km: 20_000 });
+    expect(bearings?.interval).toEqual({ km: 20_000 });
     expect(bearings?.description).toContain('Worn or dry wheel bearings');
     expect(bearings?.fieldSchema).toEqual([
       { name: 'grease type', type: 'text', required: false },

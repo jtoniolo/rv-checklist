@@ -120,10 +120,11 @@ export class MaintenanceTaskService {
     } else if (changes.lastPerformed !== undefined) {
       next.lastPerformed = changes.lastPerformed;
     }
-    // The manual anchor rides only with a calendar interval (issue #33): drop it
-    // whenever this edit leaves the task without one (interval removed, switched
-    // to distance, or made one-time), so the saved task never holds a stray anchor.
-    if (next.interval?.basis !== 'calendar') {
+    // The manual anchor rides only with an interval carrying a calendar limit
+    // (issue #33, ADR-0016): drop it whenever this edit leaves the task without a
+    // `months` limit (interval removed, switched to distance-only, or made
+    // one-time), so the saved task never holds a stray anchor.
+    if (next.interval?.months === undefined) {
       delete next.lastPerformed;
     }
     if (changes.description === null) {

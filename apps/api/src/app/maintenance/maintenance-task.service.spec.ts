@@ -21,7 +21,7 @@ const bobRig: Rig = { id: bobRigId, ownerId: bob, nickname: 'Bob’s Rig' };
 const sealsInput = {
   rigId: aliceRigId,
   name: 'Condition slide seals',
-  interval: { basis: 'calendar' as const, months: 12 },
+  interval: { months: 12 },
   fieldSchema: [
     { name: 'Product used', type: 'text' as const, required: false },
   ],
@@ -104,11 +104,30 @@ describe('MaintenanceTaskService', () => {
       const task = await service.create(alice, {
         rigId: aliceRigId,
         name: 'Repack wheel bearings',
-        interval: { basis: 'distance' as const, km: 20_000 },
+        interval: { km: 20_000 },
         fieldSchema: [],
       });
 
-      expect(task.interval).toEqual({ basis: 'distance', km: 20_000 });
+      expect(task.interval).toEqual({ km: 20_000 });
+    });
+
+    // A combined interval (ADR-0016) carries both limits at once and round-trips
+    // through the write path, proving neither the schema nor the repository drops
+    // a limit when both are present.
+    it('creates a task carrying both a calendar and a distance limit', async () => {
+      const { service } = await makeService();
+
+      const task = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Service trailer axle',
+        interval: { months: 24, km: 30_000 },
+        lastPerformed: '2025-07-21',
+        fieldSchema: [],
+      });
+
+      expect(task.interval).toEqual({ months: 24, km: 30_000 });
+      // The manual anchor rides along — the interval carries a calendar limit.
+      expect(task.lastPerformed).toBe('2025-07-21');
     });
   });
 
@@ -143,7 +162,7 @@ describe('MaintenanceTaskService', () => {
 
       const updated = await service.update(alice, task.id, {
         name: 'Condition all seals',
-        interval: { basis: 'calendar' as const, months: 6 },
+        interval: { months: 6 },
         fieldSchema: [
           { name: 'Product used', type: 'text', required: true },
           { name: 'Cost', type: 'number', required: false, unit: '$' },
@@ -151,7 +170,7 @@ describe('MaintenanceTaskService', () => {
       });
 
       expect(updated.name).toBe('Condition all seals');
-      expect(updated.interval).toEqual({ basis: 'calendar', months: 6 });
+      expect(updated.interval).toEqual({ months: 6 });
       expect(updated.fieldSchema).toHaveLength(2);
     });
 
@@ -160,10 +179,10 @@ describe('MaintenanceTaskService', () => {
       const task = await service.create(alice, sealsInput);
 
       const updated = await service.update(alice, task.id, {
-        interval: { basis: 'distance' as const, km: 20_000 },
+        interval: { km: 20_000 },
       });
 
-      expect(updated.interval).toEqual({ basis: 'distance', km: 20_000 });
+      expect(updated.interval).toEqual({ km: 20_000 });
     });
 
     it('removes the interval with an explicit null — the task stops being tracked', async () => {
@@ -201,12 +220,12 @@ describe('MaintenanceTaskService', () => {
       });
 
       const updated = await service.update(alice, task.id, {
-        interval: { basis: 'calendar' as const, months: 12 },
+        interval: { months: 12 },
         // eslint-disable-next-line unicorn/no-null -- the form sends the coherent pair
         oneTime: null,
       });
 
-      expect(updated.interval).toEqual({ basis: 'calendar', months: 12 });
+      expect(updated.interval).toEqual({ months: 12 });
       expect(updated.oneTime).toBeUndefined();
     });
 
@@ -236,7 +255,7 @@ describe('MaintenanceTaskService', () => {
       const updated = await service.update(alice, task.id, { name: 'Seals' });
 
       expect(updated.rigId).toBe(aliceRigId);
-      expect(updated.interval).toEqual({ basis: 'calendar', months: 12 });
+      expect(updated.interval).toEqual({ months: 12 });
       expect(updated.fieldSchema).toEqual(sealsInput.fieldSchema);
       expect(updated.description).toBe('Why and how.');
     });
@@ -306,10 +325,10 @@ describe('MaintenanceTaskService', () => {
       });
 
       const updated = await service.update(alice, task.id, {
-        interval: { basis: 'distance' as const, km: 20_000 },
+        interval: { km: 20_000 },
       });
 
-      expect(updated.interval).toEqual({ basis: 'distance', km: 20_000 });
+      expect(updated.interval).toEqual({ km: 20_000 });
       expect(updated.lastPerformed).toBeUndefined();
     });
 
@@ -338,7 +357,7 @@ describe('MaintenanceTaskService', () => {
       });
 
       const updated = await service.update(alice, task.id, {
-        interval: { basis: 'calendar' as const, months: 6 },
+        interval: { months: 6 },
       });
 
       expect(updated.lastPerformed).toBe('2025-07-21');

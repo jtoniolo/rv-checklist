@@ -9,9 +9,9 @@ import type { FieldSchema, Interval } from '@rv-checklist/domain';
  * (ids don't exist until seeding creates the tasks) and ✎ steps carrying their
  * own field schemas (ADR-0008).
  *
- * Each task carries a real per-task {@link Interval} (ADR-0015): mostly
- * `calendar` months — short recurring checks, seasonal tasks, and multi-year
- * age-based replacements alike — plus the two `distance` (km) axle jobs. The
+ * Each task carries a real per-task {@link Interval} (ADR-0015): mostly a
+ * calendar `months` cadence — short recurring checks, seasonal tasks, and
+ * multi-year age-based replacements alike — plus the two `km` axle jobs. The
  * seed sets **no** last-performed anchor: age-based replacements ship as ordinary
  * calendar tasks the owner anchors to a manufacture date in-app. Event-driven
  * checks (lug re-torque, safety chains, breakaway test) are checklist Steps, not
@@ -22,7 +22,7 @@ export interface SeedTask {
   readonly name: string;
   /** Why the task matters plus a short how — verbatim from the doc (issue #26). */
   readonly description: string;
-  /** The task's per-task recurrence, on its own basis (ADR-0015, issue #34). */
+  /** The task's per-task recurrence — its calendar and/or distance cadence (ADR-0016, issue #34). */
   readonly interval: Interval;
   readonly fieldSchema: FieldSchema;
 }
@@ -43,10 +43,11 @@ export interface SeedChecklist {
 
 export const SEED_RIG_NICKNAME = 'My Travel Trailer';
 
-// Interval constructors, so a per-task basis reads at a glance and the metric
-// conversions live in one place (ADR-0015).
-const months = (n: number): Interval => ({ basis: 'calendar', months: n });
-const km = (n: number): Interval => ({ basis: 'distance', km: n });
+// Interval constructors, so a per-task cadence reads at a glance and the metric
+// conversions live in one place (ADR-0015). Each seed task carries a single
+// limit today; the shape supports both at once (ADR-0016) when a task needs it.
+const months = (n: number): Interval => ({ months: n });
+const km = (n: number): Interval => ({ km: n });
 
 // Task names, as constants so a ⚙︎ reference can't drift from its task.
 const WHEEL_BEARINGS = 'Repack / inspect wheel bearings';
