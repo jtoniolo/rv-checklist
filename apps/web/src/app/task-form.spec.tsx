@@ -62,7 +62,7 @@ describe('TaskForm', () => {
       rigId: '550e8400-e29b-41d4-a716-446655440002',
       name: 'Flush water heater',
       description: 'Sediment builds up.',
-      interval: { basis: 'calendar', months: 6 },
+      interval: { months: 6 },
       fieldSchema: [],
     };
     const onSubmit = jest.fn();
@@ -87,7 +87,7 @@ describe('TaskForm', () => {
     expect(onSubmit).toHaveBeenCalledWith({
       name: 'Flush water heater',
       description: undefined,
-      interval: { basis: 'calendar', months: 6 },
+      interval: { months: 6 },
       oneTime: false,
       fieldSchema: [],
     });
@@ -119,7 +119,7 @@ describe('TaskForm', () => {
     });
   });
 
-  it('submits a calendar interval on the default basis', () => {
+  it('submits a calendar-only interval from the months field', () => {
     const onSubmit = jest.fn();
     render(
       <TaskForm
@@ -140,20 +140,19 @@ describe('TaskForm', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        interval: { basis: 'calendar', months: 6 },
+        interval: { months: 6 },
       }),
     );
   });
 
-  // The basis switch (issue #32): a distance task edits on the distance basis —
-  // the km field shows (not the months one), and submitting emits the distance
-  // interval, proving the form drives both bases.
-  it('edits a distance task on the distance basis, emitting a km interval', () => {
+  // Both cadence fields are independent (ADR-0016): a km-only task shows a filled
+  // km field and a blank months field side by side, and editing km round-trips.
+  it('edits a distance-only task from the km field, both fields shown', () => {
     const task: MaintenanceTask = {
       id: '550e8400-e29b-41d4-a716-446655440001',
       rigId: '550e8400-e29b-41d4-a716-446655440002',
       name: 'Repack wheel bearings',
-      interval: { basis: 'distance', km: 20_000 },
+      interval: { km: 20_000 },
       fieldSchema: [],
     };
     const onSubmit = jest.fn();
@@ -167,19 +166,77 @@ describe('TaskForm', () => {
       />,
     );
 
-    // The distance basis is in force: km shown, months hidden.
+    // Both fields show; km is filled, months is blank (an absent limit).
     const km = screen.getByLabelText(/^Repeat every \(km\)/);
+    const months = screen.getByLabelText(/^Repeat every \(months\)/);
     expect((km as HTMLInputElement).value).toBe('20000');
-    expect(screen.queryByLabelText(/^Repeat every \(months\)/)).toBeNull();
+    expect((months as HTMLInputElement).value).toBe('');
 
     fireEvent.change(km, { target: { value: '25000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        interval: { basis: 'distance', km: 25_000 },
+        interval: { km: 25_000 },
       }),
     );
+  });
+
+  // The combined interval (ADR-0016): "every N months or M km" round-trips as one
+  // object carrying both limits.
+  it('submits a combined interval from both cadence fields', () => {
+    const onSubmit = jest.fn();
+    render(
+      <TaskForm
+        submitLabel="Add task"
+        pending={false}
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Service trailer axle' },
+    });
+    fireEvent.change(screen.getByLabelText(/^Repeat every \(months\)/), {
+      target: { value: '24' },
+    });
+    fireEvent.change(screen.getByLabelText(/^Repeat every \(km\)/), {
+      target: { value: '30000' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interval: { months: 24, km: 30_000 },
+      }),
+    );
+  });
+
+  it('pre-fills both fields when editing a combined-interval task', () => {
+    const task: MaintenanceTask = {
+      id: '550e8400-e29b-41d4-a716-446655440001',
+      rigId: '550e8400-e29b-41d4-a716-446655440002',
+      name: 'Service trailer axle',
+      interval: { months: 24, km: 30_000 },
+      fieldSchema: [],
+    };
+    render(
+      <TaskForm
+        initial={task}
+        submitLabel="Save changes"
+        pending={false}
+        onSubmit={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    const months = screen.getByLabelText(/^Repeat every \(months\)/);
+    const km = screen.getByLabelText(/^Repeat every \(km\)/);
+    expect((months as HTMLInputElement).value).toBe('24');
+    expect((km as HTMLInputElement).value).toBe('30000');
+    // A combined interval carries a calendar limit, so the anchor control shows.
+    expect(screen.getByLabelText('Last performed')).not.toBeNull();
   });
 
   // The manual last-performed anchor (issue #33): a calendar-only date control.
@@ -207,18 +264,18 @@ describe('TaskForm', () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        interval: { basis: 'calendar', months: 12 },
+        interval: { months: 12 },
         lastPerformed: '2025-07-21',
       }),
     );
   });
 
-  it('shows the last-performed control for the calendar basis only', () => {
+  it('hides the last-performed control when there is no calendar limit', () => {
     const task: MaintenanceTask = {
       id: '550e8400-e29b-41d4-a716-446655440001',
       rigId: '550e8400-e29b-41d4-a716-446655440002',
       name: 'Repack wheel bearings',
-      interval: { basis: 'distance', km: 20_000 },
+      interval: { km: 20_000 },
       fieldSchema: [],
     };
     render(
@@ -231,7 +288,7 @@ describe('TaskForm', () => {
       />,
     );
 
-    // Distance basis: no manual anchor (a distance interval has none).
+    // Distance-only (months blank): no manual anchor — it anchors the calendar limit.
     expect(screen.queryByLabelText('Last performed')).toBeNull();
   });
 
@@ -240,7 +297,7 @@ describe('TaskForm', () => {
       id: '550e8400-e29b-41d4-a716-446655440001',
       rigId: '550e8400-e29b-41d4-a716-446655440002',
       name: 'Flush water heater',
-      interval: { basis: 'calendar', months: 6 },
+      interval: { months: 6 },
       lastPerformed: '2025-07-21',
       fieldSchema: [],
     };

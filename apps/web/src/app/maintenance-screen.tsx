@@ -342,9 +342,10 @@ function formatKm(km: number): string {
 
 /**
  * How the task is tracked, as a short label: "Every 12 months" / "Every month"
- * for a calendar task, "Every 20,000 km" for a distance task (issue #32),
- * "One-time" for a one-time task (issue #29), or undefined for an untracked one
- * (the caller supplies its own "Not tracked" wording).
+ * for a calendar limit, "Every 20,000 km" for a distance limit (issue #32),
+ * "Every 12 months or 20,000 km" when it carries both (ADR-0016 — due on
+ * whichever comes first), "One-time" for a one-time task (issue #29), or undefined
+ * for an untracked one (the caller supplies its own "Not tracked" wording).
  */
 function intervalLabel(task: MaintenanceTask): string | undefined {
   if (task.oneTime) {
@@ -353,12 +354,19 @@ function intervalLabel(task: MaintenanceTask): string | undefined {
   if (!task.interval) {
     return undefined;
   }
-  if (task.interval.basis === 'distance') {
-    return `Every ${formatKm(task.interval.km)}`;
+  const parts: string[] = [];
+  if (task.interval.months !== undefined) {
+    parts.push(
+      task.interval.months === 1
+        ? 'month'
+        : `${String(task.interval.months)} months`,
+    );
   }
-  return task.interval.months === 1
-    ? 'Every month'
-    : `Every ${String(task.interval.months)} months`;
+  if (task.interval.km !== undefined) {
+    parts.push(formatKm(task.interval.km));
+  }
+  // The limits coexist ("12 months or 20,000 km") — due on whichever comes first.
+  return `Every ${parts.join(' or ')}`;
 }
 
 /**
@@ -389,8 +397,9 @@ function badgeOf(status: DueStatus): readonly [string, string] | undefined {
     case 'reading-needed': {
       return ['Set the rig’s distance to track this', ATTENTION_TONE];
     }
-    // ok / due / overdue: a distance status carries kilometres, a calendar one
-    // dates — discriminated on the same `basis` tag the Interval union uses.
+    // ok / due / overdue: the standing of the limit that is driving (the more
+    // urgent when both are present, ADR-0016) — a distance standing carries
+    // kilometres, a calendar one dates, tagged by its `basis`.
     case 'ok': {
       return status.basis === 'distance'
         ? [

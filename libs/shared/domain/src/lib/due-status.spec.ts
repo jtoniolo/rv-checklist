@@ -5,8 +5,9 @@ import {
   latestReadingKm,
 } from './due-status.js';
 
-const calendar = (months: number) => ({ basis: 'calendar' as const, months });
-const distance = (km: number) => ({ basis: 'distance' as const, km });
+const calendar = (months: number) => ({ months });
+const distance = (km: number) => ({ km });
+const both = (months: number, km: number) => ({ months, km });
 
 describe('dueStatus — computed on read from last completion + interval (ADR-0005)', () => {
   it('is untracked with no interval, even when the task has been performed', () => {
@@ -278,6 +279,137 @@ describe('dueStatus — distance basis (issue #32)', () => {
       dueAtKm: 40_000,
       currentKm: 41_500,
     });
+  });
+});
+
+// A combined interval (ADR-0016) carries both limits and is due on whichever
+// elapses first: the overall standing is the *more urgent* of the two present
+// limits' standings (overdue on either wins; due beats ok). A limit that can't
+// be evaluated is skipped, not surfaced.
+describe('dueStatus — combined limits, whichever elapses first (ADR-0016)', () => {
+  // Calendar overdue (due 2026-07-21, today past it) vs distance still ok
+  // (due at 40,000 km, rig at 38,200). Overdue wins.
+  it('reports overdue when the calendar limit is overdue and distance is ok', () => {
+    expect(
+      dueStatus({
+        interval: both(12, 20_000),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-22',
+        rigDistanceKm: 38_200,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  // Distance overdue (due at 40,000 km, rig at 41,500) vs calendar still ok
+  // (due 2026-07-21, today before it). Overdue wins, on the distance basis.
+  it('reports overdue when the distance limit is overdue and calendar is ok', () => {
+    expect(
+      dueStatus({
+        interval: both(12, 20_000),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-20',
+        rigDistanceKm: 41_500,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'distance',
+      dueAtKm: 40_000,
+      currentKm: 41_500,
+    });
+  });
+
+  // Calendar due today vs distance ok — due beats ok.
+  it('reports due when one limit is due and the other is ok', () => {
+    expect(
+      dueStatus({
+        interval: both(12, 20_000),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-21',
+        rigDistanceKm: 38_200,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'due',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  // Both ok — a tie in urgency resolves to the calendar limit (evaluated first).
+  it('resolves an ok/ok tie to the calendar standing', () => {
+    expect(
+      dueStatus({
+        interval: both(12, 20_000),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-20',
+        rigDistanceKm: 38_200,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  // Both overdue — a tie in urgency still resolves to the calendar standing.
+  it('resolves an overdue/overdue tie to the calendar standing', () => {
+    expect(
+      dueStatus({
+        interval: both(12, 20_000),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-22',
+        rigDistanceKm: 41_500,
+        lastReadingKm: 20_000,
+      }),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  // No distance yardstick (rig has no current Distance), but the calendar limit
+  // can still be evaluated: the task reads its calendar standing, NOT reading-needed.
+  it('falls back to the calendar standing when distance has no yardstick', () => {
+    expect(
+      dueStatus({
+        interval: both(12, 20_000),
+        lastPerformedOn: '2025-07-21',
+        today: '2026-07-22',
+        rigDistanceKm: undefined,
+        lastReadingKm: undefined,
+      }),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  // Never performed and no manual anchor: neither limit can be evaluated, so the
+  // task is never-performed — not reading-needed (distance is not the sole limit).
+  it('is never-performed when a combined task has no completion or anchor', () => {
+    expect(
+      dueStatus({
+        interval: both(12, 20_000),
+        lastPerformedOn: undefined,
+        today: '2026-07-21',
+        rigDistanceKm: 38_200,
+        lastReadingKm: undefined,
+      }),
+    ).toEqual({ kind: 'never-performed' });
   });
 });
 

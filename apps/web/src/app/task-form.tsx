@@ -30,11 +30,12 @@ import { useState, type JSX } from 'react';
  *
  * Tracking is a three-way choice (issue #29), mutually exclusive by
  * construction: a **one-time** task (due from creation, done once) hides the
- * interval; otherwise a recurring interval measured on a **basis** (calendar
- * months or Distance km — issue #32) makes it recurring, and a blank interval
- * leaves it untracked. The basis picker chooses months vs km; only the chosen
- * basis's field is shown, and only its value is emitted. So the form never emits
- * both an interval and the one-time marker, nor an interval on two bases.
+ * interval; otherwise a recurring interval makes it recurring, and leaving the
+ * interval blank leaves it untracked. The interval offers two independent
+ * optional cadence fields (ADR-0016) — calendar `months` and Distance `km` — and
+ * the task is due on whichever elapses first; each blank field is an absent
+ * limit, and the interval is emitted only when at least one is filled. So the
+ * form never emits both an interval and the one-time marker.
  *
  * The built field schema is validated by the shared `FieldSchemaSchema` before
  * submit, so the ADR-0004 rules (unique names, supported types, `photo`
@@ -48,17 +49,18 @@ export interface TaskFormValues {
   /** Trimmed free text, or `undefined` when left blank — absent means absent. */
   readonly description: string | undefined;
   /**
-   * The recurring Interval on its chosen basis (calendar months or Distance km),
-   * or `undefined` when untracked or one-time — the two are exclusive (issue #29).
+   * The recurring Interval — its calendar `months` and/or Distance `km` limits
+   * (ADR-0016) — or `undefined` when untracked or one-time (the two are exclusive,
+   * issue #29). Emitted only when at least one cadence field is filled.
    */
   readonly interval: Interval | undefined;
   /** Marks a one-time task — due from creation, done once (issue #29). */
   readonly oneTime: boolean;
   /**
-   * The manual last-performed anchor (issue #33) — a hand-set date for a
-   * *calendar* interval, or `undefined` when unset or the basis isn't calendar.
-   * A real completion still supersedes it; the due engine takes the later of the
-   * two. Emitted only for a calendar interval, never distance or one-time.
+   * The manual last-performed anchor (issue #33) — a hand-set date for the
+   * interval's calendar limit, or `undefined` when unset or the interval has no
+   * `months` limit. A real completion still supersedes it; the due engine takes
+   * the later of the two. Emitted only when a calendar limit is present.
    */
   readonly lastPerformed: IsoDate | undefined;
   readonly fieldSchema: FieldSchema;
@@ -123,22 +125,20 @@ export function TaskForm({
 }: TaskFormProps): JSX.Element {
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  // The interval's basis (issue #32) and the field value for each — only the
-  // chosen basis's field is shown and emitted. Default calendar for a new task.
-  const [basis, setBasis] = useState<'calendar' | 'distance'>(
-    initial?.interval?.basis ?? 'calendar',
-  );
+  // The two independent cadence limits (ADR-0016) — a blank field is an absent
+  // limit; at least one filled makes the task recurring. Both start from the
+  // task's interval when editing.
   const [monthsText, setMonthsText] = useState(
-    initial?.interval?.basis === 'calendar'
-      ? String(initial.interval.months)
-      : '',
+    initial?.interval?.months === undefined
+      ? ''
+      : String(initial.interval.months),
   );
   const [kmText, setKmText] = useState(
-    initial?.interval?.basis === 'distance' ? String(initial.interval.km) : '',
+    initial?.interval?.km === undefined ? '' : String(initial.interval.km),
   );
   const [oneTime, setOneTime] = useState(initial?.oneTime === true);
-  // The manual last-performed anchor (issue #33) — a calendar-only date; blank
-  // means unset. Shown and emitted only for the calendar basis.
+  // The manual last-performed anchor (issue #33) — anchors the calendar limit;
+  // blank means unset. Shown and emitted only when a `months` limit is set.
   const [lastPerformedText, setLastPerformedText] = useState(
     initial?.lastPerformed ?? '',
   );
@@ -162,32 +162,39 @@ export function TaskForm({
       return;
     }
     // A one-time task never has an interval (issue #29) — the two are exclusive.
-    // Otherwise the chosen basis's field gives the interval; a blank field
-    // leaves the task untracked (issue #32).
-    const rawAmount = (basis === 'calendar' ? monthsText : kmText).trim();
-    const amount = oneTime || rawAmount === '' ? undefined : Number(rawAmount);
+    // Otherwise each cadence field is an optional limit (ADR-0016): a blank field
+    // is absent, and both blank leaves the task untracked.
+    const parseLimit = (text: string): number | undefined => {
+      const raw = text.trim();
+      return oneTime || raw === '' ? undefined : Number(raw);
+    };
+    const months = parseLimit(monthsText);
     if (
-      amount !== undefined &&
-      (!Number.isSafeInteger(amount) || amount <= 0)
+      months !== undefined &&
+      (!Number.isSafeInteger(months) || months <= 0)
     ) {
-      setError(
-        basis === 'calendar'
-          ? 'The interval must be a whole number of months.'
-          : 'The interval must be a whole number of kilometres.',
-      );
+      setError('The calendar interval must be a whole number of months.');
       return;
     }
+    const km = parseLimit(kmText);
+    if (km !== undefined && (!Number.isSafeInteger(km) || km <= 0)) {
+      setError('The distance interval must be a whole number of kilometres.');
+      return;
+    }
+    // Whichever limits are set coexist on one interval; both absent = untracked.
     const interval: Interval | undefined =
-      amount === undefined
+      months === undefined && km === undefined
         ? undefined
-        : basis === 'calendar'
-          ? { basis: 'calendar', months: amount }
-          : { basis: 'distance', km: amount };
-    // The manual anchor rides only with a calendar interval (issue #33): emit it
-    // only when this is a calendar interval and a date was set, so the form
-    // never sends a stray anchor on a distance, one-time, or untracked task.
+        : {
+            ...(months !== undefined && { months }),
+            ...(km !== undefined && { km }),
+          };
+    // The manual anchor rides only with a calendar limit (issue #33, ADR-0016):
+    // emit it only when the interval carries a `months` limit and a date was set,
+    // so the form never sends a stray anchor on a distance-only, one-time, or
+    // untracked task.
     const lastPerformed: IsoDate | undefined =
-      interval?.basis === 'calendar' && lastPerformedText.trim() !== ''
+      interval?.months !== undefined && lastPerformedText.trim() !== ''
         ? lastPerformedText
         : undefined;
     const parsed = FieldSchemaSchema.safeParse(
@@ -263,45 +270,47 @@ export function TaskForm({
       </Label>
 
       {oneTime ? undefined : (
-        <div className="flex flex-wrap items-end gap-3">
-          <Label className={labelClass}>
-            Track by
-            <Select
-              value={basis}
-              onValueChange={(value) => {
-                setBasis(value as 'calendar' | 'distance');
-              }}
-            >
-              <SelectTrigger className="w-40" aria-label="Track by">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="calendar">Calendar (months)</SelectItem>
-                <SelectItem value="distance">Distance (km)</SelectItem>
-              </SelectContent>
-            </Select>
-          </Label>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="text-sm font-medium text-brand dark:text-ink-inverted">
+            Repeat interval
+          </legend>
+          <p className="text-xs text-muted-foreground">
+            Set a calendar cadence, a distance cadence, or both — with both,
+            it’s due on whichever comes first. Leave both blank to leave it
+            untracked.
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <Label className={labelClass}>
+              Repeat every (months)
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                className="w-32"
+                value={monthsText}
+                onChange={(e) => {
+                  setMonthsText(e.target.value);
+                }}
+                placeholder="12"
+              />
+            </Label>
 
-          {basis === 'calendar' ? (
-            <>
-              <Label className={labelClass}>
-                Repeat every (months)
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  className="w-32"
-                  value={monthsText}
-                  onChange={(e) => {
-                    setMonthsText(e.target.value);
-                  }}
-                  placeholder="12"
-                />
-                <span className="text-xs">
-                  Leave blank for a one-off task — it won’t be tracked as due.
-                </span>
-              </Label>
+            <Label className={labelClass}>
+              Repeat every (km)
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                className="w-32"
+                value={kmText}
+                onChange={(e) => {
+                  setKmText(e.target.value);
+                }}
+                placeholder="20000"
+              />
+            </Label>
 
+            {monthsText.trim() === '' ? undefined : (
               <Label className={labelClass}>
                 Last performed
                 <Input
@@ -319,28 +328,9 @@ export function TaskForm({
                   here.
                 </span>
               </Label>
-            </>
-          ) : (
-            <Label className={labelClass}>
-              Repeat every (km)
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                className="w-32"
-                value={kmText}
-                onChange={(e) => {
-                  setKmText(e.target.value);
-                }}
-                placeholder="20000"
-              />
-              <span className="text-xs">
-                Leave blank to leave it untracked. Set the rig’s distance to
-                track it.
-              </span>
-            </Label>
-          )}
-        </div>
+            )}
+          </div>
+        </fieldset>
       )}
 
       <fieldset className="flex flex-col gap-3">

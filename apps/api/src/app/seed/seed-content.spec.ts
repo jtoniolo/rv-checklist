@@ -20,44 +20,30 @@ describe('seed content (docs/seed-content.md)', () => {
       }
     });
 
-    it('every task carries a valid per-task basis/interval (#34)', () => {
+    it('every task carries a valid per-task interval (#34)', () => {
       for (const task of SEED_TASKS) {
-        // Parses as a real Interval union member (calendar or distance).
+        // Parses as a real Interval (a months and/or km limit, at least one).
         expect(() => IntervalSchema.parse(task.interval)).not.toThrow();
-        expect(['calendar', 'distance']).toContain(task.interval.basis);
+        expect(
+          task.interval.months !== undefined || task.interval.km !== undefined,
+        ).toBe(true);
       }
     });
 
     it('distance tasks spec kilometres; the axle jobs use the metric conversions', () => {
       const byName = new Map(SEED_TASKS.map((t) => [t.name, t.interval]));
       expect(byName.get('Repack / inspect wheel bearings')).toEqual({
-        basis: 'distance',
         km: 20_000,
       });
-      expect(byName.get('Inspect & adjust brakes')).toEqual({
-        basis: 'distance',
-        km: 5000,
-      });
+      expect(byName.get('Inspect & adjust brakes')).toEqual({ km: 5000 });
     });
 
     it('splits the multi-cadence alarm chore: monthly test vs multi-year replacements', () => {
       const byName = new Map(SEED_TASKS.map((t) => [t.name, t.interval]));
-      expect(byName.get('Test smoke / CO / LP alarms')).toEqual({
-        basis: 'calendar',
-        months: 1,
-      });
-      expect(byName.get('Replace smoke alarm')).toEqual({
-        basis: 'calendar',
-        months: 120,
-      });
-      expect(byName.get('Replace CO alarm')).toEqual({
-        basis: 'calendar',
-        months: 60,
-      });
-      expect(byName.get('Replace LP gas detector')).toEqual({
-        basis: 'calendar',
-        months: 60,
-      });
+      expect(byName.get('Test smoke / CO / LP alarms')).toEqual({ months: 1 });
+      expect(byName.get('Replace smoke alarm')).toEqual({ months: 120 });
+      expect(byName.get('Replace CO alarm')).toEqual({ months: 60 });
+      expect(byName.get('Replace LP gas detector')).toEqual({ months: 60 });
     });
 
     it('ships no onboard-generator task (cut in #34)', () => {

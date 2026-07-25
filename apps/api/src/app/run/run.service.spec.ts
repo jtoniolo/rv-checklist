@@ -67,7 +67,7 @@ const sealsTask: MaintenanceTask = {
   id: sealsTaskId,
   rigId: aliceRigId,
   name: 'Condition slide seals',
-  interval: { basis: 'calendar', months: 12 },
+  interval: { months: 12 },
   fieldSchema: [
     { name: 'Product used', type: 'text', required: true },
     { name: 'Notes', type: 'note', required: false },

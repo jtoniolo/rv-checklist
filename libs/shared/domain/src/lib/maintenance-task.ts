@@ -4,35 +4,37 @@ import { FieldSchemaSchema } from './field-schema.js';
 
 /**
  * An Interval — the optional recurrence period on a maintenance task (CONTEXT.md),
- * measured on one of several **bases** (ADR-0015). It is a tagged union
- * discriminated on `basis`, so each basis carries only the field it needs and a
- * new basis can be added without disturbing the others:
+ * carrying up to two **limits** (ADR-0016): an optional **calendar** cadence
+ * (`months`) and an optional **distance** cadence (`km`). It is one object, no
+ * longer a tagged union on `basis`: the two limits coexist so a task can read
+ * "every 12 months or 20,000 km, whichever comes first".
  *
- * - **calendar** — a whole, positive count of `months` (the seed's
- *   `intervalMonths`), anchored off when the task was last performed;
- * - **distance** — a whole, positive count of `km` (issue #32), anchored solely
- *   off the rig's Distance reading logged when the task was last performed. A
- *   distance interval never carries a manual last-performed anchor (ADR-0015).
+ * - **months** — a whole, positive count of calendar months, anchored off when
+ *   the task was last performed (and any manual `lastPerformed` anchor);
+ * - **km** — a whole, positive count of kilometres (issue #32), anchored solely
+ *   off the rig's Distance reading logged when the task was last performed.
  *
- * Drives due/overdue, computed on read (ADR-0005).
+ * **At least one limit must be present** — an interval with neither is not an
+ * interval (the task is untracked, the same as no interval at all). Due/overdue
+ * is computed on read (ADR-0005), on whichever present limit elapses first.
  */
-export const CalendarIntervalSchema = z.object({
-  basis: z.literal('calendar'),
-  months: z.number().int().positive(),
-});
-export type CalendarInterval = z.infer<typeof CalendarIntervalSchema>;
-
-export const DistanceIntervalSchema = z.object({
-  basis: z.literal('distance'),
-  km: z.number().int().positive(),
-});
-export type DistanceInterval = z.infer<typeof DistanceIntervalSchema>;
-
-export const IntervalSchema = z.discriminatedUnion('basis', [
-  CalendarIntervalSchema,
-  DistanceIntervalSchema,
-]);
+export const IntervalSchema = z
+  .object({
+    months: z.number().int().positive().optional(),
+    km: z.number().int().positive().optional(),
+  })
+  .refine((interval) => hasLimit(interval), {
+    message: 'an interval needs a months or km limit',
+  });
 export type Interval = z.infer<typeof IntervalSchema>;
+
+/** Whether an interval carries at least one limit — the "not empty" invariant. */
+function hasLimit(interval: {
+  readonly months?: unknown;
+  readonly km?: unknown;
+}): boolean {
+  return interval.months !== undefined || interval.km !== undefined;
+}
 
 /**
  * A Maintenance Task — an upkeep job on a rig (CONTEXT.md). A task is tracked
@@ -53,10 +55,11 @@ export type Interval = z.infer<typeof IntervalSchema>;
  * whitespace-only) is rejected so no placeholder is ever stored.
  *
  * `lastPerformed` is the optional **manual** last-performed date (issue #33):
- * an owner's hand-set anchor for a **calendar** interval, needing no Log Entry —
- * a task done before the app, a seasonal task anchored to its season, an
- * age-based replacement anchored to a manufacture date. It rides only with a
- * calendar interval (never a distance interval or the one-time marker); a real
+ * an owner's hand-set anchor for an interval's **calendar limit**, needing no Log
+ * Entry — a task done before the app, a seasonal task anchored to its season, an
+ * age-based replacement anchored to a manufacture date. It rides with any interval
+ * that carries a `months` limit (whether or not it also carries a `km` limit —
+ * ADR-0016), never with a distance-only interval or the one-time marker; a real
  * completion always supersedes it (the due engine takes the later of the two,
  * ADR-0015), so the owner corrects a wrong completion by editing the Log Entry,
  * never by forcing this anchor earlier.
@@ -88,21 +91,23 @@ const ONE_TIME_INTERVAL_ISSUE = {
 };
 
 /**
- * The invariant guard: a manual `lastPerformed` anchor rides only with a
- * calendar interval (issue #33) — a distance interval anchors solely off a
- * logged Distance reading (ADR-0015), and an untracked or one-time task has no
- * interval to anchor. Absent `lastPerformed` is always fine.
+ * The invariant guard: a manual `lastPerformed` anchor rides only with an
+ * interval that carries a **calendar limit** (issue #33, ADR-0016) — a
+ * distance-only interval anchors solely off a logged Distance reading (ADR-0015),
+ * and an untracked or one-time task has no interval to anchor. A combined
+ * interval carries a calendar limit, so it accepts an anchor. Absent
+ * `lastPerformed` is always fine.
  */
 function isLastPerformedCalendarOnly(task: {
-  readonly interval?: { readonly basis?: unknown } | undefined;
+  readonly interval?: { readonly months?: unknown } | undefined;
   readonly lastPerformed?: unknown;
 }): boolean {
   return (
-    task.lastPerformed === undefined || task.interval?.basis === 'calendar'
+    task.lastPerformed === undefined || task.interval?.months !== undefined
   );
 }
 const LAST_PERFORMED_CALENDAR_ISSUE = {
-  message: 'last performed only anchors a calendar interval',
+  message: 'last performed only anchors a calendar limit',
   path: ['lastPerformed'],
 };
 

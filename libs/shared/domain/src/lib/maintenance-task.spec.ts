@@ -8,46 +8,33 @@ import {
 const id = (n: number) => `550e8400-e29b-41d4-a716-44665544000${String(n)}`;
 
 describe('IntervalSchema', () => {
-  it('parses a calendar interval', () => {
-    expect(IntervalSchema.parse({ basis: 'calendar', months: 12 })).toEqual({
-      basis: 'calendar',
-      months: 12,
-    });
+  it('parses a months-only (calendar) interval', () => {
+    expect(IntervalSchema.parse({ months: 12 })).toEqual({ months: 12 });
   });
 
-  it('parses a distance interval (issue #32)', () => {
-    expect(IntervalSchema.parse({ basis: 'distance', km: 20_000 })).toEqual({
-      basis: 'distance',
+  it('parses a km-only (distance) interval (issue #32)', () => {
+    expect(IntervalSchema.parse({ km: 20_000 })).toEqual({ km: 20_000 });
+  });
+
+  it('parses a combined interval carrying both limits (ADR-0016)', () => {
+    expect(IntervalSchema.parse({ months: 12, km: 20_000 })).toEqual({
+      months: 12,
       km: 20_000,
     });
   });
 
-  it('rejects an untagged { months } interval — a basis is required (ADR-0015)', () => {
-    expect(IntervalSchema.safeParse({ months: 12 }).success).toBe(false);
+  it('rejects an empty interval — at least one limit must be present (ADR-0016)', () => {
+    expect(IntervalSchema.safeParse({}).success).toBe(false);
   });
 
-  it('rejects an unknown basis', () => {
-    expect(
-      IntervalSchema.safeParse({ basis: 'runtime', hours: 100 }).success,
-    ).toBe(false);
+  it('rejects a zero limit', () => {
+    expect(IntervalSchema.safeParse({ months: 0 }).success).toBe(false);
+    expect(IntervalSchema.safeParse({ km: 0 }).success).toBe(false);
   });
 
-  it('rejects a zero interval', () => {
-    expect(
-      IntervalSchema.safeParse({ basis: 'calendar', months: 0 }).success,
-    ).toBe(false);
-    expect(IntervalSchema.safeParse({ basis: 'distance', km: 0 }).success).toBe(
-      false,
-    );
-  });
-
-  it('rejects a fractional interval', () => {
-    expect(
-      IntervalSchema.safeParse({ basis: 'calendar', months: 1.5 }).success,
-    ).toBe(false);
-    expect(
-      IntervalSchema.safeParse({ basis: 'distance', km: 500.5 }).success,
-    ).toBe(false);
+  it('rejects a fractional limit', () => {
+    expect(IntervalSchema.safeParse({ months: 1.5 }).success).toBe(false);
+    expect(IntervalSchema.safeParse({ km: 500.5 }).success).toBe(false);
   });
 });
 
@@ -56,7 +43,7 @@ describe('MaintenanceTaskSchema', () => {
     id: id(1),
     rigId: id(2),
     name: 'Inspect tires',
-    interval: { basis: 'calendar', months: 12 },
+    interval: { months: 12 },
     fieldSchema: [
       { name: 'Tread depth', type: 'number', required: true, unit: '/32"' },
       { name: 'DOT date', type: 'text', required: false },
@@ -122,7 +109,7 @@ describe('MaintenanceTaskSchema', () => {
         id: id(1),
         rigId: id(2),
         name: 'Confused task',
-        interval: { basis: 'calendar', months: 12 },
+        interval: { months: 12 },
         oneTime: true,
         fieldSchema: [],
       }).success,
@@ -146,6 +133,15 @@ describe('MaintenanceTaskSchema', () => {
     expect(MaintenanceTaskSchema.parse(anchored)).toEqual(anchored);
   });
 
+  it('parses a manual anchor on a combined interval — it carries a calendar limit (ADR-0016)', () => {
+    const combined = {
+      ...task,
+      interval: { months: 12, km: 20_000 },
+      lastPerformed: '2025-07-21',
+    };
+    expect(MaintenanceTaskSchema.parse(combined)).toEqual(combined);
+  });
+
   it('parses a task with no last-performed — absent means absent', () => {
     const parsed = MaintenanceTaskSchema.parse(task);
     expect('lastPerformed' in parsed).toBe(false);
@@ -155,7 +151,7 @@ describe('MaintenanceTaskSchema', () => {
     expect(
       MaintenanceTaskSchema.safeParse({
         ...task,
-        interval: { basis: 'distance', km: 20_000 },
+        interval: { km: 20_000 },
         lastPerformed: '2025-07-21',
       }).success,
     ).toBe(false);
@@ -242,7 +238,7 @@ describe('CreateMaintenanceTaskSchema', () => {
       CreateMaintenanceTaskSchema.safeParse({
         rigId: id(2),
         name: 'Confused',
-        interval: { basis: 'calendar', months: 6 },
+        interval: { months: 6 },
         oneTime: true,
       }).success,
     ).toBe(false);
@@ -252,7 +248,7 @@ describe('CreateMaintenanceTaskSchema', () => {
     const parsed = CreateMaintenanceTaskSchema.parse({
       rigId: id(2),
       name: 'Repack bearings',
-      interval: { basis: 'calendar', months: 12 },
+      interval: { months: 12 },
       lastPerformed: '2025-07-21',
     });
     expect(parsed.lastPerformed).toBe('2025-07-21');
@@ -273,9 +269,9 @@ describe('UpdateMaintenanceTaskSchema', () => {
   it('accepts editing just the interval', () => {
     expect(
       UpdateMaintenanceTaskSchema.parse({
-        interval: { basis: 'calendar', months: 6 },
+        interval: { months: 6 },
       }),
-    ).toEqual({ interval: { basis: 'calendar', months: 6 } });
+    ).toEqual({ interval: { months: 6 } });
   });
 
   it('accepts editing just the description', () => {

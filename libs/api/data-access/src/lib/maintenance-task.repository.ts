@@ -32,18 +32,18 @@ function toTask(entity: MaintenanceTaskEntity): MaintenanceTask {
     name: entity.name,
     // SQL NULL means no description — absent means absent (issue #25).
     ...(entity.description !== null && { description: entity.description }),
-    // SQL NULL basis means no interval — the task is untracked (CONTEXT.md).
-    // The basis discriminates the Interval union (ADR-0015): `calendar` reads
-    // its whole-month count from `interval_months`, `distance` its whole-km
-    // count from `interval_km` (issue #32).
-    ...(entity.intervalBasis === 'calendar' &&
-      entity.intervalMonths !== null && {
-        interval: { basis: 'calendar' as const, months: entity.intervalMonths },
-      }),
-    ...(entity.intervalBasis === 'distance' &&
-      entity.intervalKm !== null && {
-        interval: { basis: 'distance' as const, km: entity.intervalKm },
-      }),
+    // Both columns NULL means no interval — the task is untracked (CONTEXT.md).
+    // Each non-NULL column is one of the Interval's coexisting limits (ADR-0016):
+    // `interval_months` the calendar cadence, `interval_km` the distance one
+    // (issue #32). At least one is present, so the object is never empty.
+    ...((entity.intervalMonths !== null || entity.intervalKm !== null) && {
+      interval: {
+        ...(entity.intervalMonths !== null && {
+          months: entity.intervalMonths,
+        }),
+        ...(entity.intervalKm !== null && { km: entity.intervalKm }),
+      },
+    }),
     // TRUE means one-time — due from creation, done once (issue #29). Absent
     // otherwise, mirroring the wire model's absent-means-absent marker.
     ...(entity.oneTime && { oneTime: true }),
@@ -66,16 +66,14 @@ function toRow(task: MaintenanceTask): Partial<MaintenanceTaskEntity> {
     // which would leave a removed description or interval in place.
     // eslint-disable-next-line unicorn/no-null
     description: task.description ?? null,
-    // The Interval flattens to typed columns (ADR-0015): its basis to
-    // `interval_basis`, a calendar count to `interval_months`, a distance count
-    // to `interval_km` (issue #32). Each is NULL unless its basis is in force.
+    // The Interval flattens to typed columns (ADR-0015): its calendar cadence to
+    // `interval_months`, its distance cadence to `interval_km` (issue #32). The
+    // two coexist (ADR-0016), so each is written independently; a limit the
+    // interval omits (or an absent interval) is NULL.
     // eslint-disable-next-line unicorn/no-null
-    intervalBasis: task.interval?.basis ?? null,
-    intervalMonths:
-      // eslint-disable-next-line unicorn/no-null
-      task.interval?.basis === 'calendar' ? task.interval.months : null,
+    intervalMonths: task.interval?.months ?? null,
     // eslint-disable-next-line unicorn/no-null
-    intervalKm: task.interval?.basis === 'distance' ? task.interval.km : null,
+    intervalKm: task.interval?.km ?? null,
     // The one-time marker persists as a plain boolean (absent on the wire ⇒
     // false in the row); it never coexists with an interval (issue #29).
     oneTime: task.oneTime ?? false,

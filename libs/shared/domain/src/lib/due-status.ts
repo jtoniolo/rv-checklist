@@ -10,14 +10,16 @@ import type { Interval } from './maintenance-task.js';
  * task never has a completion to age. A recurring task with an interval but no
  * log entry yet has no basis for a due date, so it reads as never-performed.
  *
- * A **distance** task (issue #32) is measured against the rig's Distance rather
+ * A **distance** limit (issue #32) is measured against the rig's Distance rather
  * than the calendar: it reads `reading-needed` when the rig has no current
  * Distance, or its newest completion carries no Distance reading — there is no
- * yardstick to measure against, so the owner is nudged to set one. A tracked
- * `ok`/`due`/`overdue` is tagged with its `basis` (mirroring the Interval union,
- * ADR-0015) and carries the numbers behind the standing: a calendar task its
- * last-performed and due dates, a distance task the kilometres it is due at and
- * where the rig is now.
+ * yardstick to measure against, so the owner is nudged to set one. `reading-needed`
+ * surfaces only when distance is the task's **sole** limit; a combined task whose
+ * distance limit can't be evaluated falls back to its calendar standing (ADR-0016).
+ * A tracked `ok`/`due`/`overdue` is tagged with its `basis` — the limit that is
+ * driving the standing (the more urgent when both are present) — and carries the
+ * numbers behind it: a calendar standing its last-performed and due dates, a
+ * distance standing the kilometres it is due at and where the rig is now.
  */
 export type DueStatus =
   | { readonly kind: 'untracked' }
@@ -42,15 +44,15 @@ export type DueStatus =
  * so each basis can add inputs without reshaping every call site. Every field the
  * caller supplies, keeping the computation pure:
  *
- * - `interval` — the task's Interval (a tagged union on `basis`), or `undefined`
- *   when untracked;
+ * - `interval` — the task's Interval (up to two limits, `months` and/or `km`,
+ *   ADR-0016), or `undefined` when untracked;
  * - `lastPerformedOn` — the newest log entry's date (see {@link latestPerformedOn}),
  *   one of the two anchors a calendar interval's next due is measured from;
  * - `lastPerformed` — the task's optional **manual** last-performed anchor (issue
  *   #33), an owner's hand-set date needing no completion. A calendar interval
  *   anchors off the *later* of this and `lastPerformedOn` — a real completion
- *   always supersedes the manual guess. Ignored by a distance interval (it never
- *   carries a manual anchor, ADR-0015);
+ *   always supersedes the manual guess. Applies to the calendar limit only; a
+ *   distance-only interval ignores it (ADR-0015);
  * - `today` — supplied by the caller;
  * - `isOneTime` — the task's one-time marker (issue #29): a one-time task needs
  *   attention from creation, so it short-circuits ahead of the interval arithmetic;
@@ -70,7 +72,85 @@ export interface DueStatusInput {
   readonly lastReadingKm?: number | undefined;
 }
 
-/** The due/overdue status for one task, from its {@link DueStatusInput} context. */
+/** A tracked standing carrying its numbers — the concrete side of a {@link DueStatus}. */
+type Standing = Extract<DueStatus, { kind: 'ok' | 'due' | 'overdue' }>;
+/**
+ * One limit's outcome: a concrete {@link Standing}, or a reason it couldn't be
+ * evaluated — `never-performed` (no anchor / no completion) or `reading-needed`
+ * (a distance limit with no yardstick).
+ */
+type LimitOutcome =
+  Standing | { readonly kind: 'never-performed' | 'reading-needed' };
+
+/** How urgent a concrete standing is — higher wins "whichever elapses first". */
+const URGENCY = { ok: 0, due: 1, overdue: 2 } as const;
+const STANDING_KINDS = ['ok', 'due', 'overdue'] as const;
+
+function isStanding(outcome: LimitOutcome): outcome is Standing {
+  return (STANDING_KINDS as readonly string[]).includes(outcome.kind);
+}
+
+/**
+ * The calendar limit's outcome (issue #33): it anchors off the *later* of the
+ * newest completion's date and the owner's manual anchor — a real completion
+ * always supersedes the manual guess. Either or both may be absent, in which
+ * case there is no basis for a due date (`never-performed`).
+ */
+function calendarOutcome(
+  months: number,
+  lastPerformedOn: IsoDate | undefined,
+  lastPerformed: IsoDate | undefined,
+  today: IsoDate,
+): LimitOutcome {
+  const anchor = laterIsoDate(lastPerformedOn, lastPerformed);
+  if (anchor === undefined) {
+    return { kind: 'never-performed' };
+  }
+  const dueOn = addMonths(anchor, months);
+  // IsoDates compare correctly as strings ('YYYY-MM-DD' is lexicographic).
+  const kind = today < dueOn ? 'ok' : today === dueOn ? 'due' : 'overdue';
+  return { kind, basis: 'calendar', lastPerformedOn: anchor, dueOn };
+}
+
+/**
+ * The distance limit's outcome (issue #32): anchored solely off a logged Distance
+ * reading and measured against the rig's current Distance, never the calendar.
+ * With no completion it is `never-performed`; with a completion but no yardstick
+ * (no rig Distance, or the newest completion recorded none) it is `reading-needed`.
+ */
+function distanceOutcome(
+  km: number,
+  lastPerformedOn: IsoDate | undefined,
+  rigDistanceKm: number | undefined,
+  lastReadingKm: number | undefined,
+): LimitOutcome {
+  if (lastPerformedOn === undefined) {
+    return { kind: 'never-performed' };
+  }
+  if (rigDistanceKm === undefined || lastReadingKm === undefined) {
+    return { kind: 'reading-needed' };
+  }
+  const dueAtKm = lastReadingKm + km;
+  // Due once the rig reaches the reading it was last done at plus the interval.
+  const kind =
+    rigDistanceKm < dueAtKm
+      ? 'ok'
+      : rigDistanceKm === dueAtKm
+        ? 'due'
+        : 'overdue';
+  return { kind, basis: 'distance', dueAtKm, currentKm: rigDistanceKm };
+}
+
+/**
+ * The due/overdue status for one task, from its {@link DueStatusInput} context.
+ *
+ * An interval carries up to two limits (ADR-0016); each is evaluated on read and
+ * the task's overall standing is the **more urgent** of the concrete ones —
+ * "whichever elapses first". A limit that can't be evaluated is skipped, so a
+ * combined task whose distance limit has no yardstick still reads its calendar
+ * standing. `reading-needed` surfaces only when distance is the *sole* limit;
+ * otherwise, with no concrete standing at all, the task is `never-performed`.
+ */
 export function dueStatus({
   interval,
   lastPerformedOn,
@@ -86,39 +166,42 @@ export function dueStatus({
   if (interval === undefined) {
     return { kind: 'untracked' };
   }
-  // A distance interval is anchored solely off a logged Distance reading and
-  // measured against the rig's current Distance (ADR-0015), never the calendar.
-  if (interval.basis === 'distance') {
-    // No completion at all — no reading to anchor from, so nothing to measure.
-    if (lastPerformedOn === undefined) {
-      return { kind: 'never-performed' };
+  const calendar =
+    interval.months === undefined
+      ? undefined
+      : calendarOutcome(interval.months, lastPerformedOn, lastPerformed, today);
+  const distance =
+    interval.km === undefined
+      ? undefined
+      : distanceOutcome(
+          interval.km,
+          lastPerformedOn,
+          rigDistanceKm,
+          lastReadingKm,
+        );
+
+  // The overall standing is the more urgent of the concrete ones — "whichever
+  // elapses first". Calendar is considered first, so it wins an exact tie.
+  let best: Standing | undefined;
+  for (const outcome of [calendar, distance]) {
+    if (
+      outcome !== undefined &&
+      isStanding(outcome) &&
+      (best === undefined || URGENCY[outcome.kind] > URGENCY[best.kind])
+    ) {
+      best = outcome;
     }
-    // A yardstick is missing: the rig has no current Distance, or the newest
-    // completion recorded none. Nudge the owner to set one (issue #32).
-    if (rigDistanceKm === undefined || lastReadingKm === undefined) {
-      return { kind: 'reading-needed' };
-    }
-    const dueAtKm = lastReadingKm + interval.km;
-    // Due once the rig reaches the reading it was last done at plus the interval.
-    const kind =
-      rigDistanceKm < dueAtKm
-        ? 'ok'
-        : rigDistanceKm === dueAtKm
-          ? 'due'
-          : 'overdue';
-    return { kind, basis: 'distance', dueAtKm, currentKm: rigDistanceKm };
   }
-  // A calendar interval anchors off the *later* of the newest completion's date
-  // and the owner's manual anchor (issue #33) — a real completion always
-  // supersedes the manual guess. Either or both may be absent.
-  const anchor = laterIsoDate(lastPerformedOn, lastPerformed);
-  if (anchor === undefined) {
-    return { kind: 'never-performed' };
+  if (best !== undefined) {
+    return best;
   }
-  const dueOn = addMonths(anchor, interval.months);
-  // IsoDates compare correctly as strings ('YYYY-MM-DD' is lexicographic).
-  const kind = today < dueOn ? 'ok' : today === dueOn ? 'due' : 'overdue';
-  return { kind, basis: 'calendar', lastPerformedOn: anchor, dueOn };
+  // No limit produced a concrete standing. A sole distance limit surfaces its own
+  // nudge (`reading-needed` or `never-performed`); every other case (a calendar
+  // limit present, or both limits unevaluated) reads `never-performed`.
+  if (calendar === undefined && distance !== undefined) {
+    return distance;
+  }
+  return { kind: 'never-performed' };
 }
 
 /**
