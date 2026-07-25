@@ -64,12 +64,13 @@ describe('SeedService.seedStarterContent', () => {
     for (const task of tasks) {
       expect(task.description?.trim()).toBeTruthy();
     }
-    // The wheel-bearing job is distance-based (20,000 km), not the flat calendar
-    // interval, and its ad-hoc odometer field is gone (#34, ADR-0015).
+    // The wheel-bearing job carries BOTH a calendar and a distance limit —
+    // 12 months OR 20,000 km, whichever comes first (#36, ADR-0016) — and its
+    // ad-hoc odometer field is gone (#34, ADR-0015).
     const bearings = tasks.find(
       (t) => t.name === 'Repack / inspect wheel bearings',
     );
-    expect(bearings?.interval).toEqual({ km: 20_000 });
+    expect(bearings?.interval).toEqual({ months: 12, km: 20_000 });
     expect(bearings?.description).toContain('Worn or dry wheel bearings');
     expect(bearings?.fieldSchema).toEqual([
       { name: 'grease type', type: 'text', required: false },
