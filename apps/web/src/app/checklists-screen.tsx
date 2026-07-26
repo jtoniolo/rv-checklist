@@ -20,7 +20,7 @@ import {
   useUpdateChecklistMutation,
 } from '@rv-checklist/web-data-access';
 import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { ChecklistForm, type ChecklistFormValues } from './checklist-form';
 import { RunHistory } from './run-history';
 import { RunScreen } from './run-screen';
@@ -82,6 +82,13 @@ export function ChecklistsScreen({
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
+
+  // Reset ephemeral UI state when the navigation target changes (e.g. browser
+  // Back fires popstate, changing the open checklist/run under this component).
+  useEffect(() => {
+    setAdding(false);
+    setEditing(false);
+  }, [openChecklistId, openRunId]);
 
   if (!activeRig) {
     return (
@@ -197,7 +204,6 @@ export function ChecklistsScreen({
               label="‹ All checklists"
               onClick={() => {
                 setAdding(false);
-                onBackToList();
               }}
             />
             <ChecklistForm
@@ -212,7 +218,6 @@ export function ChecklistsScreen({
           </>
         ) : desktopSelected ? (
           <>
-            <BackToListButton label="‹ All checklists" onClick={onBackToList} />
             {openRunId ? (
               <RunScreen
                 runId={openRunId}
@@ -220,29 +225,41 @@ export function ChecklistsScreen({
                 onExit={onCloseRun}
               />
             ) : editing ? (
-              <ChecklistForm
-                initial={desktopSelected}
-                tasks={rigTasks ?? []}
-                submitLabel="Save changes"
-                pending={isUpdating}
-                onSubmit={(values) =>
-                  void handleUpdate(desktopSelected.id, values)
-                }
-                onCancel={() => {
-                  setEditing(false);
-                }}
-              />
+              <>
+                <BackToListButton
+                  label="‹ All checklists"
+                  onClick={onBackToList}
+                />
+                <ChecklistForm
+                  initial={desktopSelected}
+                  tasks={rigTasks ?? []}
+                  submitLabel="Save changes"
+                  pending={isUpdating}
+                  onSubmit={(values) =>
+                    void handleUpdate(desktopSelected.id, values)
+                  }
+                  onCancel={() => {
+                    setEditing(false);
+                  }}
+                />
+              </>
             ) : (
-              <ChecklistDetail
-                checklist={desktopSelected}
-                tasks={rigTasks ?? []}
-                onEdit={() => {
-                  setEditing(true);
-                }}
-                onDuplicate={() => void handleDuplicate(desktopSelected)}
-                onDelete={() => void handleDelete(desktopSelected.id)}
-                onOpenRun={onOpenRun}
-              />
+              <>
+                <BackToListButton
+                  label="‹ All checklists"
+                  onClick={onBackToList}
+                />
+                <ChecklistDetail
+                  checklist={desktopSelected}
+                  tasks={rigTasks ?? []}
+                  onEdit={() => {
+                    setEditing(true);
+                  }}
+                  onDuplicate={() => void handleDuplicate(desktopSelected)}
+                  onDelete={() => void handleDelete(desktopSelected.id)}
+                  onOpenRun={onOpenRun}
+                />
+              </>
             )}
           </>
         ) : (

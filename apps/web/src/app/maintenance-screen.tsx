@@ -34,7 +34,7 @@ import {
   SortGroup,
   type SortOption,
 } from '@rv-checklist/web-ui';
-import { useMemo, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import { formatIsoDate, todayIso } from './dates';
 import { LogEntryForm } from './log-entry-form';
 import { TaskForm, type TaskFormValues } from './task-form';
@@ -101,6 +101,13 @@ export function MaintenanceScreen({
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<MaintenanceSortKey>('due');
   const [oneTimeOnly, setOneTimeOnly] = useState(false);
+
+  // Reset ephemeral UI state when the navigation target changes (e.g. browser
+  // Back fires popstate, changing openTaskId under this component).
+  useEffect(() => {
+    setAdding(false);
+    setEditing(false);
+  }, [openTaskId]);
 
   if (!activeRig) {
     return (
@@ -182,7 +189,6 @@ export function MaintenanceScreen({
           label="‹ All tasks"
           onClick={() => {
             setAdding(false);
-            onBackToList();
           }}
         />
         <TaskForm

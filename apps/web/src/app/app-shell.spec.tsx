@@ -105,6 +105,13 @@ async function fakeApi(request: Request): Promise<Response> {
     patchedRuns.push({ url: request.url, body: changes });
     return jsonResponse({ ...run, ...changes });
   }
+  // Maintenance screen requests (issue #40 deep-link tests).
+  if (route === 'GET /tasks') {
+    return jsonResponse([]);
+  }
+  if (route === 'GET /log-entries') {
+    return jsonResponse([]);
+  }
   throw new Error(`Unstubbed request: ${route}${url.search}`);
 }
 
@@ -132,6 +139,9 @@ describe('web shell, signed in', () => {
   afterEach(() => {
     fetchSpy.mockRestore();
     localStorage.clear();
+    // Reset the URL so the navigation hook initialises on home in each test.
+    // eslint-disable-next-line unicorn/no-null
+    globalThis.history.replaceState(null, '', '/');
   });
 
   it('shows the home summary: greeting, click-through tiles, and the continue card', async () => {
@@ -213,5 +223,54 @@ describe('web shell, signed in', () => {
         .getByRole('button', { name: 'Theme: Campfire' })
         .getAttribute('aria-pressed'),
     ).toBe('true');
+  });
+
+  it('pushes history when navigating between screens (issue #40)', async () => {
+    const pushSpy = jest.spyOn(globalThis.history, 'pushState');
+    renderShell();
+
+    await screen.findByText(/hi jeff/i);
+
+    // Navigate to the Checklists tab (the stat tile also matches the name).
+    const buttons = screen.getAllByRole('button', { name: /checklists/i });
+    fireEvent.click(buttons[0]);
+
+    expect(pushSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ route: 'checklists' }),
+      '',
+      expect.stringContaining('screen=checklists'),
+    );
+
+    pushSpy.mockRestore();
+  });
+
+  it('restores screen from the URL on reload (deep-link, issue #40)', async () => {
+    // Seed the URL as if the user reloaded on the Maintenance screen.
+    // eslint-disable-next-line unicorn/no-null
+    globalThis.history.replaceState(null, '', '/?screen=maintenance');
+
+    renderShell();
+
+    // The maintenance screen should be visible (showing its search box).
+    expect(await screen.findByLabelText('Search tasks')).toBeTruthy();
+  });
+
+  it('reverses navigation on browser Back (popstate, issue #40)', async () => {
+    renderShell();
+
+    await screen.findByText(/hi jeff/i);
+
+    // Navigate to the Maintenance tab (pushes history).
+    const buttons = screen.getAllByRole('button', { name: /maintenance/i });
+    fireEvent.click(buttons[0]);
+    expect(await screen.findByLabelText('Search tasks')).toBeTruthy();
+
+    // Simulate browser Back to the home screen.
+    fireEvent(
+      globalThis,
+      new PopStateEvent('popstate', { state: { route: 'home' } }),
+    );
+
+    expect(await screen.findByText(/hi jeff/i)).toBeTruthy();
   });
 });

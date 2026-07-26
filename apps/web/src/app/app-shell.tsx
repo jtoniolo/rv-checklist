@@ -23,8 +23,7 @@ import { ChecklistsScreen } from './checklists-screen';
 import { HomeScreen } from './home-screen';
 import { MaintenanceScreen } from './maintenance-screen';
 import { RigManager } from './rig-manager';
-
-type Route = 'home' | 'checklists' | 'maintenance' | 'rig';
+import { useAppNavigation, type Route } from './use-app-navigation';
 
 /** The four destinations, driving the desktop nav and the mobile tab bar. */
 const NAV_ITEMS: readonly { route: Route; label: string; icon: string }[] = [
@@ -45,9 +44,12 @@ const frameClass = 'mx-auto w-full max-w-5xl px-4 lg:px-6';
  * desktop shell: brand + inline nav + rig select move into the sticky header,
  * checklists become master–detail, and the tab bar disappears.
  *
- * Navigation is client state, not URL routes: which screen is up, which
- * checklist is open, and which run is open — held here so every summary can
- * click through (home's continue cards jump straight into a run).
+ * Navigation is client state synced with browser history (issue #40): which
+ * screen is up, which checklist is open, and which run is open — held here
+ * so every summary can click through (home's continue cards jump straight
+ * into a run). Every forward navigation pushes a history entry; the browser
+ * Back button reverses the last navigation via `popstate`; reloads and
+ * deep-links restore the position from the URL.
  */
 export function AppShell(): JSX.Element {
   const dispatch = useAppDispatch();
@@ -55,10 +57,8 @@ export function AppShell(): JSX.Element {
   const { data: rigs } = useListRigsQuery();
   const activeRigId = useAppSelector(selectActiveRigId);
 
-  const [route, setRoute] = useState<Route>('home');
-  const [openChecklistId, setOpenChecklistId] = useState<Id | undefined>();
-  const [openRunId, setOpenRunId] = useState<Id | undefined>();
-  const [openTaskId, setOpenTaskId] = useState<Id | undefined>();
+  const { location, navigate, back } = useAppNavigation();
+  const { route, openChecklistId, openRunId, openTaskId } = location;
 
   // Reconcile the persisted selection with the server's rigs once they load: a
   // stale id (the rig was deleted elsewhere) falls back to the first rig, and
@@ -82,29 +82,26 @@ export function AppShell(): JSX.Element {
 
   const selectRig = (id: Id): void => {
     dispatch(activeRigSelected(id));
-    // The open checklist / run / task belonged to the previous rig.
-    setOpenChecklistId(undefined);
-    setOpenRunId(undefined);
-    setOpenTaskId(undefined);
+    // The open checklist / run / task belonged to the previous rig — clear
+    // them but keep the current screen. Replace (don't push) so Back doesn't
+    // revisit a stale drill-in under a different rig.
+    navigate({ route }, { replace: true });
   };
 
   const go = (next: Route): void => {
-    setRoute(next);
-    setOpenChecklistId(undefined);
-    setOpenRunId(undefined);
-    setOpenTaskId(undefined);
+    navigate({ route: next });
   };
 
   const openChecklist = (id: Id): void => {
-    setRoute('checklists');
-    setOpenChecklistId(id);
-    setOpenRunId(undefined);
+    navigate({ route: 'checklists', openChecklistId: id });
   };
 
   const openRun = (checklistId: Id, runId: Id): void => {
-    setRoute('checklists');
-    setOpenChecklistId(checklistId);
-    setOpenRunId(runId);
+    navigate({
+      route: 'checklists',
+      openChecklistId: checklistId,
+      openRunId: runId,
+    });
   };
 
   return (
@@ -192,14 +189,15 @@ export function AppShell(): JSX.Element {
             // Switching checklists must also close any open run — otherwise
             // the old run would render under the new checklist's name.
             onOpenChecklist={openChecklist}
-            onOpenRun={setOpenRunId}
-            onCloseRun={() => {
-              setOpenRunId(undefined);
+            onOpenRun={(runId) => {
+              navigate({
+                route: 'checklists',
+                openChecklistId,
+                openRunId: runId,
+              });
             }}
-            onBackToList={() => {
-              setOpenChecklistId(undefined);
-              setOpenRunId(undefined);
-            }}
+            onCloseRun={back}
+            onBackToList={back}
             onGoRig={() => {
               go('rig');
             }}
@@ -209,11 +207,11 @@ export function AppShell(): JSX.Element {
           <MaintenanceScreen
             activeRig={activeRig}
             openTaskId={openTaskId}
-            onOpenTask={setOpenTaskId}
-            onOpenChecklist={openChecklist}
-            onBackToList={() => {
-              setOpenTaskId(undefined);
+            onOpenTask={(id) => {
+              navigate({ route: 'maintenance', openTaskId: id });
             }}
+            onOpenChecklist={openChecklist}
+            onBackToList={back}
             onGoRig={() => {
               go('rig');
             }}
