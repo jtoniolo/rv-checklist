@@ -34,6 +34,8 @@ function toLogEntry(entity: LogEntryEntity): LogEntry {
     performedOn: entity.performedOn,
     // The rig's Distance reading at the time (issue #32) — NULL when none.
     distanceKm: entity.distanceKm ?? undefined,
+    // What the task cost in cents (issue #39) — NULL when none.
+    costCents: entity.costCents ?? undefined,
     fields: entity.fields,
   };
 }
@@ -46,6 +48,8 @@ function toRow(entry: LogEntry): Partial<LogEntryEntity> {
     // which would leave a cleared reading in place (issue #32).
     // eslint-disable-next-line unicorn/no-null
     distanceKm: entry.distanceKm ?? null,
+    // eslint-disable-next-line unicorn/no-null
+    costCents: entry.costCents ?? null,
   };
 }
 

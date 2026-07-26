@@ -41,6 +41,10 @@ export type LoggedField = z.infer<typeof LoggedFieldSchema>;
  * (CONTEXT.md, issue #32): a whole, non-negative kilometre count, the anchor a
  * distance-based Interval's next due is measured from. Optional — absent means
  * the completion recorded no reading (a distance task then reads `reading-needed`).
+ *
+ * `costCents` is what the task cost (issue #39): an integer count of cents
+ * (mechanic labour, parts, consumables). Optional — absent means no cost was
+ * recorded. The UI shows decimal dollars; storage is always integer cents.
  */
 export const LogEntrySchema = z.object({
   id: IdSchema,
@@ -49,6 +53,7 @@ export const LogEntrySchema = z.object({
   taskName: z.string().min(1),
   performedOn: IsoDateSchema,
   distanceKm: z.number().int().nonnegative().optional(),
+  costCents: z.number().int().nonnegative().optional(),
   fields: z.array(LoggedFieldSchema).superRefine((fields, ctx) => {
     for (const { name, index } of duplicateFieldNameIssues(fields)) {
       ctx.addIssue({
@@ -103,11 +108,14 @@ export function toLoggedFields(
  * and the entry's frozen name (issue #27) is never rewritten through an edit.
  * `distanceKm` is additionally nullable: an explicit `null` clears a recorded
  * Distance reading (issue #32), while an omitted key leaves it unchanged.
+ * `costCents` follows the same nullable pattern (issue #39): `null` clears a
+ * recorded cost, omitted leaves it unchanged.
  */
 export const UpdateLogEntrySchema = z
   .object({
     performedOn: IsoDateSchema,
     distanceKm: z.number().int().nonnegative().nullable(),
+    costCents: z.number().int().nonnegative().nullable(),
     fields: LogEntrySchema.shape.fields,
   })
   .partial();

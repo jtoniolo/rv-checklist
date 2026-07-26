@@ -158,6 +158,26 @@ describe('LogEntryService', () => {
 
       expect(entry.distanceKm).toBeUndefined();
     });
+
+    // The cost in cents (issue #39) — what it cost to perform this task.
+    it('records the cost in cents when given', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, {
+        ...performSeals,
+        costCents: 11_240,
+      });
+
+      expect(entry.costCents).toBe(11_240);
+    });
+
+    it('records no cost when none is given — absent means absent', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, performSeals);
+
+      expect(entry.costCents).toBeUndefined();
+    });
   });
 
   // A one-time task is done once (issue #29): performing it writes a normal Log
@@ -365,6 +385,36 @@ describe('LogEntryService', () => {
       });
 
       expect(updated.distanceKm).toBe(20_000);
+    });
+
+    it('sets a cost on a past entry, then clears it with null (issue #39)', async () => {
+      const { service } = await makeService();
+      const entry = await service.create(alice, performSeals);
+
+      const withCost = await service.update(alice, entry.id, {
+        costCents: 5000,
+      });
+      expect(withCost.costCents).toBe(5000);
+
+      const cleared = await service.update(alice, entry.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        costCents: null,
+      });
+      expect(cleared.costCents).toBeUndefined();
+    });
+
+    it('leaves the cost unchanged when the key is omitted', async () => {
+      const { service } = await makeService();
+      const entry = await service.create(alice, {
+        ...performSeals,
+        costCents: 5000,
+      });
+
+      const updated = await service.update(alice, entry.id, {
+        performedOn: '2026-07-19',
+      });
+
+      expect(updated.costCents).toBe(5000);
     });
 
     it('never changes which task or rig an entry belongs to', async () => {

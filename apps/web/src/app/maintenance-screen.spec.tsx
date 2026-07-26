@@ -70,6 +70,7 @@ const entries: LogEntry[] = [
     taskName: 'Oil change',
     performedOn: '2025-06-01',
     distanceKm: 31_200,
+    costCents: 11_240,
     fields: [
       { name: 'Brand', type: 'text', required: false, value: 'Mobil 1' },
       {
@@ -294,6 +295,14 @@ describe('MaintenanceScreen (issue #38)', () => {
     // The log section loads entries for this task
     await waitFor(() => {
       expect(screen.getByText('31,200 km')).toBeTruthy();
+    });
+  });
+
+  it('shows the recorded cost on a log entry row (issue #39)', async () => {
+    renderScreen(OIL_ID);
+
+    await waitFor(() => {
+      expect(screen.getByText('$112.40')).toBeTruthy();
     });
   });
 

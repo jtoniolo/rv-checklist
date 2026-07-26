@@ -40,16 +40,21 @@ export interface LogEntryFormProps {
   readonly initialDate: IsoDate;
   /** The rig's Distance reading at the time (km), if the entry recorded one (issue #32). */
   readonly initialDistanceKm?: number | undefined;
+  /** What the task cost in integer cents (issue #39), if the entry recorded one. */
+  readonly initialCostCents?: number | undefined;
   readonly submitLabel: string;
   readonly pending: boolean;
   /**
    * `distanceKm` is the optional Distance reading (issue #32): a whole km count,
    * or `undefined` when the field is left blank — absent means absent.
+   * `costCents` is the optional cost (issue #39): integer cents, or `undefined`
+   * when the field is left blank.
    */
   readonly onSubmit: (
     performedOn: IsoDate,
     fields: LoggedField[],
     distanceKm: number | undefined,
+    costCents: number | undefined,
   ) => void;
   readonly onCancel: () => void;
 }
@@ -68,10 +73,17 @@ function withValue(
     : { ...definition, value };
 }
 
+/** Cents → display dollars, e.g. 11240 → "112.40". Empty string when absent. */
+function centsToDisplayDollars(cents: number | undefined): string {
+  if (cents === undefined) return '';
+  return (cents / 100).toFixed(2);
+}
+
 export function LogEntryForm({
   initialFields,
   initialDate,
   initialDistanceKm,
+  initialCostCents,
   submitLabel,
   pending,
   onSubmit,
@@ -81,6 +93,9 @@ export function LogEntryForm({
   const [fields, setFields] = useState<LoggedField[]>([...initialFields]);
   const [distanceText, setDistanceText] = useState(
     initialDistanceKm === undefined ? '' : String(initialDistanceKm),
+  );
+  const [costText, setCostText] = useState(
+    centsToDisplayDollars(initialCostCents),
   );
   const [error, setError] = useState<string | undefined>(undefined);
 
@@ -117,8 +132,19 @@ export function LogEntryForm({
       setError('The distance reading must be a whole number of kilometres.');
       return;
     }
+    // The optional cost (issue #39): decimal dollars → integer cents.
+    const trimmedCost = costText.trim();
+    let costCents: number | undefined;
+    if (trimmedCost !== '') {
+      const dollars = Number(trimmedCost);
+      if (Number.isNaN(dollars) || dollars < 0) {
+        setError('Cost must be a positive dollar amount.');
+        return;
+      }
+      costCents = Math.round(dollars * 100);
+    }
     setError(undefined);
-    onSubmit(performedOn, fields, distanceKm);
+    onSubmit(performedOn, fields, distanceKm, costCents);
   };
 
   return (
@@ -158,6 +184,24 @@ export function LogEntryForm({
         <span className="text-xs">
           Optional — the rig’s distance now, so distance-based tasks know when
           they’re next due.
+        </span>
+      </Label>
+
+      <Label className={labelClass}>
+        Cost ($)
+        <Input
+          type="number"
+          min={0}
+          step={0.01}
+          className="w-44"
+          value={costText}
+          onChange={(e) => {
+            setCostText(e.target.value);
+          }}
+          placeholder="112.40"
+        />
+        <span className="text-xs text-muted-foreground/70 italic">
+          Optional — what this job cost (parts, labour, consumables).
         </span>
       </Label>
 

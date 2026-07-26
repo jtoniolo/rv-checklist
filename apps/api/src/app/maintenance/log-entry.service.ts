@@ -93,6 +93,8 @@ export class LogEntryService {
       // The rig's Distance reading at the time (issue #32), if the owner gave
       // one — the anchor a distance Interval measures from. Absent means absent.
       ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
+      // The cost in cents (issue #39), if the owner recorded one. Absent means absent.
+      ...(input.costCents !== undefined && { costCents: input.costCents }),
       fields: input.fields,
     });
     // A one-time task is done once (issue #29): performing it writes this entry,
@@ -158,6 +160,11 @@ export class LogEntryService {
       delete next.distanceKm;
     } else if (changes.distanceKm !== undefined) {
       next.distanceKm = changes.distanceKm;
+    }
+    if (changes.costCents === null) {
+      delete next.costCents;
+    } else if (changes.costCents !== undefined) {
+      next.costCents = changes.costCents;
     }
     return this.logEntries.save(next);
   }

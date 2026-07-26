@@ -501,6 +501,11 @@ function formatKm(km: number): string {
   return `${km.toLocaleString('en-US')} km`;
 }
 
+/** Integer cents → display dollars, e.g. 11240 → "$112.40". */
+function formatCost(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 /**
  * How the task is tracked, as a short label: "Every 12 months" / "Every month"
  * for a calendar limit, "Every 20,000 km" for a distance limit (issue #32),
@@ -854,12 +859,14 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
     performedOn: string,
     fields: LoggedField[],
     distanceKm: number | undefined,
+    costCents: number | undefined,
   ): Promise<void> => {
     await createEntry({
       taskId: task.id,
       performedOn,
       fields,
       ...(distanceKm !== undefined && { distanceKm }),
+      ...(costCents !== undefined && { costCents }),
     }).unwrap();
     setLogging(false);
   };
@@ -869,11 +876,18 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
     performedOn: string,
     fields: LoggedField[],
     distanceKm: number | undefined,
+    costCents: number | undefined,
   ): Promise<void> => {
     await updateEntry({
       id,
-      // eslint-disable-next-line unicorn/no-null
-      changes: { performedOn, fields, distanceKm: distanceKm ?? null },
+      changes: {
+        performedOn,
+        fields,
+        // eslint-disable-next-line unicorn/no-null
+        distanceKm: distanceKm ?? null,
+        // eslint-disable-next-line unicorn/no-null
+        costCents: costCents ?? null,
+      },
     }).unwrap();
     setEditingEntryId(undefined);
   };
@@ -902,8 +916,8 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
           initialDate={todayIso()}
           submitLabel="Log it"
           pending={isLogging}
-          onSubmit={(performedOn, fields, distanceKm) =>
-            void handleLog(performedOn, fields, distanceKm)
+          onSubmit={(performedOn, fields, distanceKm, costCents) =>
+            void handleLog(performedOn, fields, distanceKm, costCents)
           }
           onCancel={() => {
             setLogging(false);
@@ -933,10 +947,17 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
                 initialFields={entry.fields}
                 initialDate={entry.performedOn}
                 initialDistanceKm={entry.distanceKm}
+                initialCostCents={entry.costCents}
                 submitLabel="Save correction"
                 pending={isCorrecting}
-                onSubmit={(performedOn, fields, distanceKm) =>
-                  void handleCorrect(entry.id, performedOn, fields, distanceKm)
+                onSubmit={(performedOn, fields, distanceKm, costCents) =>
+                  void handleCorrect(
+                    entry.id,
+                    performedOn,
+                    fields,
+                    distanceKm,
+                    costCents,
+                  )
                 }
                 onCancel={() => {
                   setEditingEntryId(undefined);
@@ -976,11 +997,18 @@ function OrphanedHistory({
     performedOn: string,
     fields: LoggedField[],
     distanceKm: number | undefined,
+    costCents: number | undefined,
   ): Promise<void> => {
     await updateEntry({
       id,
-      // eslint-disable-next-line unicorn/no-null
-      changes: { performedOn, fields, distanceKm: distanceKm ?? null },
+      changes: {
+        performedOn,
+        fields,
+        // eslint-disable-next-line unicorn/no-null
+        distanceKm: distanceKm ?? null,
+        // eslint-disable-next-line unicorn/no-null
+        costCents: costCents ?? null,
+      },
     }).unwrap();
     setEditingEntryId(undefined);
   };
@@ -1004,10 +1032,17 @@ function OrphanedHistory({
                 initialFields={entry.fields}
                 initialDate={entry.performedOn}
                 initialDistanceKm={entry.distanceKm}
+                initialCostCents={entry.costCents}
                 submitLabel="Save correction"
                 pending={isCorrecting}
-                onSubmit={(performedOn, fields, distanceKm) =>
-                  void handleCorrect(entry.id, performedOn, fields, distanceKm)
+                onSubmit={(performedOn, fields, distanceKm, costCents) =>
+                  void handleCorrect(
+                    entry.id,
+                    performedOn,
+                    fields,
+                    distanceKm,
+                    costCents,
+                  )
                 }
                 onCancel={() => {
                   setEditingEntryId(undefined);
@@ -1051,6 +1086,11 @@ function LogEntryRow({
         {entry.distanceKm === undefined ? undefined : (
           <span className="text-sm text-brand-muted">
             {formatKm(entry.distanceKm)}
+          </span>
+        )}
+        {entry.costCents === undefined ? undefined : (
+          <span className="text-sm text-brand-muted">
+            {formatCost(entry.costCents)}
           </span>
         )}
         {summary ? (
