@@ -100,7 +100,7 @@ export interface AppNavigation {
  * On mount the URL is parsed to support deep-links and reloads.
  *
  * Pattern reference: the `pushState` / `popstate` approach validated in the
- * maintenance-list prototype (`apps/web/src/app/maintenance-prototype/`).
+ * maintenance-list prototype (captured on branch `prototype/ui-prototypes`).
  */
 export function useAppNavigation(): AppNavigation {
   const [location, setLocation] = useState<AppLocation>(() =>
