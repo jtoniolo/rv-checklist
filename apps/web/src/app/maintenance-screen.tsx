@@ -26,24 +26,43 @@ import {
   useUpdateLogEntryMutation,
   useUpdateTaskMutation,
 } from '@rv-checklist/web-data-access';
-import { useState, type JSX } from 'react';
+import { Input } from '@rv-checklist/web-ui';
+import { useMemo, useState, type JSX } from 'react';
 import { formatIsoDate, todayIso } from './dates';
+import {
+  BackLink,
+  FilterToggle,
+  ListEmpty,
+  SortGroup,
+  type SortOption,
+} from './list-detail';
 import { LogEntryForm } from './log-entry-form';
 import { TaskForm, type TaskFormValues } from './task-form';
 
 /**
- * The maintenance surface (issue #17): master–detail in one responsive
- * component, the same shape as the checklists screen. On mobile the task list
- * drills down into a detail screen with a back link; from `lg` up the list is
- * a sidebar and the detail pane always shows something.
+ * The maintenance surface, redesigned (issue #38): a single-column, searchable
+ * task list with sort and filter controls. Selecting a task opens a full-page
+ * read-only detail — standing, description, recorded fields, and full log
+ * history — with a back action to return to the list. No split pane, no
+ * sidebar, no Edit-to-see-details.
+ *
+ * The layout components ({@link BackLink}, {@link SortGroup}, {@link FilterToggle},
+ * {@link ListEmpty}) are shared primitives from `list-detail.tsx` so the
+ * checklists screen can adopt the same full-page drill-in pattern later.
  *
  * Each task row wears its due/overdue standing, computed on read (ADR-0005)
  * by the shared `dueStatus` domain function from the rig's log entries — one
- * request for the whole list, no persisted due-date, nothing scheduled. The
- * detail pane answers "when did I last do this, and what did I measure?": the
- * task's full log history, an add-log-entry form for performing it standalone
- * (story 45), and editing/deleting of past entries (nothing is locked).
+ * request for the whole list, no persisted due-date, nothing scheduled.
  */
+
+type MaintenanceSortKey = 'name' | 'due' | 'lastDone';
+
+const SORT_OPTIONS: readonly SortOption<MaintenanceSortKey>[] = [
+  { key: 'due', label: 'Due' },
+  { key: 'name', label: 'Name' },
+  { key: 'lastDone', label: 'Last done' },
+];
+
 export function MaintenanceScreen({
   activeRig,
   openTaskId,
@@ -79,6 +98,9 @@ export function MaintenanceScreen({
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<MaintenanceSortKey>('due');
+  const [oneTimeOnly, setOneTimeOnly] = useState(false);
 
   if (!activeRig) {
     return (
@@ -93,9 +115,9 @@ export function MaintenanceScreen({
   }
 
   const today = todayIso();
+
+  // Pre-compute due status for every task in one pass from the rig's entries.
   const statusOf = (task: MaintenanceTask): DueStatus => {
-    // The task's own completions back both anchors: the newest date (calendar)
-    // and that same completion's Distance reading (distance — issue #32).
     const entries = (rigEntries ?? []).filter(
       (entry) => entry.taskId === task.id,
     );
@@ -103,15 +125,26 @@ export function MaintenanceScreen({
       interval: task.interval,
       lastPerformedOn: latestPerformedOn(entries),
       today,
-      isOneTime: task.oneTime,
-      // The owner's manual anchor (issue #33): a calendar interval measures from
-      // the later of this and the newest completion — the engine takes the max.
+      // Conditionally include isOneTime so an absent marker stays absent
+      // rather than passing `undefined` (exactOptionalPropertyTypes).
+      ...(task.oneTime && { isOneTime: task.oneTime }),
       lastPerformed: task.lastPerformed,
-      // The rig's current Distance is the yardstick a distance task measures
-      // against (ADR-0006 — the read already resolves the rig for ownership).
       rigDistanceKm: activeRig.distanceKm,
       lastReadingKm: latestReadingKm(entries),
     });
+  };
+
+  /** The effective "last done" date for a task — the later of log and manual anchor. */
+  const lastDoneOf = (task: MaintenanceTask): string | undefined => {
+    const entries = (rigEntries ?? []).filter(
+      (entry) => entry.taskId === task.id,
+    );
+    const fromLog = latestPerformedOn(entries);
+    const manual = task.lastPerformed;
+    // IsoDate strings compare lexicographically — the later one wins.
+    // eslint-disable-next-line unicorn/prefer-math-min-max
+    if (fromLog && manual) return fromLog > manual ? fromLog : manual;
+    return fromLog ?? manual;
   };
 
   // Entries whose task was deleted (issue #28): kept, orphaned (taskId null),
@@ -121,11 +154,7 @@ export function MaintenanceScreen({
     (entry) => entry.taskId === null,
   );
 
-  // Mobile drills down (detail only when explicitly opened); desktop's detail
-  // pane always shows something.
-  const mobileDetail = tasks?.find((task) => task.id === openTaskId);
-  const desktopSelected = mobileDetail ?? tasks?.[0];
-  const isDetailOpenOnMobile = adding || mobileDetail !== undefined;
+  const openTask = tasks?.find((task) => task.id === openTaskId);
 
   const handleCreate = async (values: TaskFormValues): Promise<void> => {
     const created = await createTask({
@@ -134,14 +163,9 @@ export function MaintenanceScreen({
       ...(values.description !== undefined && {
         description: values.description,
       }),
-      // Tracking is one of three exclusive shapes (issue #29): one-time, a
-      // recurring interval (on either basis), or neither. The form guarantees
-      // they never combine.
       ...(values.oneTime
         ? { oneTime: true }
         : values.interval !== undefined && { interval: values.interval }),
-      // The manual anchor rides only with a calendar interval (issue #33); the
-      // form emits it only then, so passing it through stays coherent.
       ...(values.lastPerformed !== undefined && {
         lastPerformed: values.lastPerformed,
       }),
@@ -151,6 +175,29 @@ export function MaintenanceScreen({
     onOpenTask(created.id);
   };
 
+  // ── Adding a task: full-page form ────────────────────────────────────────
+  if (adding) {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackLink
+          label="‹ All tasks"
+          onClick={() => {
+            setAdding(false);
+            onBackToList();
+          }}
+        />
+        <TaskForm
+          submitLabel="Add task"
+          pending={isCreating}
+          onSubmit={(values) => void handleCreate(values)}
+          onCancel={() => {
+            setAdding(false);
+          }}
+        />
+      </div>
+    );
+  }
+
   const handleUpdate = async (
     id: Id,
     values: TaskFormValues,
@@ -159,14 +206,8 @@ export function MaintenanceScreen({
       id,
       changes: {
         name: values.name,
-        // An emptied optional field is an explicit removal: a blank
-        // description clears it, a blank interval stops due-status tracking.
-        // The wire spells removal `null` (the schema's marker); an omitted
-        // key would mean "leave it unchanged".
         // eslint-disable-next-line unicorn/no-null
         description: values.description ?? null,
-        // interval and oneTime are the exclusive tracking markers (issue #29);
-        // the form sends a coherent pair, one set and the other cleared to null.
         interval:
           values.oneTime || values.interval === undefined
             ? // eslint-disable-next-line unicorn/no-null
@@ -174,9 +215,6 @@ export function MaintenanceScreen({
             : values.interval,
         // eslint-disable-next-line unicorn/no-null
         oneTime: values.oneTime ? true : null,
-        // The manual anchor is calendar-only (issue #33): send the date when the
-        // form emitted one, else null to clear it. The service also drops it on
-        // its own when a change leaves the task without a calendar interval.
         // eslint-disable-next-line unicorn/no-null
         lastPerformed: values.lastPerformed ?? null,
         fieldSchema: values.fieldSchema,
@@ -190,150 +228,274 @@ export function MaintenanceScreen({
     onBackToList();
   };
 
+  // ── Task detail open: full-page detail (or edit form) ───────────────────
+  if (openTask) {
+    if (editing) {
+      return (
+        <div className="flex flex-col gap-4">
+          <BackLink
+            label="‹ All tasks"
+            onClick={() => {
+              setEditing(false);
+              onBackToList();
+            }}
+          />
+          <TaskForm
+            initial={openTask}
+            submitLabel="Save changes"
+            pending={isUpdating}
+            onSubmit={(values) => void handleUpdate(openTask.id, values)}
+            onCancel={() => {
+              setEditing(false);
+            }}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-4">
+        <BackLink label="‹ All tasks" onClick={onBackToList} />
+        <TaskDetail
+          key={openTask.id}
+          task={openTask}
+          status={statusOf(openTask)}
+          appearances={taskAppearances(checklists ?? [], openTask.id)}
+          onOpenChecklist={onOpenChecklist}
+          onEdit={() => {
+            setEditing(true);
+          }}
+          onDelete={() => void handleDelete(openTask.id)}
+        />
+      </div>
+    );
+  }
+
+  // ── List view: search / sort / filter / task rows ───────────────────────
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-5 lg:flex-row lg:gap-8">
-        {/* List: hidden on mobile while a detail is open; sidebar on desktop. */}
-        <aside
-          className={`${isDetailOpenOnMobile ? 'hidden lg:flex' : 'flex'} shrink-0 flex-col gap-2 lg:w-64 lg:gap-1`}
-        >
-          <div className="mb-1 flex items-center justify-between gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-brand lg:text-lg dark:text-ink-inverted">
-              Maintenance
-            </h1>
-            <button
-              type="button"
-              onClick={() => {
-                setEditing(false);
-                setAdding(true);
-              }}
-              className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            >
-              Add
-            </button>
-          </div>
+    <TaskList
+      tasks={tasks}
+      isLoading={isLoading}
+      isError={isError}
+      search={search}
+      onSearch={setSearch}
+      sort={sort}
+      onSort={setSort}
+      oneTimeOnly={oneTimeOnly}
+      onToggleOneTime={() => {
+        setOneTimeOnly((v) => !v);
+      }}
+      statusOf={statusOf}
+      lastDoneOf={lastDoneOf}
+      today={today}
+      onOpenTask={(id) => {
+        setEditing(false);
+        onOpenTask(id);
+      }}
+      onAdd={() => {
+        setEditing(false);
+        setAdding(true);
+      }}
+      orphanedEntries={orphanedEntries}
+    />
+  );
+}
 
-          {isLoading ? (
-            <p className="text-brand-muted">Loading maintenance tasks…</p>
-          ) : undefined}
-          {isError ? (
-            <p className="text-red-600 dark:text-red-400" role="alert">
-              Couldn’t load maintenance tasks. Please try again.
-            </p>
-          ) : undefined}
-          {tasks?.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted">
-              No maintenance tasks yet — add the first upkeep you want an answer
-              to “when did I last do this?” for.
-            </p>
-          ) : undefined}
+// ── List (search / sort / filter / rows) ──────────────────────────────────
 
-          {tasks?.map((task) => (
-            <TaskListRow
-              key={task.id}
-              task={task}
-              status={statusOf(task)}
-              isSelected={task.id === desktopSelected?.id && !adding}
-              onOpen={() => {
-                setAdding(false);
-                setEditing(false);
-                onOpenTask(task.id);
-              }}
-            />
-          ))}
-        </aside>
+function TaskList({
+  tasks,
+  isLoading,
+  isError,
+  search,
+  onSearch,
+  sort,
+  onSort,
+  oneTimeOnly,
+  onToggleOneTime,
+  statusOf,
+  lastDoneOf,
+  today,
+  onOpenTask,
+  onAdd,
+  orphanedEntries,
+}: {
+  readonly tasks: readonly MaintenanceTask[] | undefined;
+  readonly isLoading: boolean;
+  readonly isError: boolean;
+  readonly search: string;
+  readonly onSearch: (value: string) => void;
+  readonly sort: MaintenanceSortKey;
+  readonly onSort: (key: MaintenanceSortKey) => void;
+  readonly oneTimeOnly: boolean;
+  readonly onToggleOneTime: () => void;
+  readonly statusOf: (task: MaintenanceTask) => DueStatus;
+  readonly lastDoneOf: (task: MaintenanceTask) => string | undefined;
+  readonly today: string;
+  readonly onOpenTask: (id: Id) => void;
+  readonly onAdd: () => void;
+  readonly orphanedEntries: readonly LogEntry[];
+}): JSX.Element {
+  const rows = useMemo(() => {
+    let result = [...(tasks ?? [])];
 
-        {/* Detail: drill-down on mobile, always-on pane on desktop. */}
-        <section
-          className={`${isDetailOpenOnMobile ? 'flex' : 'hidden lg:flex'} min-w-0 flex-1 flex-col gap-4`}
-        >
-          {adding ? (
-            <>
-              <BackToListButton
-                label="‹ All tasks"
-                onClick={() => {
-                  setAdding(false);
-                  onBackToList();
-                }}
-              />
-              <TaskForm
-                submitLabel="Add task"
-                pending={isCreating}
-                onSubmit={(values) => void handleCreate(values)}
-                onCancel={() => {
-                  setAdding(false);
-                }}
-              />
-            </>
-          ) : desktopSelected ? (
-            <>
-              <BackToListButton label="‹ All tasks" onClick={onBackToList} />
-              {editing ? (
-                <TaskForm
-                  initial={desktopSelected}
-                  submitLabel="Save changes"
-                  pending={isUpdating}
-                  onSubmit={(values) =>
-                    void handleUpdate(desktopSelected.id, values)
-                  }
-                  onCancel={() => {
-                    setEditing(false);
-                  }}
-                />
-              ) : (
-                <TaskDetail
-                  // Remount on a different task so transient form state resets.
-                  key={desktopSelected.id}
-                  task={desktopSelected}
-                  status={statusOf(desktopSelected)}
-                  appearances={taskAppearances(
-                    checklists ?? [],
-                    desktopSelected.id,
-                  )}
-                  onOpenChecklist={onOpenChecklist}
-                  onEdit={() => {
-                    setEditing(true);
-                  }}
-                  onDelete={() => void handleDelete(desktopSelected.id)}
-                />
-              )}
-            </>
-          ) : (
-            <p className="hidden text-brand-muted lg:block">
-              Select a maintenance task, or add your first one.
-            </p>
-          )}
-        </section>
+    // One-time filter
+    if (oneTimeOnly) result = result.filter((t) => t.oneTime === true);
+
+    // Search by name and description
+    const q = search.trim().toLowerCase();
+    if (q) {
+      result = result.filter((t) => {
+        const hay = `${t.name} ${t.description ?? ''}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      switch (sort) {
+        case 'name': {
+          return a.name.localeCompare(b.name);
+        }
+        case 'due': {
+          return (
+            dueSortKey(statusOf(a), today) - dueSortKey(statusOf(b), today)
+          );
+        }
+        case 'lastDone': {
+          // Most recently done first; never-done sinks last.
+          const av = lastDoneOf(a) ?? '';
+          const bv = lastDoneOf(b) ?? '';
+          return bv.localeCompare(av);
+        }
+      }
+    });
+
+    return result;
+  }, [tasks, oneTimeOnly, search, sort, statusOf, lastDoneOf, today]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Sticky toolbar: search + sort + one-time toggle, always in reach. */}
+      <div className="sticky top-[3.25rem] z-10 -mx-4 flex flex-col gap-3 border-b border-hairline bg-surface/95 px-4 pt-3 pb-3 backdrop-blur lg:top-[3.5rem] lg:-mx-6 lg:px-6 dark:bg-surface-dark/95">
+        <div className="flex items-center gap-2">
+          <Input
+            value={search}
+            onChange={(e) => {
+              onSearch(e.target.value);
+            }}
+            placeholder="Search tasks…"
+            className="flex-1"
+            aria-label="Search tasks"
+          />
+          <FilterToggle
+            label="One-time"
+            pressed={oneTimeOnly}
+            onToggle={onToggleOneTime}
+          />
+          <button
+            type="button"
+            onClick={onAdd}
+            className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Add
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <SortGroup options={SORT_OPTIONS} value={sort} onChange={onSort} />
+          <span className="text-xs text-brand-muted">{rows.length} shown</span>
+        </div>
       </div>
 
+      {isLoading ? (
+        <p className="text-brand-muted">Loading maintenance tasks…</p>
+      ) : undefined}
+      {isError ? (
+        <p className="text-red-600 dark:text-red-400" role="alert">
+          Couldn’t load maintenance tasks. Please try again.
+        </p>
+      ) : undefined}
+      {!isLoading && tasks?.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted">
+          No maintenance tasks yet — add the first upkeep you want an answer to
+          {'“'}when did I last do this?{'”'} for.
+        </p>
+      ) : undefined}
+
+      {rows.length > 0 ? (
+        <ul className="flex flex-col divide-y divide-hairline">
+          {rows.map((task) => (
+            <li key={task.id}>
+              <TaskListRow
+                task={task}
+                status={statusOf(task)}
+                onOpen={() => {
+                  onOpenTask(task.id);
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : undefined}
+
+      {rows.length === 0 && (tasks?.length ?? 0) > 0 ? (
+        <ListEmpty message="No tasks match." />
+      ) : undefined}
+
       {orphanedEntries.length > 0 ? (
-        <OrphanedHistory
-          entries={orphanedEntries}
-          className={isDetailOpenOnMobile ? 'hidden lg:flex' : 'flex'}
-        />
+        <OrphanedHistory entries={orphanedEntries} />
       ) : undefined}
     </div>
   );
 }
 
-/** Mobile-only back link above the detail pane. */
-function BackToListButton({
-  label,
-  onClick,
-}: {
-  readonly label: string;
-  readonly onClick: () => void;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="self-start text-sm font-medium text-brand-muted hover:text-brand lg:hidden dark:hover:text-ink-inverted"
-    >
-      {label}
-    </button>
-  );
+// ── Due-sort key ──────────────────────────────────────────────────────────
+
+const MS_PER_DAY = 86_400_000;
+
+/** Calendar days from one IsoDate to another (positive if `to` is later). */
+function daysBetween(from: string, to: string): number {
+  const a = new Date(`${from}T00:00:00`).getTime();
+  const b = new Date(`${to}T00:00:00`).getTime();
+  return Math.round((b - a) / MS_PER_DAY);
 }
+
+/**
+ * A numeric sort key for "most urgent first" ordering — overdue tasks sort
+ * earliest (negative key), then due (0), then ok (positive, nearer due is
+ * smaller), with one-time at the very top and untracked/never-done at the
+ * bottom. Calendar standings use days-to-due; distance standings use km-to-due.
+ */
+function dueSortKey(status: DueStatus, today: string): number {
+  switch (status.kind) {
+    case 'one-time': {
+      return -1_000_000;
+    }
+    case 'overdue': {
+      return status.basis === 'calendar'
+        ? -daysBetween(status.dueOn, today)
+        : -(status.currentKm - status.dueAtKm);
+    }
+    case 'due': {
+      return 0;
+    }
+    case 'ok': {
+      return status.basis === 'calendar'
+        ? daysBetween(today, status.dueOn)
+        : status.dueAtKm - status.currentKm;
+    }
+    case 'never-performed': {
+      return 999_997;
+    }
+    case 'reading-needed': {
+      return 999_998;
+    }
+    case 'untracked': {
+      return 999_999;
+    }
+  }
+}
+
+// ── Shared formatting ─────────────────────────────────────────────────────
 
 /** A whole kilometre count with thousands separators, e.g. "40,000 km". */
 function formatKm(km: number): string {
@@ -365,21 +527,17 @@ function intervalLabel(task: MaintenanceTask): string | undefined {
   if (task.interval.km !== undefined) {
     parts.push(formatKm(task.interval.km));
   }
-  // The limits coexist ("12 months or 20,000 km") — due on whichever comes first.
   return `Every ${parts.join(' or ')}`;
 }
 
-/**
- * The due/overdue standing as a badge (ADR-0005 — shown passively, never
- * pushed). An untracked task wears no badge at all.
- */
+// ── Due badge ─────────────────────────────────────────────────────────────
+
 const NEUTRAL_TONE = 'bg-hairline text-brand-muted';
 const ATTENTION_TONE =
   'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
 const OVERDUE_TONE =
   'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
 
-/** The badge text and tone for a due status, or `undefined` for an untracked task. */
 function badgeOf(status: DueStatus): readonly [string, string] | undefined {
   switch (status.kind) {
     case 'untracked': {
@@ -388,18 +546,12 @@ function badgeOf(status: DueStatus): readonly [string, string] | undefined {
     case 'never-performed': {
       return ['Never done', NEUTRAL_TONE];
     }
-    // A one-time task is due from creation until it's done (issue #29) — it wears
-    // an attention badge alongside the due/overdue tasks.
     case 'one-time': {
       return ['To do', ATTENTION_TONE];
     }
-    // A distance task with no yardstick (issue #32): nudge the owner to set one.
     case 'reading-needed': {
       return ['Set the rig’s distance to track this', ATTENTION_TONE];
     }
-    // ok / due / overdue: the standing of the limit that is driving (the more
-    // urgent when both are present, ADR-0016) — a distance standing carries
-    // kilometres, a calendar one dates, tagged by its `basis`.
     case 'ok': {
       return status.basis === 'distance'
         ? [
@@ -443,50 +595,48 @@ function DueBadge({
   );
 }
 
-/** One task in the list: a roomy card on mobile, a dense row on desktop. */
+// ── Task list row ─────────────────────────────────────────────────────────
+
+/** One task in the list — full-width, single column (no sidebar). */
 function TaskListRow({
   task,
   status,
-  isSelected,
   onOpen,
 }: {
   readonly task: MaintenanceTask;
   readonly status: DueStatus;
-  readonly isSelected: boolean;
   readonly onOpen: () => void;
 }): JSX.Element {
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-current={isSelected ? 'true' : undefined}
-      className={`flex flex-col gap-1.5 rounded-xl border border-hairline p-4 text-left hover:border-brand lg:gap-1 lg:rounded-lg lg:border-0 lg:px-3 lg:py-2 lg:text-sm ${
-        isSelected
-          ? 'lg:bg-brand lg:font-semibold lg:text-white'
-          : 'lg:text-brand lg:hover:bg-hairline/40 lg:dark:text-ink-inverted'
-      }`}
+      className="flex w-full items-center gap-3 py-3 text-left hover:bg-hairline/30"
     >
-      <span className="flex items-center justify-between gap-2 font-semibold text-brand lg:font-[inherit] lg:text-inherit dark:text-ink-inverted">
-        {task.name}
-        <span aria-hidden className="text-brand-muted lg:hidden">
-          ›
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="truncate font-medium text-brand dark:text-ink-inverted">
+          {task.name}
+        </span>
+        <span className="flex flex-wrap items-center gap-1.5">
+          <DueBadge status={status} />
+          {badgeOf(status) === undefined ? (
+            <span className="text-xs text-brand-muted">Not tracked</span>
+          ) : undefined}
         </span>
       </span>
-      <span
-        className={`flex flex-wrap items-center gap-2 text-sm lg:text-xs ${
-          isSelected ? 'text-brand-muted lg:text-white/80' : 'text-brand-muted'
-        }`}
-      >
-        {intervalLabel(task) ?? 'Not tracked'}
-        <DueBadge status={status} />
+      <span aria-hidden className="shrink-0 text-brand-muted">
+        ›
       </span>
     </button>
   );
 }
 
+// ── Task detail ───────────────────────────────────────────────────────────
+
 /**
- * The task detail pane: its standing, its authoring actions, performing it
- * standalone, and its full log history.
+ * The full-page detail: everything about a task — standing, description,
+ * recorded fields with last values, full log history, and where it appears on
+ * checklists — visible without an Edit click.
  */
 function TaskDetail({
   task,
@@ -503,10 +653,14 @@ function TaskDetail({
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }): JSX.Element {
+  // Entries for the field snapshot — cached with LogHistory's query, no extra
+  // fetch (RTK Query shares the cache).
+  const { data: entries } = useListLogEntriesQuery(task.id);
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <h2 className="text-2xl font-semibold tracking-tight text-brand lg:text-xl dark:text-ink-inverted">
+        <h2 className="text-2xl font-semibold tracking-tight text-brand dark:text-ink-inverted">
           {task.name}
         </h2>
         <div className="flex flex-wrap items-center gap-2 text-sm text-brand-muted">
@@ -518,7 +672,6 @@ function TaskDetail({
         </div>
       </div>
 
-      {/* The optional why/how (issue #25) — absent renders nothing at all. */}
       {task.description ? (
         <p className="text-sm whitespace-pre-line text-brand-muted">
           {task.description}
@@ -542,6 +695,8 @@ function TaskDetail({
         </button>
       </div>
 
+      <FieldsSummary task={task} entries={entries} />
+
       <AppearsOn appearances={appearances} onOpenChecklist={onOpenChecklist} />
 
       <LogHistory task={task} />
@@ -549,14 +704,70 @@ function TaskDetail({
   );
 }
 
+// ── Fields summary (the "Records" cards) ──────────────────────────────────
+
 /**
- * Where else this task lives (issue #24): every checklist of the rig with a
- * step linked to it, each showing the step's own wording — which often differs
- * from the task's name — and clicking through to that checklist. A checklist
- * linking the task via several steps appears once, with all of them. A task no
- * checklist references shows nothing: the section only exists when it has
- * something to say (the app is pull-based, it never pads).
+ * The task’s field schema as readable cards, each showing the latest recorded
+ * value from the newest log entry. A task with no fields renders nothing.
  */
+function FieldsSummary({
+  task,
+  entries,
+}: {
+  readonly task: MaintenanceTask;
+  readonly entries: readonly LogEntry[] | undefined;
+}): JSX.Element | undefined {
+  if (task.fieldSchema.length === 0) {
+    return undefined;
+  }
+
+  // The newest entry (by performedOn) carries the last values for each field.
+  const newest = entries?.toSorted((a, b) =>
+    b.performedOn.localeCompare(a.performedOn),
+  )[0];
+  const valueMap = new Map(
+    (newest?.fields ?? [])
+      .filter((f) => f.value !== undefined)
+      .map((f) => [f.name, f]),
+  );
+
+  return (
+    <section className="flex flex-col gap-2" aria-label="Fields">
+      <h3 className="text-xs font-semibold tracking-wide text-brand-muted uppercase">
+        Fields
+      </h3>
+      <dl className="grid grid-cols-2 gap-2">
+        {task.fieldSchema.map((field) => {
+          const logged = valueMap.get(field.name);
+          const value = logged?.value;
+          const display =
+            value === undefined
+              ? '—'
+              : field.type === 'boolean'
+                ? value === true
+                  ? 'Yes'
+                  : 'No'
+                : String(value);
+          return (
+            <div
+              key={field.name}
+              className="rounded-lg border border-hairline p-2.5"
+            >
+              <dt className="text-xs text-brand-muted">{field.name}</dt>
+              <dd className="text-sm font-medium text-brand dark:text-ink-inverted">
+                {display}
+                {value !== undefined && field.unit ? ` ${field.unit}` : ''}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    </section>
+  );
+}
+
+// ── Appears on ────────────────────────────────────────────────────────────
+
 function AppearsOn({
   appearances,
   onOpenChecklist,
@@ -603,6 +814,8 @@ function AppearsOn({
   );
 }
 
+// ── Log history ───────────────────────────────────────────────────────────
+
 /** The entry's field snapshot for performing the task now: definitions, no values. */
 function snapshotOf(task: MaintenanceTask): LoggedField[] {
   return task.fieldSchema.map((field) => ({ ...field }));
@@ -626,11 +839,6 @@ function valuesSummary(entry: LogEntry): string {
     .join(' · ');
 }
 
-/**
- * One task's log history plus the add-log-entry form (story 45 — standalone
- * perform). Each past entry stays editable and deletable; editing seeds the
- * form from the entry's own snapshot, never the task's current fields.
- */
 function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
   const { data: entries, isLoading, isError } = useListLogEntriesQuery(task.id);
   const [createEntry, { isLoading: isLogging }] = useCreateLogEntryMutation();
@@ -650,7 +858,6 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
       taskId: task.id,
       performedOn,
       fields,
-      // A recorded reading (issue #32) rides along; absent means absent.
       ...(distanceKm !== undefined && { distanceKm }),
     }).unwrap();
     setLogging(false);
@@ -664,7 +871,6 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
   ): Promise<void> => {
     await updateEntry({
       id,
-      // A blank reading clears it; the wire spells removal `null` (issue #32).
       // eslint-disable-next-line unicorn/no-null
       changes: { performedOn, fields, distanceKm: distanceKm ?? null },
     }).unwrap();
@@ -752,20 +958,12 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
   );
 }
 
-/**
- * The rig's orphaned maintenance history (issue #28): the entries whose task
- * has since been deleted (`taskId` null). Deleting a task keeps its entries —
- * "when did I last do this?" must never lose its answer — so they live on here,
- * each labeled by its snapshotted `taskName` (issue #27) and still individually
- * editable and deletable, reusing the same row and form as a live task's log.
- * The parent renders this only when there are orphaned entries (never empty).
- */
+// ── Orphaned history ──────────────────────────────────────────────────────
+
 function OrphanedHistory({
   entries,
-  className,
 }: {
   readonly entries: readonly LogEntry[];
-  readonly className: string;
 }): JSX.Element {
   const [updateEntry, { isLoading: isCorrecting }] =
     useUpdateLogEntryMutation();
@@ -780,7 +978,6 @@ function OrphanedHistory({
   ): Promise<void> => {
     await updateEntry({
       id,
-      // A blank reading clears it; the wire spells removal `null` (issue #32).
       // eslint-disable-next-line unicorn/no-null
       changes: { performedOn, fields, distanceKm: distanceKm ?? null },
     }).unwrap();
@@ -788,10 +985,7 @@ function OrphanedHistory({
   };
 
   return (
-    <section
-      className={`${className} flex-col gap-3`}
-      aria-label="Deleted tasks"
-    >
+    <section className="flex flex-col gap-3" aria-label="Deleted tasks">
       <div className="flex flex-col gap-0.5">
         <h2 className="text-sm font-semibold tracking-wide text-brand-muted uppercase">
           Deleted tasks
@@ -850,12 +1044,9 @@ function LogEntryRow({
         <span className="font-medium text-brand dark:text-ink-inverted">
           {formatIsoDate(entry.performedOn)}
         </span>
-        {/* The task's name as it was when performed (issue #27) — the entry's
-            own snapshot, so a later rename never relabels this record. */}
         <span className="text-sm font-medium text-brand-muted">
           {entry.taskName}
         </span>
-        {/* The rig's Distance reading at the time, if recorded (issue #32). */}
         {entry.distanceKm === undefined ? undefined : (
           <span className="text-sm text-brand-muted">
             {formatKm(entry.distanceKm)}
