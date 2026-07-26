@@ -54,6 +54,11 @@ export class LogEntryEntity {
   @Column({ name: 'at_distance_km', type: 'integer', nullable: true })
   distanceKm!: number | null;
 
+  // What the task cost in integer cents (issue #39). Nullable: SQL NULL means
+  // no cost was recorded, mapped to `undefined` in the domain.
+  @Column({ name: 'cost_cents', type: 'integer', nullable: true })
+  costCents!: number | null;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   fields!: LoggedField[];
 
