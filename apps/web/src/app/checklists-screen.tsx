@@ -156,7 +156,6 @@ export function ChecklistsScreen({
             type="button"
             onClick={() => {
               setEditing(false);
-              onCloseRun();
               setAdding(true);
             }}
             className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
