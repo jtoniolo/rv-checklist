@@ -180,7 +180,7 @@ describe('MaintenanceScreen (issue #38)', () => {
     expect(screen.getByLabelText('Search tasks')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Due' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Name' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Last done' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Last performed' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'One-time' })).toBeTruthy();
   });
 

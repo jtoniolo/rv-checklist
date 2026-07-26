@@ -26,16 +26,16 @@ import {
   useUpdateLogEntryMutation,
   useUpdateTaskMutation,
 } from '@rv-checklist/web-data-access';
-import { Input } from '@rv-checklist/web-ui';
-import { useMemo, useState, type JSX } from 'react';
-import { formatIsoDate, todayIso } from './dates';
 import {
   BackLink,
   FilterToggle,
+  Input,
   ListEmpty,
   SortGroup,
   type SortOption,
-} from './list-detail';
+} from '@rv-checklist/web-ui';
+import { useMemo, useState, type JSX } from 'react';
+import { formatIsoDate, todayIso } from './dates';
 import { LogEntryForm } from './log-entry-form';
 import { TaskForm, type TaskFormValues } from './task-form';
 
@@ -47,7 +47,7 @@ import { TaskForm, type TaskFormValues } from './task-form';
  * sidebar, no Edit-to-see-details.
  *
  * The layout components ({@link BackLink}, {@link SortGroup}, {@link FilterToggle},
- * {@link ListEmpty}) are shared primitives from `list-detail.tsx` so the
+ * {@link ListEmpty}) are shared primitives from `@rv-checklist/web-ui` so the
  * checklists screen can adopt the same full-page drill-in pattern later.
  *
  * Each task row wears its due/overdue standing, computed on read (ADR-0005)
@@ -55,12 +55,12 @@ import { TaskForm, type TaskFormValues } from './task-form';
  * request for the whole list, no persisted due-date, nothing scheduled.
  */
 
-type MaintenanceSortKey = 'name' | 'due' | 'lastDone';
+type MaintenanceSortKey = 'name' | 'due' | 'lastPerformed';
 
 const SORT_OPTIONS: readonly SortOption<MaintenanceSortKey>[] = [
   { key: 'due', label: 'Due' },
   { key: 'name', label: 'Name' },
-  { key: 'lastDone', label: 'Last done' },
+  { key: 'lastPerformed', label: 'Last performed' },
 ];
 
 export function MaintenanceScreen({
@@ -116,11 +116,13 @@ export function MaintenanceScreen({
 
   const today = todayIso();
 
+  /** Log entries belonging to a single task — shared by statusOf and lastPerformedOf. */
+  const entriesFor = (taskId: Id): readonly LogEntry[] =>
+    (rigEntries ?? []).filter((entry) => entry.taskId === taskId);
+
   // Pre-compute due status for every task in one pass from the rig's entries.
   const statusOf = (task: MaintenanceTask): DueStatus => {
-    const entries = (rigEntries ?? []).filter(
-      (entry) => entry.taskId === task.id,
-    );
+    const entries = entriesFor(task.id);
     return dueStatus({
       interval: task.interval,
       lastPerformedOn: latestPerformedOn(entries),
@@ -134,12 +136,9 @@ export function MaintenanceScreen({
     });
   };
 
-  /** The effective "last done" date for a task — the later of log and manual anchor. */
-  const lastDoneOf = (task: MaintenanceTask): string | undefined => {
-    const entries = (rigEntries ?? []).filter(
-      (entry) => entry.taskId === task.id,
-    );
-    const fromLog = latestPerformedOn(entries);
+  /** The effective "last performed" date for a task — the later of log and manual anchor. */
+  const lastPerformedOf = (task: MaintenanceTask): string | undefined => {
+    const fromLog = latestPerformedOn(entriesFor(task.id));
     const manual = task.lastPerformed;
     // IsoDate strings compare lexicographically — the later one wins.
     // eslint-disable-next-line unicorn/prefer-math-min-max
@@ -285,7 +284,7 @@ export function MaintenanceScreen({
         setOneTimeOnly((v) => !v);
       }}
       statusOf={statusOf}
-      lastDoneOf={lastDoneOf}
+      lastPerformedOf={lastPerformedOf}
       today={today}
       onOpenTask={(id) => {
         setEditing(false);
@@ -313,7 +312,7 @@ function TaskList({
   oneTimeOnly,
   onToggleOneTime,
   statusOf,
-  lastDoneOf,
+  lastPerformedOf,
   today,
   onOpenTask,
   onAdd,
@@ -329,7 +328,7 @@ function TaskList({
   readonly oneTimeOnly: boolean;
   readonly onToggleOneTime: () => void;
   readonly statusOf: (task: MaintenanceTask) => DueStatus;
-  readonly lastDoneOf: (task: MaintenanceTask) => string | undefined;
+  readonly lastPerformedOf: (task: MaintenanceTask) => string | undefined;
   readonly today: string;
   readonly onOpenTask: (id: Id) => void;
   readonly onAdd: () => void;
@@ -361,17 +360,17 @@ function TaskList({
             dueSortKey(statusOf(a), today) - dueSortKey(statusOf(b), today)
           );
         }
-        case 'lastDone': {
+        case 'lastPerformed': {
           // Most recently done first; never-done sinks last.
-          const av = lastDoneOf(a) ?? '';
-          const bv = lastDoneOf(b) ?? '';
+          const av = lastPerformedOf(a) ?? '';
+          const bv = lastPerformedOf(b) ?? '';
           return bv.localeCompare(av);
         }
       }
     });
 
     return result;
-  }, [tasks, oneTimeOnly, search, sort, statusOf, lastDoneOf, today]);
+  }, [tasks, oneTimeOnly, search, sort, statusOf, lastPerformedOf, today]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -666,7 +665,9 @@ function TaskDetail({
         <div className="flex flex-wrap items-center gap-2 text-sm text-brand-muted">
           <span>{intervalLabel(task) ?? 'Not tracked for due-status'}</span>
           {'lastPerformedOn' in status ? (
-            <span>· Last done {formatIsoDate(status.lastPerformedOn)}</span>
+            <span>
+              · Last performed {formatIsoDate(status.lastPerformedOn)}
+            </span>
           ) : undefined}
           <DueBadge status={status} />
         </div>
