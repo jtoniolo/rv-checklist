@@ -132,6 +132,10 @@ export class MaintenanceTaskService {
     } else if (changes.description !== undefined) {
       next.description = changes.description;
     }
+    // Tags replace the whole set (issue #41): provide to overwrite, omit to keep.
+    if (changes.tags !== undefined) {
+      next.tags = changes.tags;
+    }
     return this.tasks.save(next);
   }
 

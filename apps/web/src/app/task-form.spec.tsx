@@ -28,6 +28,7 @@ describe('TaskForm', () => {
       interval: undefined,
       oneTime: false,
       fieldSchema: [],
+      tags: [],
     });
   });
 
@@ -53,6 +54,7 @@ describe('TaskForm', () => {
       interval: undefined,
       oneTime: false,
       fieldSchema: [],
+      tags: [],
     });
   });
 
@@ -90,6 +92,7 @@ describe('TaskForm', () => {
       interval: { months: 6 },
       oneTime: false,
       fieldSchema: [],
+      tags: [],
     });
   });
 
@@ -116,6 +119,7 @@ describe('TaskForm', () => {
       interval: undefined,
       oneTime: true,
       fieldSchema: [],
+      tags: [],
     });
   });
 

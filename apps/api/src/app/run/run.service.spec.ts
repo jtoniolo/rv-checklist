@@ -72,12 +72,14 @@ const sealsTask: MaintenanceTask = {
     { name: 'Product used', type: 'text', required: true },
     { name: 'Notes', type: 'note', required: false },
   ],
+  tags: [],
 };
 const bobTask: MaintenanceTask = {
   id: bobTaskId,
   rigId: bobRigId,
   name: 'Repack wheel bearings',
   fieldSchema: [],
+  tags: [],
 };
 
 const sealsChecklist: Checklist = {

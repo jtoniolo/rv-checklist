@@ -31,6 +31,7 @@ const tasks: MaintenanceTask[] = [
       { name: 'Brand', type: 'text', required: false },
       { name: 'Quantity', type: 'number', unit: 'L', required: false },
     ],
+    tags: ['engine'],
   },
   {
     id: TIRE_ID,
@@ -39,6 +40,7 @@ const tasks: MaintenanceTask[] = [
     description: 'Front-to-back rotation.',
     interval: { km: 10_000 },
     fieldSchema: [],
+    tags: ['tires'],
   },
   {
     id: '550e8400-e29b-41d4-a716-446655440052',
@@ -46,12 +48,14 @@ const tasks: MaintenanceTask[] = [
     name: 'Fix loose trim',
     oneTime: true,
     fieldSchema: [],
+    tags: [],
   },
   {
     id: '550e8400-e29b-41d4-a716-446655440053',
     rigId: rig.id,
     name: 'Wax exterior',
     fieldSchema: [],
+    tags: ['exterior'],
   },
 ];
 
@@ -335,6 +339,53 @@ describe('MaintenanceScreen (issue #38)', () => {
     expect(
       screen.getByRole('form', { name: 'Edit maintenance task' }),
     ).toBeTruthy();
+  });
+
+  it('shows tag chips on task rows and filter toolbar (issue #41)', async () => {
+    renderScreen();
+    await screen.findByText('Oil change');
+
+    // Tags appear both as filter buttons and on task rows
+    expect(screen.getAllByText('engine').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('tires').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('exterior').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('shows tag chips on the detail view (issue #41)', async () => {
+    renderScreen(OIL_ID);
+    await screen.findByRole('heading', { name: 'Oil change' });
+
+    expect(screen.getByText('engine')).toBeTruthy();
+  });
+
+  it('shows tag filter buttons in the toolbar (issue #41)', async () => {
+    renderScreen();
+    await screen.findByText('Oil change');
+
+    // The tag filter chips appear as buttons (interactive TagChips)
+    const engineButtons = screen.getAllByRole('button', { name: 'engine' });
+    expect(engineButtons.length).toBeGreaterThan(0);
+  });
+
+  it('filters by tag with AND logic (issue #41)', async () => {
+    renderScreen();
+    await screen.findByText('Oil change');
+
+    // Click the "engine" tag filter
+    const engineButtons = screen.getAllByRole('button', { name: 'engine' });
+    // The filter button is in the toolbar (the first one found with aria-pressed)
+    const filterButton = engineButtons.find(
+      (btn) => btn.getAttribute('aria-pressed') !== null,
+    );
+    expect(filterButton).toBeDefined();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    fireEvent.click(filterButton!);
+
+    // Only "Oil change" should remain (it has the "engine" tag)
+    expect(screen.getByText('Oil change')).toBeTruthy();
+    expect(screen.queryByText('Tire rotation')).toBeNull();
+    expect(screen.queryByText('Fix loose trim')).toBeNull();
+    expect(screen.queryByText('Wax exterior')).toBeNull();
   });
 
   it('shows the count of shown tasks', async () => {

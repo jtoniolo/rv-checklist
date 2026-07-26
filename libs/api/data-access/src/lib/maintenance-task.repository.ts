@@ -53,6 +53,8 @@ function toTask(entity: MaintenanceTaskEntity): MaintenanceTask {
       lastPerformed: entity.lastPerformed,
     }),
     fieldSchema: entity.fieldSchema,
+    // SQL NULL and empty array both mean "no tags" — normalise to `[]`.
+    tags: entity.tags ?? [],
   };
 }
 
@@ -82,6 +84,9 @@ function toRow(task: MaintenanceTask): Partial<MaintenanceTaskEntity> {
     // eslint-disable-next-line unicorn/no-null
     lastPerformed: task.lastPerformed ?? null,
     fieldSchema: task.fieldSchema,
+    // An empty tags array writes NULL so old rows and tagless tasks stay uniform.
+    // eslint-disable-next-line unicorn/no-null
+    tags: task.tags.length > 0 ? task.tags : null,
   };
 }
 

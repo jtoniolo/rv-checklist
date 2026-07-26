@@ -25,6 +25,7 @@ const sealsInput = {
   fieldSchema: [
     { name: 'Product used', type: 'text' as const, required: false },
   ],
+  tags: [] as string[],
 };
 
 async function makeService(): Promise<{
@@ -56,6 +57,7 @@ describe('MaintenanceTaskService', () => {
         rigId: aliceRigId,
         name: 'Replace anode rod',
         fieldSchema: [],
+        tags: [],
       });
 
       expect(task.interval).toBeUndefined();
@@ -82,10 +84,30 @@ describe('MaintenanceTaskService', () => {
         name: 'Re-glue loose trim',
         oneTime: true,
         fieldSchema: [],
+        tags: [],
       });
 
       expect(task.oneTime).toBe(true);
       expect(task.interval).toBeUndefined();
+    });
+
+    it('creates a task with tags (issue #41)', async () => {
+      const { service } = await makeService();
+
+      const task = await service.create(alice, {
+        ...sealsInput,
+        tags: ['exterior', 'slides'],
+      });
+
+      expect(task.tags).toEqual(['exterior', 'slides']);
+    });
+
+    it('defaults tags to an empty array when omitted', async () => {
+      const { service } = await makeService();
+
+      const task = await service.create(alice, sealsInput);
+
+      expect(task.tags).toEqual([]);
     });
 
     it('refuses to create a task on a rig the owner does not own', async () => {
@@ -106,6 +128,7 @@ describe('MaintenanceTaskService', () => {
         name: 'Repack wheel bearings',
         interval: { km: 20_000 },
         fieldSchema: [],
+        tags: [],
       });
 
       expect(task.interval).toEqual({ km: 20_000 });
@@ -123,6 +146,7 @@ describe('MaintenanceTaskService', () => {
         interval: { months: 24, km: 30_000 },
         lastPerformed: '2025-07-21',
         fieldSchema: [],
+        tags: [],
       });
 
       expect(task.interval).toEqual({ months: 24, km: 30_000 });
@@ -139,6 +163,7 @@ describe('MaintenanceTaskService', () => {
         rigId: aliceRigId,
         name: 'Repack wheel bearings',
         fieldSchema: [],
+        tags: [],
       });
 
       const listed = await service.listByRig(alice, aliceRigId);
@@ -217,6 +242,7 @@ describe('MaintenanceTaskService', () => {
         name: 'Re-glue loose trim',
         oneTime: true,
         fieldSchema: [],
+        tags: [],
       });
 
       const updated = await service.update(alice, task.id, {
@@ -236,6 +262,7 @@ describe('MaintenanceTaskService', () => {
         name: 'Re-glue loose trim',
         oneTime: true,
         fieldSchema: [],
+        tags: [],
       });
 
       // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
@@ -243,6 +270,46 @@ describe('MaintenanceTaskService', () => {
 
       expect(updated.oneTime).toBeUndefined();
       expect(updated.interval).toBeUndefined();
+    });
+
+    it('replaces the tags set when provided (issue #41)', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        tags: ['exterior'],
+      });
+
+      const updated = await service.update(alice, task.id, {
+        tags: ['exterior', 'slides'],
+      });
+
+      expect(updated.tags).toEqual(['exterior', 'slides']);
+    });
+
+    it('clears tags with an empty array', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        tags: ['exterior'],
+      });
+
+      const updated = await service.update(alice, task.id, { tags: [] });
+
+      expect(updated.tags).toEqual([]);
+    });
+
+    it('leaves tags unchanged when omitted from the update', async () => {
+      const { service } = await makeService();
+      const task = await service.create(alice, {
+        ...sealsInput,
+        tags: ['exterior'],
+      });
+
+      const updated = await service.update(alice, task.id, {
+        name: 'Condition all seals',
+      });
+
+      expect(updated.tags).toEqual(['exterior']);
     });
 
     it('leaves omitted fields unchanged and never changes the rig', async () => {

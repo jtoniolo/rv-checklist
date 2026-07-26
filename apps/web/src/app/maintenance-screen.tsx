@@ -32,6 +32,7 @@ import {
   Input,
   ListEmpty,
   SortGroup,
+  TagChip,
   type SortOption,
 } from '@rv-checklist/web-ui';
 import { useEffect, useMemo, useState, type JSX } from 'react';
@@ -101,6 +102,21 @@ export function MaintenanceScreen({
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<MaintenanceSortKey>('due');
   const [oneTimeOnly, setOneTimeOnly] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // All distinct tags across the rig's tasks — drives the tag filter and the
+  // tag picker in the form (issue #41).
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    const taskList = tasks ?? [];
+    for (const task of taskList) {
+      const taskTags = task.tags;
+      for (const tag of taskTags) {
+        tagSet.add(tag);
+      }
+    }
+    return [...tagSet].toSorted((a, b) => a.localeCompare(b));
+  }, [tasks]);
 
   // Reset ephemeral UI state when the navigation target changes (e.g. browser
   // Back fires popstate, changing openTaskId under this component).
@@ -153,6 +169,14 @@ export function MaintenanceScreen({
     return fromLog ?? manual;
   };
 
+  const toggleTag = (tag: string): void => {
+    setSelectedTags((current) =>
+      current.includes(tag)
+        ? current.filter((t) => t !== tag)
+        : [...current, tag],
+    );
+  };
+
   // Entries whose task was deleted (issue #28): kept, orphaned (taskId null),
   // owned via the rig. They belong to no live task section, so the screen shows
   // them on their own below the list, labeled by their snapshotted taskName.
@@ -176,6 +200,7 @@ export function MaintenanceScreen({
         lastPerformed: values.lastPerformed,
       }),
       fieldSchema: values.fieldSchema,
+      tags: [...values.tags],
     }).unwrap();
     setAdding(false);
     onOpenTask(created.id);
@@ -193,6 +218,7 @@ export function MaintenanceScreen({
         />
         <TaskForm
           submitLabel="Add task"
+          existingTags={allTags}
           pending={isCreating}
           onSubmit={(values) => void handleCreate(values)}
           onCancel={() => {
@@ -223,6 +249,7 @@ export function MaintenanceScreen({
         // eslint-disable-next-line unicorn/no-null
         lastPerformed: values.lastPerformed ?? null,
         fieldSchema: values.fieldSchema,
+        tags: [...values.tags],
       },
     }).unwrap();
     setEditing(false);
@@ -247,6 +274,7 @@ export function MaintenanceScreen({
           />
           <TaskForm
             initial={openTask}
+            existingTags={allTags}
             submitLabel="Save changes"
             pending={isUpdating}
             onSubmit={(values) => void handleUpdate(openTask.id, values)}
@@ -289,6 +317,9 @@ export function MaintenanceScreen({
       onToggleOneTime={() => {
         setOneTimeOnly((v) => !v);
       }}
+      allTags={allTags}
+      selectedTags={selectedTags}
+      onToggleTag={toggleTag}
       statusOf={statusOf}
       lastPerformedOf={lastPerformedOf}
       today={today}
@@ -317,6 +348,9 @@ function TaskList({
   onSort,
   oneTimeOnly,
   onToggleOneTime,
+  allTags,
+  selectedTags,
+  onToggleTag,
   statusOf,
   lastPerformedOf,
   today,
@@ -333,6 +367,9 @@ function TaskList({
   readonly onSort: (key: MaintenanceSortKey) => void;
   readonly oneTimeOnly: boolean;
   readonly onToggleOneTime: () => void;
+  readonly allTags: readonly string[];
+  readonly selectedTags: readonly string[];
+  readonly onToggleTag: (tag: string) => void;
   readonly statusOf: (task: MaintenanceTask) => DueStatus;
   readonly lastPerformedOf: (task: MaintenanceTask) => string | undefined;
   readonly today: string;
@@ -346,11 +383,19 @@ function TaskList({
     // One-time filter
     if (oneTimeOnly) result = result.filter((t) => t.oneTime === true);
 
-    // Search by name and description
+    // Tag filter: AND — a task must carry every selected tag (issue #41).
+    if (selectedTags.length > 0) {
+      result = result.filter((t) =>
+        selectedTags.every((tag) => t.tags.includes(tag)),
+      );
+    }
+
+    // Search by name, description, and tags
     const q = search.trim().toLowerCase();
     if (q) {
       result = result.filter((t) => {
-        const hay = `${t.name} ${t.description ?? ''}`.toLowerCase();
+        const hay =
+          `${t.name} ${t.description ?? ''} ${t.tags.join(' ')}`.toLowerCase();
         return hay.includes(q);
       });
     }
@@ -376,7 +421,16 @@ function TaskList({
     });
 
     return result;
-  }, [tasks, oneTimeOnly, search, sort, statusOf, lastPerformedOf, today]);
+  }, [
+    tasks,
+    oneTimeOnly,
+    selectedTags,
+    search,
+    sort,
+    statusOf,
+    lastPerformedOf,
+    today,
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -397,6 +451,16 @@ function TaskList({
             pressed={oneTimeOnly}
             onToggle={onToggleOneTime}
           />
+          {allTags.map((tag) => (
+            <TagChip
+              key={tag}
+              tag={tag}
+              selected={selectedTags.includes(tag)}
+              onClick={() => {
+                onToggleTag(tag);
+              }}
+            />
+          ))}
           <button
             type="button"
             onClick={onAdd}
@@ -632,6 +696,9 @@ function TaskListRow({
           {badgeOf(status) === undefined ? (
             <span className="text-xs text-brand-muted">Not tracked</span>
           ) : undefined}
+          {task.tags.map((tag) => (
+            <TagChip key={tag} tag={tag} />
+          ))}
         </span>
       </span>
       <span aria-hidden className="shrink-0 text-brand-muted">
@@ -682,6 +749,13 @@ function TaskDetail({
           ) : undefined}
           <DueBadge status={status} />
         </div>
+        {task.tags.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {task.tags.map((tag) => (
+              <TagChip key={tag} tag={tag} />
+            ))}
+          </div>
+        ) : undefined}
       </div>
 
       {task.description ? (

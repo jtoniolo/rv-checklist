@@ -1,6 +1,7 @@
 export * from './lib/list-detail';
 export * from './lib/page';
 export * from './lib/progress-bar';
+export * from './lib/tag';
 
 // Vendored shadcn/ui controls (issue #23). Sources come from the shadcn
 // registry and stay as close to upstream as possible — see docs/adr/0014.
