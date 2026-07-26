@@ -20,6 +20,7 @@ import { TaskIntervalBasis1721001000000 } from './migrations/1721001000000-task-
 import { DistanceInterval1721001100000 } from './migrations/1721001100000-distance-interval.js';
 import { TaskLastPerformed1721001200000 } from './migrations/1721001200000-task-last-performed.js';
 import { IntervalCombinedLimits1721001300000 } from './migrations/1721001300000-interval-combined-limits.js';
+import { LogEntryCostCents1721001400000 } from './migrations/1721001400000-log-entry-cost-cents.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -59,6 +60,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       DistanceInterval1721001100000,
       TaskLastPerformed1721001200000,
       IntervalCombinedLimits1721001300000,
+      LogEntryCostCents1721001400000,
     ],
     migrationsRun: true,
     synchronize: false,
