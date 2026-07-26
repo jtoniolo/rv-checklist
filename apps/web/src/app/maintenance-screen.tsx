@@ -38,6 +38,7 @@ import {
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { formatIsoDate, todayIso } from './dates';
 import { LogEntryForm } from './log-entry-form';
+import { MaintenanceHistory } from './maintenance-history';
 import { TaskForm, type TaskFormValues } from './task-form';
 
 /**
@@ -67,14 +68,18 @@ const SORT_OPTIONS: readonly SortOption<MaintenanceSortKey>[] = [
 export function MaintenanceScreen({
   activeRig,
   openTaskId,
+  view,
   onOpenTask,
+  onOpenHistory,
   onOpenChecklist,
   onBackToList,
   onGoRig,
 }: {
   readonly activeRig: Rig | undefined;
   readonly openTaskId: Id | undefined;
+  readonly view: string | undefined;
   readonly onOpenTask: (id: Id) => void;
+  readonly onOpenHistory: () => void;
   readonly onOpenChecklist: (id: Id) => void;
   readonly onBackToList: () => void;
   readonly onGoRig: () => void;
@@ -303,6 +308,21 @@ export function MaintenanceScreen({
     );
   }
 
+  // ── History view: rig-wide timeline with spend summary (issue #43) ─────
+  if (view === 'history') {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackLink label="‹ All tasks" onClick={onBackToList} />
+        <MaintenanceHistory
+          entries={rigEntries ?? []}
+          tasks={tasks ?? []}
+          allTags={allTags}
+          today={today}
+        />
+      </div>
+    );
+  }
+
   // ── List view: search / sort / filter / task rows ───────────────────────
   return (
     <TaskList
@@ -327,6 +347,7 @@ export function MaintenanceScreen({
         setEditing(false);
         onOpenTask(id);
       }}
+      onOpenHistory={onOpenHistory}
       onAdd={() => {
         setEditing(false);
         setAdding(true);
@@ -355,6 +376,7 @@ function TaskList({
   lastPerformedOf,
   today,
   onOpenTask,
+  onOpenHistory,
   onAdd,
   orphanedEntries,
 }: {
@@ -374,6 +396,7 @@ function TaskList({
   readonly lastPerformedOf: (task: MaintenanceTask) => string | undefined;
   readonly today: string;
   readonly onOpenTask: (id: Id) => void;
+  readonly onOpenHistory: () => void;
   readonly onAdd: () => void;
   readonly orphanedEntries: readonly LogEntry[];
 }): JSX.Element {
@@ -461,6 +484,13 @@ function TaskList({
               }}
             />
           ))}
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="rounded-md border border-hairline px-3 py-1.5 text-sm font-medium text-brand-muted transition-colors hover:border-brand hover:text-brand"
+          >
+            History
+          </button>
           <button
             type="button"
             onClick={onAdd}
