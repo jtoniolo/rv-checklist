@@ -25,6 +25,8 @@ export interface AppLocation {
   readonly openChecklistId?: Id;
   readonly openRunId?: Id;
   readonly openTaskId?: Id;
+  /** An optional sub-view within a screen (e.g. 'history' on maintenance). */
+  readonly view?: string;
 }
 
 // ── Serialisation ────────────────────────────────────────────────────────────
@@ -36,6 +38,7 @@ export function locationToParams(loc: AppLocation): URLSearchParams {
   if (loc.openChecklistId) params.set('checklist', loc.openChecklistId);
   if (loc.openRunId) params.set('run', loc.openRunId);
   if (loc.openTaskId) params.set('task', loc.openTaskId);
+  if (loc.view) params.set('view', loc.view);
   return params;
 }
 
@@ -48,12 +51,14 @@ export function paramsToLocation(params: URLSearchParams): AppLocation {
   const checklist = params.get('checklist');
   const run = params.get('run');
   const task = params.get('task');
+  const view = params.get('view');
 
   return {
     route,
     ...(checklist !== null && { openChecklistId: checklist }),
     ...(run !== null && { openRunId: run }),
     ...(task !== null && { openTaskId: task }),
+    ...(view !== null && { view }),
   };
 }
 

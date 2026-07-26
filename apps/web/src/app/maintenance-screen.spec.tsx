@@ -95,6 +95,37 @@ const entries: LogEntry[] = [
     distanceKm: 40_000,
     fields: [],
   },
+  // Second oil change in 2026, with cost — drives "This year" tile.
+  {
+    id: '550e8400-e29b-41d4-a716-446655440062',
+    taskId: OIL_ID,
+    rigId: rig.id,
+    taskName: 'Oil change',
+    performedOn: '2026-02-15',
+    distanceKm: 38_000,
+    costCents: 10_500,
+    fields: [
+      { name: 'Brand', type: 'text', required: false, value: 'Mobil 1' },
+      {
+        name: 'Quantity',
+        type: 'number',
+        unit: 'L',
+        required: false,
+        value: 5.7,
+      },
+    ],
+  },
+  // Orphaned entry (deleted task) — taskId is null.
+  {
+    id: '550e8400-e29b-41d4-a716-446655440063',
+    // eslint-disable-next-line unicorn/no-null
+    taskId: null,
+    rigId: rig.id,
+    taskName: 'Replace water pump',
+    performedOn: '2025-05-30',
+    costCents: 9500,
+    fields: [],
+  },
 ];
 
 function jsonResponse(data: unknown): Response {
@@ -121,25 +152,32 @@ function fakeApi(request: Request): Response {
   throw new Error(`Unstubbed request: ${route}${url.search}`);
 }
 
-function renderScreen(openTaskId?: string): {
+function renderScreen(
+  openTaskId?: string,
+  view?: string,
+): {
   onOpenTask: jest.Mock;
+  onOpenHistory: jest.Mock;
   onBackToList: jest.Mock;
 } {
   const onOpenTask = jest.fn();
+  const onOpenHistory = jest.fn();
   const onBackToList = jest.fn();
   render(
     <StoreProvider>
       <MaintenanceScreen
         activeRig={rig}
         openTaskId={openTaskId}
+        view={view}
         onOpenTask={onOpenTask}
+        onOpenHistory={onOpenHistory}
         onOpenChecklist={jest.fn()}
         onBackToList={onBackToList}
         onGoRig={jest.fn()}
       />
     </StoreProvider>,
   );
-  return { onOpenTask, onBackToList };
+  return { onOpenTask, onOpenHistory, onBackToList };
 }
 
 /** The first button whose visible text includes a given task name. */
@@ -399,5 +437,147 @@ describe('MaintenanceScreen (issue #38)', () => {
     });
 
     expect(screen.getByText('1 shown')).toBeTruthy();
+  });
+
+  it('has a History button that calls onOpenHistory', async () => {
+    const { onOpenHistory } = renderScreen();
+    await screen.findByText('Oil change');
+
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+
+    expect(onOpenHistory).toHaveBeenCalled();
+  });
+});
+
+describe('MaintenanceScreen — History view (issue #43)', () => {
+  let fetchSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    localStorage.setItem('rv.accessToken', 'access-1');
+    localStorage.setItem('rv.refreshToken', 'refresh-1');
+    fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input) =>
+        Promise.resolve(fakeApi(input as Request)),
+      );
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    localStorage.clear();
+  });
+
+  it('shows summary tiles with correct spend totals', async () => {
+    renderScreen(undefined, 'history');
+
+    // Total: $112.40 + $105.00 + $95.00 = $312.40 (tire rotation has no cost)
+    expect(await screen.findByText('$312.40')).toBeTruthy();
+    // The "Total spend" label is visible
+    expect(screen.getByText('Total spend')).toBeTruthy();
+    expect(screen.getByText('Avg / job')).toBeTruthy();
+    expect(screen.getByText('Biggest job')).toBeTruthy();
+  });
+
+  it('shows the "This year" tile with only current-year entries', async () => {
+    renderScreen(undefined, 'history');
+
+    // Wait for data to load (total spend appears first)
+    await screen.findByText('$312.40');
+    // 2026 entries with cost: oil change $105.00 only (tire rotation has no cost)
+    // The other oil change ($112.40) and orphaned entry ($95.00) are from 2025
+    expect(screen.getByText('This year')).toBeTruthy();
+    // The "This year" value sits inside the same tile grid — verify it's there.
+    // Use a function matcher to find the value in the tile context.
+    const thisYearTile = screen.getByText('This year').closest('div');
+    expect(thisYearTile?.textContent).toContain('$105');
+  });
+
+  it('excludes entries without cost from the average', async () => {
+    renderScreen(undefined, 'history');
+
+    // 3 entries have cost: $112.40 + $105.00 + $95.00 = $312.40
+    // Average = $312.40 / 3 = $104.13 (rounded from 10413.33 cents → 10413)
+    expect(await screen.findByText('$104.13')).toBeTruthy();
+  });
+
+  it('groups entries by month, newest first', async () => {
+    renderScreen(undefined, 'history');
+
+    // Newest month is July 2026 (tire rotation) — wait for data to load
+    expect(await screen.findByText('July 2026')).toBeTruthy();
+    // February 2026 (second oil change)
+    expect(screen.getByText('February 2026')).toBeTruthy();
+  });
+
+  it('shows orphaned entries with a "deleted task" label', async () => {
+    renderScreen(undefined, 'history');
+
+    expect(await screen.findByText('Replace water pump')).toBeTruthy();
+    expect(screen.getByText('deleted task')).toBeTruthy();
+  });
+
+  it('has search and tag filters', async () => {
+    renderScreen(undefined, 'history');
+
+    await screen.findAllByText('Oil change');
+    expect(screen.getByLabelText('Search history')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Costs only' })).toBeTruthy();
+  });
+
+  it('filters entries by search text', async () => {
+    renderScreen(undefined, 'history');
+    await screen.findAllByText('Oil change');
+
+    fireEvent.change(screen.getByLabelText('Search history'), {
+      target: { value: 'water pump' },
+    });
+
+    expect(screen.getByText('Replace water pump')).toBeTruthy();
+    expect(screen.queryByText('Oil change')).toBeNull();
+    expect(screen.queryByText('Tire rotation')).toBeNull();
+  });
+
+  it('filters to costs-only entries', async () => {
+    renderScreen(undefined, 'history');
+    await screen.findAllByText('Oil change');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Costs only' }));
+
+    // Tire rotation has no cost — it should disappear
+    expect(screen.queryByText('Tire rotation')).toBeNull();
+    // Oil change and Replace water pump have costs — they stay
+    expect(screen.getAllByText('Oil change').length).toBeGreaterThan(0);
+    expect(screen.getByText('Replace water pump')).toBeTruthy();
+  });
+
+  it('shows a back link that calls onBackToList', async () => {
+    const { onBackToList } = renderScreen(undefined, 'history');
+    // Wait for data to load
+    await screen.findByText('$312.40');
+
+    fireEvent.click(screen.getByRole('button', { name: /All tasks/ }));
+
+    expect(onBackToList).toHaveBeenCalled();
+  });
+
+  it('shows the spend-by-tag breakdown', async () => {
+    renderScreen(undefined, 'history');
+
+    expect(await screen.findByText('Spend by tag')).toBeTruthy();
+    expect(
+      screen.getByRole('complementary', { name: 'Spend by tag' }),
+    ).toBeTruthy();
+  });
+
+  it('shows "No history matches." when filters exclude everything', async () => {
+    renderScreen(undefined, 'history');
+    // Wait for data to load
+    await screen.findAllByText('Oil change');
+
+    fireEvent.change(screen.getByLabelText('Search history'), {
+      target: { value: 'zzz-no-match' },
+    });
+
+    expect(screen.getByText('No history matches.')).toBeTruthy();
   });
 });

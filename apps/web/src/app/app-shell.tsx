@@ -207,8 +207,12 @@ export function AppShell(): JSX.Element {
           <MaintenanceScreen
             activeRig={activeRig}
             openTaskId={openTaskId}
+            view={location.view}
             onOpenTask={(id) => {
               navigate({ route: 'maintenance', openTaskId: id });
+            }}
+            onOpenHistory={() => {
+              navigate({ route: 'maintenance', view: 'history' });
             }}
             onOpenChecklist={openChecklist}
             onBackToList={back}
