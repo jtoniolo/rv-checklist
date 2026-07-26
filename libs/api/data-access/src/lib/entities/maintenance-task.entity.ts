@@ -63,6 +63,9 @@ export class MaintenanceTaskEntity {
   @Column({ name: 'field_schema', type: 'jsonb', default: () => "'[]'" })
   fieldSchema!: FieldSchema;
 
+  @Column({ type: 'text', array: true, nullable: true })
+  tags!: string[] | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

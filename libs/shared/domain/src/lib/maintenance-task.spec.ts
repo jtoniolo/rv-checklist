@@ -1,7 +1,9 @@
 import {
+  canonicalizeTag,
   CreateMaintenanceTaskSchema,
   IntervalSchema,
   MaintenanceTaskSchema,
+  TagsSchema,
   UpdateMaintenanceTaskSchema,
 } from './maintenance-task.js';
 
@@ -48,6 +50,7 @@ describe('MaintenanceTaskSchema', () => {
       { name: 'Tread depth', type: 'number', required: true, unit: '/32"' },
       { name: 'DOT date', type: 'text', required: false },
     ],
+    tags: [] as string[],
   };
 
   it('parses a task with an interval and fields', () => {
@@ -99,6 +102,7 @@ describe('MaintenanceTaskSchema', () => {
       name: 'Re-glue loose trim',
       oneTime: true as const,
       fieldSchema: [],
+      tags: [] as string[],
     };
     expect(MaintenanceTaskSchema.parse(oneTime)).toEqual(oneTime);
   });
@@ -191,6 +195,16 @@ describe('MaintenanceTaskSchema', () => {
     ).toBe(false);
   });
 
+  it('parses a task with tags (issue #41)', () => {
+    const tagged = { ...task, tags: ['tires', 'safety'] };
+    expect(MaintenanceTaskSchema.parse(tagged)).toEqual(tagged);
+  });
+
+  it('defaults tags to an empty array when omitted', () => {
+    const parsed = MaintenanceTaskSchema.parse(task);
+    expect(parsed.tags).toEqual([]);
+  });
+
   it('rejects duplicate field names', () => {
     expect(
       MaintenanceTaskSchema.safeParse({
@@ -254,6 +268,23 @@ describe('CreateMaintenanceTaskSchema', () => {
     expect(parsed.lastPerformed).toBe('2025-07-21');
   });
 
+  it('defaults tags to an empty array on create', () => {
+    const parsed = CreateMaintenanceTaskSchema.parse({
+      rigId: id(2),
+      name: 'Grease hitch',
+    });
+    expect(parsed.tags).toEqual([]);
+  });
+
+  it('canonicalises tags on create (issue #41)', () => {
+    const parsed = CreateMaintenanceTaskSchema.parse({
+      rigId: id(2),
+      name: 'Grease hitch',
+      tags: [' Tires '],
+    });
+    expect(parsed.tags).toEqual(['tires']);
+  });
+
   it('rejects a create with last-performed but no calendar interval', () => {
     expect(
       CreateMaintenanceTaskSchema.safeParse({
@@ -262,6 +293,34 @@ describe('CreateMaintenanceTaskSchema', () => {
         lastPerformed: '2025-07-21',
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('TagsSchema (issue #41)', () => {
+  it('canonicalises tags — trim + lowercase', () => {
+    expect(TagsSchema.parse([' Tires ', 'PLUMBING'])).toEqual([
+      'tires',
+      'plumbing',
+    ]);
+  });
+
+  it('rejects empty tags after canonicalisation', () => {
+    expect(TagsSchema.safeParse(['']).success).toBe(false);
+    expect(TagsSchema.safeParse(['  ']).success).toBe(false);
+  });
+
+  it('rejects duplicate tags after canonicalisation', () => {
+    expect(TagsSchema.safeParse(['Tires', 'tires']).success).toBe(false);
+  });
+
+  it('accepts an empty array — a task with no tags', () => {
+    expect(TagsSchema.parse([])).toEqual([]);
+  });
+});
+
+describe('canonicalizeTag (issue #41)', () => {
+  it('trims and lowercases', () => {
+    expect(canonicalizeTag(' Tires ')).toBe('tires');
   });
 });
 
@@ -308,5 +367,17 @@ describe('UpdateMaintenanceTaskSchema', () => {
     // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
     const removal = { lastPerformed: null };
     expect(UpdateMaintenanceTaskSchema.parse(removal)).toEqual(removal);
+  });
+
+  it('accepts editing tags (issue #41)', () => {
+    expect(
+      UpdateMaintenanceTaskSchema.parse({ tags: ['tires', 'safety'] }),
+    ).toEqual({ tags: ['tires', 'safety'] });
+  });
+
+  it('accepts clearing tags with an empty array', () => {
+    expect(UpdateMaintenanceTaskSchema.parse({ tags: [] })).toEqual({
+      tags: [],
+    });
   });
 });

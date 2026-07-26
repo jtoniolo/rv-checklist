@@ -30,6 +30,7 @@ const sealsTask: MaintenanceTask = {
     { name: 'Product used', type: 'text', required: false },
     { name: 'Tire Pressure', type: 'number', required: true, unit: 'psi' },
   ],
+  tags: [],
 };
 
 const bobTask: MaintenanceTask = {
@@ -37,6 +38,7 @@ const bobTask: MaintenanceTask = {
   rigId: bobRigId,
   name: 'Bob’s task',
   fieldSchema: [],
+  tags: [],
 };
 
 /** A performed-standalone create body, snapshotting the seals task's fields. */
@@ -197,6 +199,7 @@ describe('LogEntryService', () => {
         name: 'Re-glue loose trim',
         oneTime: true,
         fieldSchema: [{ name: 'Notes', type: 'text', required: false }],
+        tags: [],
       });
       return { service, tasks };
     }
@@ -306,6 +309,7 @@ describe('LogEntryService', () => {
         rigId: aliceRigId,
         name: 'Repack wheel bearings',
         fieldSchema: [],
+        tags: [],
       });
       await service.create(alice, performSeals);
       await service.create(alice, {

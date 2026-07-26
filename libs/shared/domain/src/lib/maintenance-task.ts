@@ -69,6 +69,37 @@ function hasLimit(interval: {
 const DescriptionSchema = z.string().trim().min(1);
 
 /**
+ * A tag in **canonical form** (issue #41, ADR-0017): trimmed and lowercased, so
+ * "Tires" and "tires" are the same tag. Canonical form is what gets stored,
+ * end-to-end — no display form that diverges. The transform canonicalises on the
+ * way in; the pipe rejects empty strings after the transform.
+ */
+const TagSchema = z
+  .string()
+  .transform((s) => s.trim().toLowerCase())
+  .pipe(z.string().min(1));
+
+/**
+ * An optional set of tags on a maintenance task (issue #41). Tags are
+ * case-insensitive, stored in canonical form, and unique within the set.
+ * The array defaults to `[]` — a task with no tags simply has an empty array.
+ */
+export const TagsSchema = z
+  .array(TagSchema)
+  .refine((tags) => new Set(tags).size === tags.length, {
+    message: 'tags must be unique after canonicalisation',
+  });
+export type Tags = z.infer<typeof TagsSchema>;
+
+/**
+ * Canonicalise a user-entered tag: trim + lowercase. The UI uses this to check
+ * whether a typed tag already exists before adding it (issue #41).
+ */
+export function canonicalizeTag(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
+/**
  * The one-time marker (issue #29). Present ⇒ `true` (due-from-creation, done
  * once); absent ⇒ not one-time — the same absent-means-absent shape the other
  * optional markers use, so no `false` is ever stored.
@@ -121,6 +152,7 @@ export const MaintenanceTaskSchema = z
     oneTime: OneTimeSchema.optional(),
     lastPerformed: IsoDateSchema.optional(),
     fieldSchema: FieldSchemaSchema,
+    tags: TagsSchema.default([]),
   })
   .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE)
   .refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
@@ -136,6 +168,7 @@ export const CreateMaintenanceTaskSchema = z
     oneTime: OneTimeSchema.optional(),
     lastPerformed: IsoDateSchema.optional(),
     fieldSchema: FieldSchemaSchema.default([]),
+    tags: TagsSchema.default([]),
   })
   .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE)
   .refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
@@ -160,6 +193,7 @@ export const UpdateMaintenanceTaskSchema = z
     oneTime: OneTimeSchema.nullable(),
     lastPerformed: IsoDateSchema.nullable(),
     fieldSchema: FieldSchemaSchema,
+    tags: TagsSchema,
   })
   .partial();
 export type UpdateMaintenanceTask = z.infer<typeof UpdateMaintenanceTaskSchema>;

@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  canonicalizeTag,
   FieldSchemaSchema,
   SUPPORTED_FIELD_TYPES,
   type FieldSchema,
@@ -19,6 +20,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  TagChip,
   Textarea,
 } from '@rv-checklist/web-ui';
 import { useState, type JSX } from 'react';
@@ -64,10 +66,14 @@ export interface TaskFormValues {
    */
   readonly lastPerformed: IsoDate | undefined;
   readonly fieldSchema: FieldSchema;
+  /** Canonical tags — trim + lowercase, deduplicated (issue #41). */
+  readonly tags: readonly string[];
 }
 
 export interface TaskFormProps {
   readonly initial?: MaintenanceTask;
+  /** All tags currently in use across the rig's tasks — the picker's suggestions. */
+  readonly existingTags?: readonly string[];
   readonly submitLabel: string;
   readonly pending: boolean;
   readonly onSubmit: (values: TaskFormValues) => void;
@@ -118,6 +124,7 @@ function toFieldDefinition(draft: FieldDraft): FieldSchema[number] {
 
 export function TaskForm({
   initial,
+  existingTags = [],
   submitLabel,
   pending,
   onSubmit,
@@ -145,6 +152,8 @@ export function TaskForm({
   const [fields, setFields] = useState<FieldDraft[]>(
     () => initial?.fieldSchema.map(toFieldDraft) ?? [],
   );
+  const [tags, setTags] = useState<string[]>(() => [...(initial?.tags ?? [])]);
+  const [tagInput, setTagInput] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
 
   const updateField = (key: string, change: Partial<FieldDraft>): void => {
@@ -154,6 +163,17 @@ export function TaskForm({
       ),
     );
   };
+
+  /** Add a tag: canonicalise, skip if already present, skip if blank. */
+  const addTag = (raw: string): void => {
+    const canonical = canonicalizeTag(raw);
+    if (canonical === '' || tags.includes(canonical)) return;
+    setTags((current) => [...current, canonical]);
+    setTagInput('');
+  };
+
+  /** All tags from other tasks the user could pick from, minus already-selected ones. */
+  const suggestions = existingTags.filter((t) => !tags.includes(t));
 
   const submit = (): void => {
     const trimmedName = name.trim();
@@ -214,6 +234,7 @@ export function TaskForm({
       oneTime,
       lastPerformed,
       fieldSchema: parsed.data,
+      tags,
     });
   };
 
@@ -251,6 +272,70 @@ export function TaskForm({
           Optional — why it needs doing and a basic outline of how.
         </span>
       </Label>
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-sm font-medium text-brand dark:text-ink-inverted">
+          Tags
+        </legend>
+        {tags.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5" aria-label="Selected tags">
+            {tags.map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1">
+                <TagChip tag={tag} />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTags((current) => current.filter((t) => t !== tag));
+                  }}
+                  className="text-xs text-brand-muted hover:text-brand"
+                  aria-label={`Remove tag ${tag}`}
+                >
+                  x
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : undefined}
+        {suggestions.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {suggestions.map((tag) => (
+              <TagChip
+                key={tag}
+                tag={tag}
+                onClick={() => {
+                  addTag(tag);
+                }}
+              />
+            ))}
+          </div>
+        ) : undefined}
+        <div className="flex items-center gap-2">
+          <Input
+            value={tagInput}
+            onChange={(e) => {
+              setTagInput(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              addTag(tagInput);
+            }}
+            placeholder="Add a tag…"
+            className="w-40"
+            aria-label="Add tag"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              addTag(tagInput);
+            }}
+          >
+            Add
+          </Button>
+        </div>
+      </fieldset>
 
       <Label className="flex-row items-start gap-2 font-normal text-muted-foreground">
         <Checkbox

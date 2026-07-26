@@ -1,4 +1,8 @@
-import { FieldSchemaSchema, IntervalSchema } from '@rv-checklist/domain';
+import {
+  FieldSchemaSchema,
+  IntervalSchema,
+  TagsSchema,
+} from '@rv-checklist/domain';
 import {
   SEED_CHECKLISTS,
   SEED_RIG_NICKNAME,
@@ -92,6 +96,13 @@ describe('seed content (docs/seed-content.md)', () => {
     it('every field schema is valid (no photo, unique names, units on numbers only)', () => {
       for (const task of SEED_TASKS) {
         expect(() => FieldSchemaSchema.parse(task.fieldSchema)).not.toThrow();
+      }
+    });
+
+    it('every task carries valid tags (issue #41)', () => {
+      for (const task of SEED_TASKS) {
+        expect(() => TagsSchema.parse(task.tags)).not.toThrow();
+        expect(task.tags.length).toBeGreaterThan(0);
       }
     });
 

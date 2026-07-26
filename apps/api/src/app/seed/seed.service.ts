@@ -52,6 +52,7 @@ export class SeedService extends StarterContentSeeder {
         description: task.description,
         interval: task.interval,
         fieldSchema: task.fieldSchema,
+        tags: [...task.tags],
       });
       taskIdsByName.set(task.name, created.id);
     }
