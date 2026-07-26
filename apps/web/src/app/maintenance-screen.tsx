@@ -543,7 +543,7 @@ function badgeOf(status: DueStatus): readonly [string, string] | undefined {
       return undefined;
     }
     case 'never-performed': {
-      return ['Never done', NEUTRAL_TONE];
+      return ['Never performed', NEUTRAL_TONE];
     }
     case 'one-time': {
       return ['To do', ATTENTION_TONE];
