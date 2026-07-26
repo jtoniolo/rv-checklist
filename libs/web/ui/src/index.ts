@@ -1,3 +1,4 @@
+export * from './lib/list-detail';
 export * from './lib/page';
 export * from './lib/progress-bar';
 

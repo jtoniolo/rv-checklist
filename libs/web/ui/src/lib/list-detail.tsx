@@ -1,7 +1,5 @@
-'use client';
-
-import { cn } from '@rv-checklist/web-ui';
 import type { JSX } from 'react';
+import { cn } from './ui/utils';
 
 /**
  * Shared list/detail primitives (issue #38): building blocks for the "full-page
