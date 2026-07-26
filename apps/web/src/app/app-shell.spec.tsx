@@ -188,24 +188,21 @@ describe('web shell, signed in', () => {
     ).toBe('complete');
   });
 
-  it('closes an open run when another checklist is selected', async () => {
+  it('opens a checklist detail from the list (drill-in, issue #42)', async () => {
     renderShell();
 
-    fireEvent.click(
-      await screen.findByRole('button', { name: /pre-departure.*1\/2/is }),
-    );
-    await screen.findByRole('checkbox', { name: 'Close roof vents' });
+    // Navigate to the Checklists tab.
+    const buttons = screen.getAllByRole('button', { name: /checklists/i });
+    fireEvent.click(buttons[0]);
 
-    // Picking a different checklist in the sidebar must swap the whole detail
-    // pane — not leave the old run rendered under the new checklist's name.
-    fireEvent.click(screen.getByRole('button', { name: /spring opening/i }));
+    // The list view loads — click Spring opening to drill in.
+    fireEvent.click(
+      await screen.findByRole('button', { name: /spring opening/i }),
+    );
 
     expect(
       await screen.findByRole('heading', { name: 'Spring opening' }),
     ).toBeTruthy();
-    expect(
-      screen.queryByRole('checkbox', { name: 'Close roof vents' }),
-    ).toBeNull();
   });
 
   it('re-tokens the surface from the avatar menu and persists the theme', async () => {
@@ -255,23 +252,23 @@ describe('web shell, signed in', () => {
     expect(await screen.findByLabelText('Search tasks')).toBeTruthy();
   });
 
-  it('shows the add form without navigating back when a run is open (issue #40 regression)', async () => {
+  it('shows the add form from the list without navigating back (issue #40 regression)', async () => {
     const backSpy = jest.spyOn(globalThis.history, 'back');
     renderShell();
 
-    // Open a run via the continue card.
-    fireEvent.click(
-      await screen.findByRole('button', { name: /pre-departure.*1\/2/is }),
-    );
-    await screen.findByRole('checkbox', { name: 'Close roof vents' });
+    // Navigate to the Checklists tab.
+    const buttons = screen.getAllByRole('button', { name: /checklists/i });
+    fireEvent.click(buttons[0]);
     backSpy.mockClear();
 
-    // Click the Add button — the form must appear and no back() must fire.
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    // Click the Add button from the list — the form must appear and no
+    // back() must fire. The original race (issue #40) was: the handler
+    // called back() to close a run, then set adding=true, but the async
+    // popstate reset adding. In the drill-in layout the Add button lives
+    // on the list view only, so the race cannot happen.
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
 
     expect(screen.getByRole('form', { name: 'Add checklist' })).toBeTruthy();
-    // The handler must not call history.back(): doing so fires an async
-    // popstate that resets the adding flag, making the form flash and vanish.
     expect(backSpy).not.toHaveBeenCalled();
 
     backSpy.mockRestore();

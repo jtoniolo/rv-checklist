@@ -19,8 +19,15 @@ import {
   useListTasksQuery,
   useUpdateChecklistMutation,
 } from '@rv-checklist/web-data-access';
-import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
-import { useEffect, useState, type JSX } from 'react';
+import {
+  BackLink,
+  Input,
+  ListEmpty,
+  SortGroup,
+  TagChip,
+  type SortOption,
+} from '@rv-checklist/web-ui';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import { ChecklistForm, type ChecklistFormValues } from './checklist-form';
 import { RunHistory } from './run-history';
 import { RunScreen } from './run-screen';
@@ -39,13 +46,24 @@ function toStepInput(step: Step): StepInput {
 }
 
 /**
- * The checklists surface (issue #22): master–detail in one responsive
- * component. On mobile the list drills down into a detail screen with a back
- * link; from `lg` up the list is a sidebar and the detail pane always shows
- * something. Authoring (add / edit / duplicate / delete, issue #15) and runs
- * (start / resume / history, issue #16) both live here, reachable from the
- * detail pane; an open run takes the pane over.
+ * The checklists surface, redesigned (issue #42): a single-column, searchable
+ * list with sort and tag-filter controls, matching the maintenance screen's
+ * drill-in pattern (issue #38). Selecting a checklist opens a full-page
+ * read-only detail — steps, authoring actions, run history — with a back
+ * action to return to the list. No split pane, no sidebar.
+ *
+ * The layout components ({@link BackLink}, {@link SortGroup}, {@link ListEmpty},
+ * {@link TagChip}) are shared primitives from `@rv-checklist/web-ui`, the same
+ * ones the maintenance screen uses.
  */
+
+type ChecklistSortKey = 'name' | 'lastRun';
+
+const SORT_OPTIONS: readonly SortOption<ChecklistSortKey>[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'lastRun', label: 'Last run' },
+];
+
 export function ChecklistsScreen({
   activeRig,
   openChecklistId,
@@ -70,7 +88,8 @@ export function ChecklistsScreen({
     isLoading,
     isError,
   } = useListChecklistsQuery(activeRig?.id ?? skipToken);
-  // The rig's runs (cached from home) put an in-progress bar on list rows.
+  // The rig's runs (cached from home) drive the in-progress badge on list rows
+  // and the "Last run" sort.
   const { data: rigRuns } = useListRunsByRigQuery(activeRig?.id ?? skipToken);
   // The rig's maintenance tasks: link targets for steps (issue #18).
   const { data: rigTasks } = useListTasksQuery(activeRig?.id ?? skipToken);
@@ -82,6 +101,21 @@ export function ChecklistsScreen({
 
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<ChecklistSortKey>('name');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  // All distinct tags across the rig's checklists — drives the tag filter.
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    const list = checklists ?? [];
+    for (const checklist of list) {
+      for (const tag of checklist.tags) {
+        tagSet.add(tag);
+      }
+    }
+    return [...tagSet].toSorted((a, b) => a.localeCompare(b));
+  }, [checklists]);
 
   // Reset ephemeral UI state when the navigation target changes (e.g. browser
   // Back fires popstate, changing the open checklist/run under this component).
@@ -102,11 +136,18 @@ export function ChecklistsScreen({
     );
   }
 
-  // Mobile drills down (detail only when explicitly opened); desktop's detail
-  // pane always shows something.
-  const mobileDetail = checklists?.find((c) => c.id === openChecklistId);
-  const desktopSelected = mobileDetail ?? checklists?.[0];
-  const isDetailOpenOnMobile = adding || mobileDetail !== undefined;
+  const openChecklist = checklists?.find((c) => c.id === openChecklistId);
+
+  // ── Run open: full-page run screen ──────────────────────────────────────
+  if (openRunId && openChecklist) {
+    return (
+      <RunScreen
+        runId={openRunId}
+        title={openChecklist.name}
+        onExit={onCloseRun}
+      />
+    );
+  }
 
   const handleCreate = async (values: ChecklistFormValues): Promise<void> => {
     const created = await createChecklist({
@@ -116,6 +157,29 @@ export function ChecklistsScreen({
     setAdding(false);
     onOpenChecklist(created.id);
   };
+
+  // ── Adding a checklist: full-page form ──────────────────────────────────
+  if (adding) {
+    return (
+      <div className="flex flex-col gap-4">
+        <BackLink
+          label="&#8249; All checklists"
+          onClick={() => {
+            setAdding(false);
+          }}
+        />
+        <ChecklistForm
+          tasks={rigTasks ?? []}
+          submitLabel="Add checklist"
+          pending={isCreating}
+          onSubmit={(values) => void handleCreate(values)}
+          onCancel={() => {
+            setAdding(false);
+          }}
+        />
+      </div>
+    );
+  }
 
   const handleUpdate = async (
     id: Id,
@@ -142,132 +206,92 @@ export function ChecklistsScreen({
     onBackToList();
   };
 
-  return (
-    <div className="flex flex-col gap-5 lg:flex-row lg:gap-8">
-      {/* List: hidden on mobile while a detail is open; sidebar on desktop. */}
-      <aside
-        className={`${isDetailOpenOnMobile ? 'hidden lg:flex' : 'flex'} shrink-0 flex-col gap-2 lg:w-64 lg:gap-1`}
-      >
-        <div className="mb-1 flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-brand lg:text-lg dark:text-ink-inverted">
-            Checklists
-          </h1>
-          <button
-            type="button"
+  // ── Checklist detail open: full-page detail (or edit form) ──────────────
+  if (openChecklist) {
+    if (editing) {
+      return (
+        <div className="flex flex-col gap-4">
+          <BackLink
+            label="&#8249; All checklists"
             onClick={() => {
               setEditing(false);
-              setAdding(true);
-            }}
-            className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
-            Add
-          </button>
-        </div>
-
-        {isLoading ? (
-          <p className="text-brand-muted">Loading checklists…</p>
-        ) : undefined}
-        {isError ? (
-          <p className="text-red-600 dark:text-red-400" role="alert">
-            Couldn’t load checklists. Please try again.
-          </p>
-        ) : undefined}
-        {checklists?.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted">
-            No checklists yet — add your first one for this rig.
-          </p>
-        ) : undefined}
-
-        {checklists?.map((checklist) => (
-          <ChecklistListRow
-            key={checklist.id}
-            checklist={checklist}
-            isSelected={checklist.id === desktopSelected?.id && !adding}
-            inProgressRun={latestInProgressRun(rigRuns, checklist.id)}
-            onOpen={() => {
-              setAdding(false);
-              setEditing(false);
-              onOpenChecklist(checklist.id);
+              onBackToList();
             }}
           />
-        ))}
-      </aside>
+          <ChecklistForm
+            initial={openChecklist}
+            tasks={rigTasks ?? []}
+            submitLabel="Save changes"
+            pending={isUpdating}
+            onSubmit={(values) => void handleUpdate(openChecklist.id, values)}
+            onCancel={() => {
+              setEditing(false);
+            }}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="flex flex-col gap-4">
+        <BackLink label="&#8249; All checklists" onClick={onBackToList} />
+        <ChecklistDetail
+          checklist={openChecklist}
+          tasks={rigTasks ?? []}
+          onEdit={() => {
+            setEditing(true);
+          }}
+          onDuplicate={() => void handleDuplicate(openChecklist)}
+          onDelete={() => void handleDelete(openChecklist.id)}
+          onOpenRun={onOpenRun}
+        />
+      </div>
+    );
+  }
 
-      {/* Detail: drill-down on mobile, always-on pane on desktop. */}
-      <section
-        className={`${isDetailOpenOnMobile ? 'flex' : 'hidden lg:flex'} min-w-0 flex-1 flex-col gap-4`}
-      >
-        {adding ? (
-          <>
-            <BackToListButton
-              label="‹ All checklists"
-              onClick={() => {
-                setAdding(false);
-              }}
-            />
-            <ChecklistForm
-              tasks={rigTasks ?? []}
-              submitLabel="Add checklist"
-              pending={isCreating}
-              onSubmit={(values) => void handleCreate(values)}
-              onCancel={() => {
-                setAdding(false);
-              }}
-            />
-          </>
-        ) : desktopSelected ? (
-          <>
-            {openRunId ? (
-              <RunScreen
-                runId={openRunId}
-                title={desktopSelected.name}
-                onExit={onCloseRun}
-              />
-            ) : editing ? (
-              <>
-                <BackToListButton
-                  label="‹ All checklists"
-                  onClick={onBackToList}
-                />
-                <ChecklistForm
-                  initial={desktopSelected}
-                  tasks={rigTasks ?? []}
-                  submitLabel="Save changes"
-                  pending={isUpdating}
-                  onSubmit={(values) =>
-                    void handleUpdate(desktopSelected.id, values)
-                  }
-                  onCancel={() => {
-                    setEditing(false);
-                  }}
-                />
-              </>
-            ) : (
-              <>
-                <BackToListButton
-                  label="‹ All checklists"
-                  onClick={onBackToList}
-                />
-                <ChecklistDetail
-                  checklist={desktopSelected}
-                  tasks={rigTasks ?? []}
-                  onEdit={() => {
-                    setEditing(true);
-                  }}
-                  onDuplicate={() => void handleDuplicate(desktopSelected)}
-                  onDelete={() => void handleDelete(desktopSelected.id)}
-                  onOpenRun={onOpenRun}
-                />
-              </>
-            )}
-          </>
-        ) : (
-          <p className="hidden text-brand-muted lg:block">
-            Select a checklist, or add your first one.
-          </p>
-        )}
-      </section>
-    </div>
+  const toggleTag = (tag: string): void => {
+    setSelectedTags((current) =>
+      current.includes(tag)
+        ? current.filter((t) => t !== tag)
+        : [...current, tag],
+    );
+  };
+
+  /** The most recent run's startedOn for a checklist, or undefined if none. */
+  const lastRunDate = (checklistId: Id): string | undefined => {
+    const runs = (rigRuns ?? []).filter(
+      (run) => run.checklistId === checklistId,
+    );
+    if (runs.length === 0) return undefined;
+    return runs.toSorted((a, b) => b.startedOn.localeCompare(a.startedOn))[0]
+      .startedOn;
+  };
+
+  // ── List view: search / sort / filter / checklist rows ──────────────────
+  return (
+    <ChecklistList
+      checklists={checklists}
+      isLoading={isLoading}
+      isError={isError}
+      search={search}
+      onSearch={setSearch}
+      sort={sort}
+      onSort={setSort}
+      allTags={allTags}
+      selectedTags={selectedTags}
+      onToggleTag={toggleTag}
+      lastRunDate={lastRunDate}
+      latestInProgressRun={(checklistId) =>
+        latestInProgressRun(rigRuns, checklistId)
+      }
+      onOpenChecklist={(id) => {
+        setEditing(false);
+        onOpenChecklist(id);
+      }}
+      onAdd={() => {
+        setEditing(false);
+        setAdding(true);
+      }}
+    />
   );
 }
 
@@ -282,34 +306,160 @@ function latestInProgressRun(
     .toSorted((a, b) => b.startedOn.localeCompare(a.startedOn))[0];
 }
 
-/** Mobile-only back link above the detail pane. */
-function BackToListButton({
-  label,
-  onClick,
+// ── List (search / sort / filter / rows) ──────────────────────────────────
+
+function ChecklistList({
+  checklists,
+  isLoading,
+  isError,
+  search,
+  onSearch,
+  sort,
+  onSort,
+  allTags,
+  selectedTags,
+  onToggleTag,
+  lastRunDate,
+  latestInProgressRun: inProgressRun,
+  onOpenChecklist,
+  onAdd,
 }: {
-  readonly label: string;
-  readonly onClick: () => void;
+  readonly checklists: readonly Checklist[] | undefined;
+  readonly isLoading: boolean;
+  readonly isError: boolean;
+  readonly search: string;
+  readonly onSearch: (value: string) => void;
+  readonly sort: ChecklistSortKey;
+  readonly onSort: (key: ChecklistSortKey) => void;
+  readonly allTags: readonly string[];
+  readonly selectedTags: readonly string[];
+  readonly onToggleTag: (tag: string) => void;
+  readonly lastRunDate: (checklistId: Id) => string | undefined;
+  readonly latestInProgressRun: (checklistId: Id) => Run | undefined;
+  readonly onOpenChecklist: (id: Id) => void;
+  readonly onAdd: () => void;
 }): JSX.Element {
+  const rows = useMemo(() => {
+    let result = [...(checklists ?? [])];
+
+    // Tag filter: AND — a checklist must carry every selected tag.
+    if (selectedTags.length > 0) {
+      result = result.filter((c) =>
+        selectedTags.every((tag) => c.tags.includes(tag)),
+      );
+    }
+
+    // Search by name and tags.
+    const q = search.trim().toLowerCase();
+    if (q) {
+      result = result.filter((c) => {
+        const hay = `${c.name} ${c.tags.join(' ')}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    // Sort.
+    result.sort((a, b) => {
+      switch (sort) {
+        case 'name': {
+          return a.name.localeCompare(b.name);
+        }
+        case 'lastRun': {
+          // Most recently run first; never-run sinks last.
+          const av = lastRunDate(a.id) ?? '';
+          const bv = lastRunDate(b.id) ?? '';
+          return bv.localeCompare(av);
+        }
+      }
+    });
+
+    return result;
+  }, [checklists, selectedTags, search, sort, lastRunDate]);
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="self-start text-sm font-medium text-brand-muted hover:text-brand lg:hidden dark:hover:text-ink-inverted"
-    >
-      {label}
-    </button>
+    <div className="flex flex-col gap-4">
+      {/* Sticky toolbar: search + sort + tag filter, always in reach. */}
+      <div className="sticky top-[3.25rem] z-10 -mx-4 flex flex-col gap-3 border-b border-hairline bg-surface/95 px-4 pt-3 pb-3 backdrop-blur lg:top-[3.5rem] lg:-mx-6 lg:px-6 dark:bg-surface-dark/95">
+        <div className="flex items-center gap-2">
+          <Input
+            value={search}
+            onChange={(e) => {
+              onSearch(e.target.value);
+            }}
+            placeholder="Search checklists…"
+            className="flex-1"
+            aria-label="Search checklists"
+          />
+          {allTags.map((tag) => (
+            <TagChip
+              key={tag}
+              tag={tag}
+              selected={selectedTags.includes(tag)}
+              onClick={() => {
+                onToggleTag(tag);
+              }}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={onAdd}
+            className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          >
+            Add
+          </button>
+        </div>
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <SortGroup options={SORT_OPTIONS} value={sort} onChange={onSort} />
+          <span className="text-xs text-brand-muted">{rows.length} shown</span>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p className="text-brand-muted">Loading checklists…</p>
+      ) : undefined}
+      {isError ? (
+        <p className="text-red-600 dark:text-red-400" role="alert">
+          Couldn&apos;t load checklists. Please try again.
+        </p>
+      ) : undefined}
+      {!isLoading && checklists?.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted">
+          No checklists yet — add your first one for this rig.
+        </p>
+      ) : undefined}
+
+      {rows.length > 0 ? (
+        <ul className="flex flex-col divide-y divide-hairline">
+          {rows.map((checklist) => (
+            <li key={checklist.id}>
+              <ChecklistListRow
+                checklist={checklist}
+                inProgressRun={inProgressRun(checklist.id)}
+                onOpen={() => {
+                  onOpenChecklist(checklist.id);
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : undefined}
+
+      {rows.length === 0 && (checklists?.length ?? 0) > 0 ? (
+        <ListEmpty message="No checklists match." />
+      ) : undefined}
+    </div>
   );
 }
 
-/** One checklist in the list: a roomy card on mobile, a dense row on desktop. */
+// ── Checklist list row ────────────────────────────────────────────────────
+
+/** One checklist in the list — full-width, single column (no sidebar). */
 function ChecklistListRow({
   checklist,
-  isSelected,
   inProgressRun,
   onOpen,
 }: {
   readonly checklist: Checklist;
-  readonly isSelected: boolean;
   readonly inProgressRun: Run | undefined;
   readonly onOpen: () => void;
 }): JSX.Element {
@@ -319,52 +469,38 @@ function ChecklistListRow({
     <button
       type="button"
       onClick={onOpen}
-      aria-current={isSelected ? 'true' : undefined}
-      className={`flex flex-col gap-2 rounded-xl border border-hairline p-4 text-left hover:border-brand lg:flex-row lg:items-center lg:justify-between lg:rounded-lg lg:border-0 lg:px-3 lg:py-2 lg:text-sm ${
-        isSelected
-          ? 'lg:bg-brand lg:font-semibold lg:text-white'
-          : 'lg:text-brand lg:hover:bg-hairline/40 lg:dark:text-ink-inverted'
-      }`}
+      className="flex w-full items-center gap-3 py-3 text-left hover:bg-hairline/30"
     >
-      <span className="flex items-center justify-between font-semibold text-brand lg:font-[inherit] lg:text-inherit dark:text-ink-inverted">
-        {checklist.name}
-        <span aria-hidden className="text-brand-muted lg:hidden">
-          ›
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="truncate font-medium text-brand dark:text-ink-inverted">
+          {checklist.name}
         </span>
-      </span>
-      <span
-        className={`flex items-center gap-2 text-sm lg:text-xs ${
-          isSelected ? 'text-brand-muted lg:text-white/80' : 'text-brand-muted'
-        }`}
-      >
-        <span className="lg:hidden">
-          {stepCount} {stepCount === 1 ? 'step' : 'steps'}
-        </span>
-        <span className="hidden lg:inline">
-          {progress
-            ? `${String(progress.completed + progress.skipped)}/${String(progress.total)}`
-            : stepCount}
-        </span>
-        {checklist.tags.map((tag) => (
-          <span
-            key={tag}
-            className="rounded-full bg-hairline px-2 py-0.5 text-xs lg:hidden"
-          >
-            {tag}
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-brand-muted">
+            {stepCount} {stepCount === 1 ? 'step' : 'steps'}
           </span>
-        ))}
-      </span>
-      {progress ? (
-        <span className="lg:hidden">
-          <ProgressBar value={fractionDone(progress)} />
+          {progress ? (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+              In progress —
+              {` ${String(progress.completed + progress.skipped)}/${String(progress.total)}`}
+            </span>
+          ) : undefined}
+          {checklist.tags.map((tag) => (
+            <TagChip key={tag} tag={tag} />
+          ))}
         </span>
-      ) : undefined}
+      </span>
+      <span aria-hidden className="shrink-0 text-brand-muted">
+        ›
+      </span>
     </button>
   );
 }
 
+// ── Checklist detail ──────────────────────────────────────────────────────
+
 /**
- * The checklist detail pane: what the template holds, its authoring actions,
+ * The checklist detail: what the template holds, its authoring actions,
  * and its runs. The steps here are the *template* — working through them
  * happens in a run (copy-on-start), never on the checklist itself.
  */
@@ -387,7 +523,7 @@ function ChecklistDetail({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-semibold tracking-tight text-brand lg:text-xl dark:text-ink-inverted">
+        <h2 className="text-2xl font-semibold tracking-tight text-brand dark:text-ink-inverted">
           {checklist.name}
         </h2>
         <div className="flex flex-wrap items-center gap-2 text-sm text-brand-muted">
@@ -395,12 +531,7 @@ function ChecklistDetail({
             {stepCount} {stepCount === 1 ? 'step' : 'steps'}
           </span>
           {checklist.tags.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full bg-hairline px-2 py-0.5 text-xs"
-            >
-              {tag}
-            </span>
+            <TagChip key={tag} tag={tag} />
           ))}
         </div>
       </div>
@@ -439,11 +570,11 @@ function ChecklistDetail({
               }`}
             >
               {step.text}
-              {/* ⚙ marks a task-linked step — completing it in a run logs
+              {/* A task-linked step — completing it in a run logs
                   maintenance for the named task (issue #18). */}
               {step.taskId ? (
                 <span className="ml-2 text-xs text-brand-muted">
-                  ⚙{' '}
+                  &#9881;{' '}
                   {tasks.find((t) => t.id === step.taskId)?.name ??
                     'logs maintenance'}
                 </span>
