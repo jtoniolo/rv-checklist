@@ -45,5 +45,5 @@ A maintenance task noticed once and done once (e.g. trim came loose on the road,
 _Avoid_: reminder, one-off (reserved for an untracked task with no interval)
 
 **Log Entry**:
-The record that a maintenance task was performed on a date. Carries its own copy of the task's fields as they were when recorded, with the recorded values — so later edits to the task don't alter it — and, optionally, the rig's **Distance** reading (km) at the time, the anchor a distance interval's next due is measured from. Like everything else, it stays editable; the user can correct past entries.
+The record that a maintenance task was performed on a date. Carries its own copy of the task's fields as they were when recorded, with the recorded values — so later edits to the task don't alter it — and, optionally, the rig's **Distance** reading (km) at the time, the anchor a distance interval's next due is measured from, and/or the **Cost** of the work (entered in dollars and cents, stored as integer cents `costCents` so totals stay exact). Like everything else, it stays editable; the user can correct past entries.
 _Avoid_: completion (as a noun for the record), history item
