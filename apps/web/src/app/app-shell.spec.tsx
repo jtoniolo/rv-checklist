@@ -255,6 +255,28 @@ describe('web shell, signed in', () => {
     expect(await screen.findByLabelText('Search tasks')).toBeTruthy();
   });
 
+  it('shows the add form without navigating back when a run is open (issue #40 regression)', async () => {
+    const backSpy = jest.spyOn(globalThis.history, 'back');
+    renderShell();
+
+    // Open a run via the continue card.
+    fireEvent.click(
+      await screen.findByRole('button', { name: /pre-departure.*1\/2/is }),
+    );
+    await screen.findByRole('checkbox', { name: 'Close roof vents' });
+    backSpy.mockClear();
+
+    // Click the Add button — the form must appear and no back() must fire.
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+
+    expect(screen.getByRole('form', { name: 'Add checklist' })).toBeTruthy();
+    // The handler must not call history.back(): doing so fires an async
+    // popstate that resets the adding flag, making the form flash and vanish.
+    expect(backSpy).not.toHaveBeenCalled();
+
+    backSpy.mockRestore();
+  });
+
   it('reverses navigation on browser Back (popstate, issue #40)', async () => {
     renderShell();
 
