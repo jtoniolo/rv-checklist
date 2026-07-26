@@ -25,5 +25,15 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0016](0016-interval-combined-limits.md) | An Interval carries both limits, due on whichever elapses first (amends 0015) |
 | [0017](0017-task-tags-denormalized-array.md) | Task tags as a denormalized text array |
 
+## Archived prototypes
+
+Throwaway UI prototypes that informed production code are preserved on
+local branches as primary source (not merged into `main`).
+
+| Branch | Contents | Decisions folded into |
+|--------|----------|-----------------------|
+| `prototype/ui-prototypes` | `maintenance-prototype/` — maintenance-list layout, pushState/popstate navigation, card-based task display | Issues #38–#43 (maintenance list, history, tags, intervals, checklists) |
+| `prototype/ui-prototypes` | `maintenance-history-prototype/` — timeline/history view, variant-A layout with grouped entries | Issue #43 (maintenance history view) |
+
 The domain model (entities, relationships, ubiquitous language) lives in
 `CONTEXT.md` at the repo root, written as the domain-model ticket (#2) is walked.
