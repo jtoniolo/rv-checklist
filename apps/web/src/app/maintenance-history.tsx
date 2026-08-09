@@ -351,7 +351,7 @@ function TimelineRow({
               {entry.taskName}
             </span>
             {entry.taskId === null ? (
-              <span className="rounded-full bg-hairline px-1.5 py-0.5 text-[0.65rem] font-medium text-brand-muted">
+              <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[0.65rem] font-medium text-secondary-foreground">
                 deleted task
               </span>
             ) : undefined}

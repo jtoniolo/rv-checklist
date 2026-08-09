@@ -390,24 +390,28 @@ function ChecklistList({
             className="flex-1"
             aria-label="Search checklists"
           />
-          {allTags.map((tag) => (
-            <TagChip
-              key={tag}
-              tag={tag}
-              selected={selectedTags.includes(tag)}
-              onClick={() => {
-                onToggleTag(tag);
-              }}
-            />
-          ))}
           <button
             type="button"
             onClick={onAdd}
-            className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            className="shrink-0 rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             Add
           </button>
         </div>
+        {allTags.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {allTags.map((tag) => (
+              <TagChip
+                key={tag}
+                tag={tag}
+                selected={selectedTags.includes(tag)}
+                onClick={() => {
+                  onToggleTag(tag);
+                }}
+              />
+            ))}
+          </div>
+        ) : undefined}
         <div className="flex items-center justify-between gap-3 text-sm">
           <SortGroup options={SORT_OPTIONS} value={sort} onChange={onSort} />
           <span className="text-xs text-brand-muted">{rows.length} shown</span>
