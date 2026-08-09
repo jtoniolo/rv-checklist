@@ -33,13 +33,30 @@ Create a GitHub issue.
 
 Run `gh issue view <number> --comments`.
 
+## What counts as blocked
+
+Read by anything that computes a frontier — `/wayfinder` and `/work-backlog` both.
+
+> A ticket is **blocked** when it cannot satisfy **its own acceptance criteria** until another open ticket lands.
+
+The test is mechanical: read the ticket's acceptance criteria, and if any of them names an artifact that an open ticket has yet to produce, add the edge. Criteria that only render, lint, or type-check something the ticket itself creates are self-contained — they do not block on anything.
+
+Two couplings that feel like blocking and are **not**:
+
+- **A shared contract already fixed on `main`.** Two tickets must agree on something — a port, a set of env vars, a route shape — but it is already decided and committed. Don't add an edge; link the source of truth from the ticket body so the implementer reads it instead of reinventing it.
+- **File adjacency.** Both tickets touch the same files. That costs a rebase, not correctness.
+
+One coupling that **is** blocking and is easy to miss: a shared contract that is **not** yet fixed, which another open ticket will fix. The implementer would have to invent the contract and then rework it, so the edge is real even though nothing technically stops them starting.
+
+Worked example: the API image (#45), the Helm chart (#46), and the CD workflow (#47). The chart's criteria are `helm lint` plus `helm template` rendering — self-contained, and the env contract it needs is already on `main` in `apps/api/src/app/config/env.ts`, so it is **not** blocked by the image. The CD workflow's criteria name both the published image and the packaged chart, so it **is** blocked by both.
+
 ## Wayfinding operations
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
 
 - **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
 - **Child ticket**: an issue linked to the map as a GitHub sub-issue (`gh api` on the sub-issues endpoint). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
+- **Blocking**: GitHub's **native issue dependencies** — the canonical, UI-visible representation. What earns an edge is defined above under [What counts as blocked](#what-counts-as-blocked); this bullet is only the mechanics. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only — the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
 - **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
 - **Claim**: `gh issue edit <n> --add-assignee @me` — the session's first write.
 - **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
