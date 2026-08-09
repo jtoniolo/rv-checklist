@@ -1,9 +1,28 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "deny": [
       "Bash(git checkout)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "EnterPlanMode",
+      "ExitPlanMode",
+      "DesignSync",
+      "NotebookEdit",
+      "SendMessage",
+      "PushNotification",
+      "RemoteTrigger",
+      "ReportFindings",
+      "ScheduleWakeup",
+      "AskUserQuestion",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "Bash(nx dev web)",
+      "Bash(npx nx dev web)"
     ]
-  }
+  },
+  "disableBundledSkills": true,
+  "disableWorkflows": true,
+  "disableRemoteControl": false,
+  "disableClaudeAiConnectors": true,
+  "disableArtifact": true
 }

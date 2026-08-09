@@ -61,3 +61,7 @@ out
 
 # work-backlog run reports
 .reports/
+
+# Nx / tsc incremental build info
+tsconfig.tsbuildinfo
+*.tsbuildinfo

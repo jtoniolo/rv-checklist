@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Work Backlog
 
-Clear the **frontier** — open `ready-for-agent` issues with no open blockers and no assignee — as a **Ralph loop**. A run is N loops (the argument, else **3**); each loop claims exactly one ticket and drives toward shipping it. A stubborn ticket may consume several loops: each failed loop leaves its work in the tree and its findings on the ticket, unclaims, and the next loop re-claims and continues — progress accumulates across loops instead of restarting. Frontier query, claiming, and blocking-edge mechanics live in `docs/agents/issue-tracker.md`.
+Clear the **frontier** — open `ready-for-agent` issues with no open blockers and no assignee — as a **Ralph loop**. A run is N loops (the argument, else **10**); each loop claims exactly one ticket and drives toward shipping it. A stubborn ticket may consume several loops: each failed loop leaves its work in the tree and its findings on the ticket, unclaims, and the next loop re-claims and continues — progress accumulates across loops instead of restarting. Frontier query, claiming, and blocking-edge mechanics live in `docs/agents/issue-tracker.md`.
 
 Work on the current branch, one loop at a time.
 
