@@ -1,0 +1,33 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/jtoniolo/rv-checklist-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Non-secret environment variables (rendered into a ConfigMap)
+config:
+  PORT: "3000"
+  WEB_ORIGIN: "http://localhost:4200"
+  GOOGLE_CLIENT_ID: ""
+  JWT_ACCESS_TTL: "900"
+  REFRESH_TTL_DAYS: "180"
+
+# Name of a pre-existing Secret containing JWT_SECRET and DATABASE_URL.
+# The chart does not create a Secret — the cluster materialises one
+# (e.g. via HashiCorp Vault) and you reference it here.
+existingSecret: ""
+
+service:
+  type: ClusterIP
+  port: 3000
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
