@@ -1,0 +1,50 @@
+# CD (#47) — publish API image and Helm chart to GHCR on manual dispatch.
+#
+# Triggered only by workflow_dispatch; CI remains the guard on main.
+# Uses the built-in GITHUB_TOKEN with packages:write — no extra secrets.
+name: CD
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- Docker image ----
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: ghcr.io/jtoniolo/rv-checklist-api:latest
+
+      # ---- Helm chart ----
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package chart (version 0.1.${{ github.run_number }})
+        run: |
+          helm package charts/api \
+            --version "0.1.${{ github.run_number }}" \
+            --app-version "0.1.${{ github.run_number }}" \
+            --destination .helm-out
+
+      - name: Push chart to GHCR
+        run: |
+          helm push .helm-out/rv-checklist-api-0.1.${{ github.run_number }}.tgz \
+            oci://ghcr.io/jtoniolo/charts
