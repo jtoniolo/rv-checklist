@@ -243,7 +243,7 @@ function ChecklistRow({
         {checklist.tags.map((tag) => (
           <span
             key={tag}
-            className="hidden rounded-full bg-hairline px-2 py-0.5 text-xs sm:inline"
+            className="hidden rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground sm:inline"
           >
             {tag}
           </span>

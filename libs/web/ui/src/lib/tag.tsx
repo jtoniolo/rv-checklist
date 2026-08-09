@@ -27,9 +27,10 @@ export function TagChip({
         onClick={onClick}
         className={cn(
           base,
+          'border transition-colors',
           selected
-            ? 'bg-brand text-white'
-            : 'bg-hairline text-brand-muted hover:border-brand',
+            ? 'border-brand bg-brand text-white'
+            : 'border-transparent bg-secondary text-secondary-foreground hover:border-brand',
         )}
       >
         {tag}
@@ -38,6 +39,8 @@ export function TagChip({
   }
 
   return (
-    <span className={cn(base, 'bg-hairline text-brand-muted')}>{tag}</span>
+    <span className={cn(base, 'bg-secondary text-secondary-foreground')}>
+      {tag}
+    </span>
   );
 }
