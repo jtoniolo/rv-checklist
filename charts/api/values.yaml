@@ -2,24 +2,44 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/jtoniolo/rv-checklist-api
-  tag: latest
+  # Leave empty. The chart resolves its own image from `appVersion` in
+  # Chart.yaml, so the chart and the image it deploys can never disagree.
+  # Override only to pin a `sha-<short>` build while debugging.
+  tag: ""
+  # Safe because published tags are immutable — every publish is a distinct
+  # `X.Y.Z`, so there is never a stale cached layer under the same name.
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Non-secret environment variables (rendered into a ConfigMap)
+# Non-secret environment variables (rendered into a ConfigMap).
+#
+# PORT is deliberately absent: `containerPort` is a fixed 3000 and the Service
+# resolves `targetPort: http` through it, so a configurable listen port would
+# only ever point the Service at a dead port. A per-pod port is meaningless in
+# Kubernetes anyway — every pod has its own IP. The app's own default applies.
 config:
-  PORT: "3000"
   WEB_ORIGIN: "http://localhost:4200"
+  # Required — rendering fails without it. Not a secret: the API only verifies
+  # Google One Tap ID tokens against it as an audience and never performs an
+  # authorization-code exchange, so there is no client secret in the system.
+  # The web app ships this same id to the browser.
   GOOGLE_CLIENT_ID: ""
   JWT_ACCESS_TTL: "900"
   REFRESH_TTL_DAYS: "180"
 
-# Name of a pre-existing Secret containing JWT_SECRET and DATABASE_URL.
-# The chart does not create a Secret — the cluster materialises one
-# (e.g. via HashiCorp Vault) and you reference it here.
+# Name of a pre-existing Secret. The chart does not create a Secret — the
+# cluster materialises one (e.g. via HashiCorp Vault) and you reference it here.
+#
+# It must supply exactly these two keys:
+#   JWT_SECRET    — signing key for the first-party access JWT (long and random)
+#   DATABASE_URL  — the whole Postgres connection string, not discrete fields
+#
+# Rotating that Secret does not restart the pods, and cannot: a chart can only
+# hash what it renders itself. Rolling on rotation is the consumer's job — with
+# Vault Secrets Operator, point `rolloutRestartTargets` at this Deployment.
 existingSecret: ""
 
 service:

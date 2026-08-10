@@ -11,6 +11,11 @@ spec:
       {{- include "rv-checklist-api.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # Rolls the pods when a config-only upgrade changes the ConfigMap.
+        # Covers `config` alone — the chart cannot hash the Secret it does not
+        # create; see the `existingSecret` note in values.yaml.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
       labels:
         {{- include "rv-checklist-api.selectorLabels" . | nindent 8 }}
     spec:
@@ -20,7 +25,7 @@ spec:
       {{- end }}
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
