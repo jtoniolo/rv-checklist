@@ -1,3 +1,6 @@
+{{- if not .Values.config.GOOGLE_CLIENT_ID }}
+{{- fail "config.GOOGLE_CLIENT_ID is required. Set it to the Google OAuth client id this API verifies One Tap ID tokens against — the same id the web app ships to the browser. It is not a secret, so it belongs here and not in existingSecret. Left empty, the API fails its own env validation and CrashLoops." }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
