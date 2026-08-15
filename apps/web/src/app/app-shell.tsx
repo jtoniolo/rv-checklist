@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@rv-checklist/web-ui';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState, type JSX } from 'react';
 import { AvatarMenu } from './avatar-menu';
 import { ChecklistsScreen } from './checklists-screen';
@@ -52,13 +53,14 @@ const frameClass = 'mx-auto w-full max-w-5xl px-4 lg:px-6';
  * deep-links restore the position from the URL.
  */
 export function AppShell(): JSX.Element {
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const { data: owner } = useMeQuery();
   const { data: rigs } = useListRigsQuery();
   const activeRigId = useAppSelector(selectActiveRigId);
 
   const { location, navigate, back } = useAppNavigation();
-  const { route, openChecklistId, openRunId, openTaskId } = location;
+  const { route, openTaskId } = location;
 
   // Reconcile the persisted selection with the server's rigs once they load: a
   // stale id (the rig was deleted elsewhere) falls back to the first rig, and
@@ -93,15 +95,15 @@ export function AppShell(): JSX.Element {
   };
 
   const openChecklist = (id: Id): void => {
-    navigate({ route: 'checklists', openChecklistId: id });
+    if (activeRigId) {
+      router.push(`/rig/${activeRigId}/checklists/${id}`);
+    }
   };
 
-  const openRun = (checklistId: Id, runId: Id): void => {
-    navigate({
-      route: 'checklists',
-      openChecklistId: checklistId,
-      openRunId: runId,
-    });
+  const openRun = (checklistId: Id, _runId: Id): void => {
+    if (activeRigId) {
+      router.push(`/rig/${activeRigId}/checklists/${checklistId}`);
+    }
   };
 
   return (
@@ -181,27 +183,8 @@ export function AppShell(): JSX.Element {
             }}
           />
         ) : undefined}
-        {route === 'checklists' ? (
-          <ChecklistsScreen
-            activeRig={activeRig}
-            openChecklistId={openChecklistId}
-            openRunId={openRunId}
-            // Switching checklists must also close any open run — otherwise
-            // the old run would render under the new checklist's name.
-            onOpenChecklist={openChecklist}
-            onOpenRun={(runId) => {
-              navigate({
-                route: 'checklists',
-                ...(openChecklistId !== undefined && { openChecklistId }),
-                openRunId: runId,
-              });
-            }}
-            onCloseRun={back}
-            onBackToList={back}
-            onGoRig={() => {
-              go('rig');
-            }}
-          />
+        {route === 'checklists' && activeRigId ? (
+          <ChecklistsScreen rigId={activeRigId} />
         ) : undefined}
         {route === 'maintenance' ? (
           <MaintenanceScreen

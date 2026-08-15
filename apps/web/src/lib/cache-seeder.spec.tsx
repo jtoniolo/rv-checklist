@@ -1,4 +1,10 @@
-import type { MaintenanceTask, Owner, Rig } from '@rv-checklist/domain';
+import type {
+  Checklist,
+  MaintenanceTask,
+  Owner,
+  Rig,
+  Run,
+} from '@rv-checklist/domain';
 import { makeStore } from '@rv-checklist/web-data-access';
 import { render, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
@@ -139,5 +145,53 @@ describe('CacheSeeder', () => {
     );
 
     expect(store.getState().auth.isAuthenticated).toBe(true);
+  });
+
+  it('seeds checklists keyed by rig id', async () => {
+    const store = makeStore();
+    const checklist: Checklist = {
+      id: '550e8400-e29b-41d4-a716-446655440020',
+      rigId: rig.id,
+      name: 'Pre-departure',
+      tags: ['procedure'],
+      steps: [],
+    };
+    render(
+      <Provider store={store}>
+        <CacheSeeder checklists={{ rigId: rig.id, data: [checklist] }}>
+          <span>child</span>
+        </CacheSeeder>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      const data = queryData(store, 'listChecklists(') as Checklist[];
+      expect(data).toHaveLength(1);
+      expect(data[0]?.name).toBe('Pre-departure');
+    });
+  });
+
+  it('seeds runs by rig', async () => {
+    const store = makeStore();
+    const run: Run = {
+      id: '550e8400-e29b-41d4-a716-446655440040',
+      checklistId: '550e8400-e29b-41d4-a716-446655440020',
+      rigId: rig.id,
+      startedOn: '2026-07-20',
+      steps: [],
+    };
+    render(
+      <Provider store={store}>
+        <CacheSeeder runsByRig={{ rigId: rig.id, data: [run] }}>
+          <span>child</span>
+        </CacheSeeder>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      const data = queryData(store, 'listRunsByRig(') as Run[];
+      expect(data).toHaveLength(1);
+      expect(data[0]?.startedOn).toBe('2026-07-20');
+    });
   });
 });

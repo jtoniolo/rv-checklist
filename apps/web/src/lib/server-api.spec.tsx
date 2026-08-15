@@ -96,4 +96,26 @@ describe('server-api', () => {
       expect.anything(),
     );
   });
+
+  it('fetches checklists for a rig', async () => {
+    fetchSpy.mockResolvedValue(Response.json([]));
+    const { fetchChecklists } = await load();
+    const result = await fetchChecklists(rig.id);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`/checklists?rigId=${rig.id}`),
+      expect.anything(),
+    );
+    expect(result).toEqual([]);
+  });
+
+  it('fetches runs by rig', async () => {
+    fetchSpy.mockResolvedValue(Response.json([]));
+    const { fetchRunsByRig } = await load();
+    const result = await fetchRunsByRig(rig.id);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`/runs?rigId=${rig.id}`),
+      expect.anything(),
+    );
+    expect(result).toEqual([]);
+  });
 });
