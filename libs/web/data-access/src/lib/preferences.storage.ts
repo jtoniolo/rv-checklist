@@ -1,5 +1,4 @@
-import type { ActiveRigState } from './active-rig.slice.js';
-import { setOrRemove, storage } from './storage.js';
+import { storage } from './storage.js';
 import {
   DEFAULT_THEME_KEY,
   isThemeKey,
@@ -8,14 +7,16 @@ import {
 
 /**
  * localStorage persistence for the owner's client-local preferences (ADR-0011):
- * the picked theme and the active rig. The slices are the runtime source of
- * truth; the store hydrates its
- * `preloadedState` from here on boot and mirrors every change back, so a reload
- * resumes where the owner left off. SSR-safe: with no `localStorage` (the
- * server) it reads defaults and writes nothing.
+ * the picked theme. The slice is the runtime source of truth; the store
+ * hydrates its `preloadedState` from here on boot and mirrors every change
+ * back, so a reload resumes where the owner left off. SSR-safe: with no
+ * `localStorage` (the server) it reads defaults and writes nothing.
+ *
+ * Active-rig persistence was removed in favour of rig-scoped URL routes
+ * (ADR-0018); the `rv.last-rig` cookie redirect in root page.tsx is the
+ * replacement.
  */
 const THEME_KEY = 'rv.theme';
-const ACTIVE_RIG_KEY = 'rv.activeRigId';
 
 /** The persisted theme, or the default when none / unknown / not in a browser. */
 export function loadPersistedTheme(): ThemeState {
@@ -30,18 +31,5 @@ export function persistTheme(theme: ThemeState): void {
   const store = storage();
   if (store) {
     store.setItem(THEME_KEY, theme.themeKey);
-  }
-}
-
-/** The persisted active rig, or no selection when none / not in a browser. */
-export function loadPersistedActiveRig(): ActiveRigState {
-  return { activeRigId: storage()?.getItem(ACTIVE_RIG_KEY) ?? undefined };
-}
-
-/** Mirror the active rig to localStorage (clearing the key when none). */
-export function persistActiveRig(activeRig: ActiveRigState): void {
-  const store = storage();
-  if (store) {
-    setOrRemove(store, ACTIVE_RIG_KEY, activeRig.activeRigId);
   }
 }
