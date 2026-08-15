@@ -9,23 +9,25 @@ import {
 import { Page } from '@rv-checklist/web-ui';
 import { useEffect, useMemo, type JSX, type ReactNode } from 'react';
 import { AppShell } from './app-shell';
-import { GoogleOneTap } from './google-one-tap';
 import { themeFor } from './themes';
 
 /**
- * The client root (issue #22): the theme surface wrapping either the signed-in
- * app shell or the signed-out welcome. Both the session and the picked theme
- * are restored from localStorage, which the server cannot see, so both are
- * gated on {@link useHasHydrated}: server and first client render agree on a
- * neutral default-themed placeholder, then the real session and palette are
- * revealed. Without the gate the sign-in surface (and Google One Tap) would
- * flash on every reload, re-authenticating an already signed-in owner.
+ * The client root (issue #22): the theme surface wrapping the signed-in app
+ * shell. Edge middleware guards this route and redirects unauthenticated
+ * requests to `/welcome`, so the `isAuthenticated` check here is
+ * defense-in-depth, not the primary gate.
  */
 export function AppRoot(): JSX.Element {
   const isHydrated = useHasHydrated();
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
 
-  if (!isHydrated) {
+  useEffect(() => {
+    if (isHydrated && !isAuthenticated) {
+      globalThis.location.replace('/welcome');
+    }
+  }, [isHydrated, isAuthenticated]);
+
+  if (!isHydrated || !isAuthenticated) {
     return (
       <ThemeSurface themed={false}>
         <Page>
@@ -39,7 +41,7 @@ export function AppRoot(): JSX.Element {
 
   return (
     <ThemeSurface themed>
-      {isAuthenticated ? <AppShell /> : <Welcome />}
+      <AppShell />
     </ThemeSurface>
   );
 }
@@ -84,28 +86,5 @@ function ThemeSurface({
     >
       {children}
     </div>
-  );
-}
-
-/** The signed-out surface: the brand header and the Google sign-in card. */
-function Welcome(): JSX.Element {
-  return (
-    <Page>
-      <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight text-brand lg:text-4xl dark:text-ink-inverted">
-          RV Checklist
-        </h1>
-        <p className="text-base text-brand-muted lg:text-lg">
-          Maintenance &amp; packing, one rig at a time.
-        </p>
-      </header>
-      <section
-        className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-hairline p-8 text-center text-brand-muted"
-        aria-label="Sign in"
-      >
-        <p>Sign in with Google to continue.</p>
-        <GoogleOneTap />
-      </section>
-    </Page>
   );
 }
