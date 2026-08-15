@@ -4,7 +4,7 @@ Date: 2026-07-16
 
 ## Status
 
-Accepted
+Superseded by [ADR-0018](0018-true-hybrid-ssr-web-architecture.md) (web-tier and data-path) and [ADR-0020](0020-public-repo-homelab-deployment-split.md) (topology)
 
 ## Context
 

@@ -6,6 +6,8 @@ Date: 2026-07-16
 
 Accepted
 
+Amended by [ADR-0019](0019-cookie-token-transport.md)
+
 ## Context
 
 The app is flat multi-user (see ADR-0003): every user signs in and owns their

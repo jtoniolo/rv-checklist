@@ -6,6 +6,8 @@ Date: 2026-07-17
 
 Accepted
 
+Amended by [ADR-0018](0018-true-hybrid-ssr-web-architecture.md)
+
 ## Context
 
 The web app (Next.js, ADR-0009) needs a client-side state approach. Most of
