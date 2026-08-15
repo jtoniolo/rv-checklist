@@ -192,7 +192,7 @@ export function AppShell(): JSX.Element {
             onOpenRun={(runId) => {
               navigate({
                 route: 'checklists',
-                openChecklistId,
+                ...(openChecklistId !== undefined && { openChecklistId }),
                 openRunId: runId,
               });
             }}
