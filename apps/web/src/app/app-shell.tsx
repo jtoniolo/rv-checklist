@@ -59,7 +59,7 @@ export function AppShell(): JSX.Element {
   const { data: rigs } = useListRigsQuery();
   const activeRigId = useAppSelector(selectActiveRigId);
 
-  const { location, navigate, back } = useAppNavigation();
+  const { location, navigate } = useAppNavigation();
   const { route, openTaskId } = location;
 
   // Reconcile the persisted selection with the server's rigs once they load: a
