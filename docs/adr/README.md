@@ -24,6 +24,9 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0015](0015-multi-basis-maintenance-intervals.md) | Multi-basis maintenance intervals (calendar/distance) + stored due-status inputs (amends 0005) |
 | [0016](0016-interval-combined-limits.md) | An Interval carries both limits, due on whichever elapses first (amends 0015) |
 | [0017](0017-task-tags-denormalized-array.md) | Task tags as a denormalized text array |
+| [0018](0018-true-hybrid-ssr-web-architecture.md) | True hybrid SSR web architecture — server-rendered pages, Pattern C data seeding, rig-scoped routes (supersedes 0001 web-tier/data-path, amends 0011) |
+| [0019](0019-cookie-token-transport.md) | Cookie token transport — httpOnly cookies scoped to `.rv.<apex>` (amends 0002, 0012) |
+| [0020](0020-public-repo-deployment-split.md) | Public-repo / home lab deployment split — generic config here, IaC specifics in home lab repo (supersedes 0001 topology) |
 
 ## Archived prototypes
 

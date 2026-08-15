@@ -7,6 +7,7 @@ Date: 2026-07-19
 Accepted
 
 Refines [ADR-0002](0002-authentication-google-sso.md) (Google SSO with bearer JWT).
+Amended by [ADR-0019](0019-cookie-token-transport.md).
 
 ## Context
 
