@@ -1,16 +1,20 @@
 'use client';
 
 import type {
+  Checklist,
   Id,
   LogEntry,
   MaintenanceTask,
   Owner,
   Rig,
+  Run,
 } from '@rv-checklist/domain';
 import {
+  seedChecklists,
   seedLogEntriesByRig,
   seedMe,
   seedRigs,
+  seedRunsByRig,
   seedSignedIn,
   seedTasks,
   useAppStore,
@@ -32,6 +36,8 @@ export interface CacheSeedProps {
     readonly rigId: Id;
     readonly data: LogEntry[];
   };
+  readonly checklists?: { readonly rigId: Id; readonly data: Checklist[] };
+  readonly runsByRig?: { readonly rigId: Id; readonly data: Run[] };
   readonly children: ReactNode;
 }
 
@@ -40,6 +46,8 @@ export function CacheSeeder({
   rigs,
   tasks,
   logEntries,
+  checklists,
+  runsByRig,
   children,
 }: CacheSeedProps): JSX.Element {
   const store = useAppStore();
@@ -59,6 +67,12 @@ export function CacheSeeder({
     }
     if (logEntries !== undefined) {
       seedLogEntriesByRig(store, logEntries.rigId, logEntries.data);
+    }
+    if (checklists !== undefined) {
+      seedChecklists(store, checklists.rigId, checklists.data);
+    }
+    if (runsByRig !== undefined) {
+      seedRunsByRig(store, runsByRig.rigId, runsByRig.data);
     }
   }
 

@@ -1,13 +1,17 @@
 import {
+  ChecklistSchema,
   LogEntrySchema,
   MaintenanceTaskSchema,
   OwnerSchema,
   RigSchema,
+  RunSchema,
+  type Checklist,
   type Id,
   type LogEntry,
   type MaintenanceTask,
   type Owner,
   type Rig,
+  type Run,
 } from '@rv-checklist/domain';
 import { cookies } from 'next/headers';
 
@@ -78,4 +82,12 @@ export function fetchTasks(rigId: Id): Promise<MaintenanceTask[]> {
 
 export function fetchLogEntriesByRig(rigId: Id): Promise<LogEntry[]> {
   return serverFetch(`/log-entries?rigId=${rigId}`, arrayOf(LogEntrySchema));
+}
+
+export function fetchChecklists(rigId: Id): Promise<Checklist[]> {
+  return serverFetch(`/checklists?rigId=${rigId}`, arrayOf(ChecklistSchema));
+}
+
+export function fetchRunsByRig(rigId: Id): Promise<Run[]> {
+  return serverFetch(`/runs?rigId=${rigId}`, arrayOf(RunSchema));
 }
