@@ -3,6 +3,30 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MaintenanceScreen } from './maintenance-screen';
 import { StoreProvider } from './store-provider';
 
+jest.mock('next/link', () => {
+  return {
+    __esModule: true,
+    default: ({
+      href,
+      children,
+      ...rest
+    }: {
+      href: string;
+      children: React.ReactNode;
+      [key: string]: unknown;
+    }) => (
+      <a href={href} {...rest}>
+        {children}
+      </a>
+    ),
+  };
+});
+
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush }),
+}));
+
 /**
  * The maintenance screen, redesigned (issue #38): a single-column searchable
  * task list with sort, filter, and full-page drill-in detail. Tests cover the
@@ -152,39 +176,25 @@ function fakeApi(request: Request): Response {
   throw new Error(`Unstubbed request: ${route}${url.search}`);
 }
 
-function renderScreen(
-  openTaskId?: string,
-  view?: string,
-): {
-  onOpenTask: jest.Mock;
-  onOpenHistory: jest.Mock;
-  onBackToList: jest.Mock;
-} {
-  const onOpenTask = jest.fn();
-  const onOpenHistory = jest.fn();
-  const onBackToList = jest.fn();
+function renderScreen(openTaskId?: string, view?: string): void {
+  mockPush.mockClear();
   render(
     <StoreProvider>
       <MaintenanceScreen
         activeRig={rig}
+        rigId={rig.id}
         openTaskId={openTaskId}
         view={view}
-        onOpenTask={onOpenTask}
-        onOpenHistory={onOpenHistory}
-        onOpenChecklist={jest.fn()}
-        onBackToList={onBackToList}
-        onGoRig={jest.fn()}
       />
     </StoreProvider>,
   );
-  return { onOpenTask, onOpenHistory, onBackToList };
 }
 
-/** The first button whose visible text includes a given task name. */
+/** The first link whose visible text includes a given task name. */
 function taskRow(name: string): HTMLElement {
   const row = screen
-    .getAllByRole('button')
-    .find((btn) => btn.textContent.includes(name));
+    .getAllByRole('link')
+    .find((el) => el.textContent.includes(name));
   if (!row) throw new Error(`No task row found for "${name}"`);
   return row;
 }
@@ -282,24 +292,23 @@ describe('MaintenanceScreen (issue #38)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Name' }));
 
-    const buttons = screen
-      .getAllByRole('button')
-      .filter((btn) =>
-        TASK_NAMES.some((name) => btn.textContent.includes(name)),
-      );
-    const ordered = buttons.map((btn) => btn.textContent.trim());
+    const links = screen.getAllByRole('link').filter((el) => {
+      return TASK_NAMES.some((name) => el.textContent.includes(name));
+    });
+    const ordered = links.map((el) => el.textContent.trim());
     // Alphabetical: Fix loose trim, Oil change, Tire rotation, Wax exterior
     expect(ordered[0]).toContain('Fix loose trim');
     expect(ordered[1]).toContain('Oil change');
   });
 
-  it('selects a task and the parent receives the id via onOpenTask', async () => {
-    const { onOpenTask } = renderScreen();
+  it('task rows link to the task detail route', async () => {
+    renderScreen();
     await screen.findByText('Oil change');
 
-    fireEvent.click(taskRow('Oil change'));
-
-    expect(onOpenTask).toHaveBeenCalledWith(OIL_ID);
+    const row = taskRow('Oil change');
+    expect(row.closest('a')?.getAttribute('href')).toBe(
+      `/rig/${rig.id}/maintenance/${OIL_ID}`,
+    );
   });
 
   it('shows the full-page detail when openTaskId is set', async () => {
@@ -348,13 +357,13 @@ describe('MaintenanceScreen (issue #38)', () => {
     });
   });
 
-  it('calls onBackToList when the back link is clicked from the detail', async () => {
-    const { onBackToList } = renderScreen(OIL_ID);
+  it('navigates to the list route when the back link is clicked from the detail', async () => {
+    renderScreen(OIL_ID);
     await screen.findByRole('heading', { name: 'Oil change' });
 
     fireEvent.click(screen.getByRole('button', { name: /All tasks/ }));
 
-    expect(onBackToList).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith(`/rig/${rig.id}/maintenance`);
   });
 
   it('shows the Add form when the Add button is clicked', async () => {
@@ -439,13 +448,14 @@ describe('MaintenanceScreen (issue #38)', () => {
     expect(screen.getByText('1 shown')).toBeTruthy();
   });
 
-  it('has a History button that calls onOpenHistory', async () => {
-    const { onOpenHistory } = renderScreen();
+  it('has a History link that points to the history route', async () => {
+    renderScreen();
     await screen.findByText('Oil change');
 
-    fireEvent.click(screen.getByRole('button', { name: 'History' }));
-
-    expect(onOpenHistory).toHaveBeenCalled();
+    const historyLink = screen.getByRole('link', { name: 'History' });
+    expect(historyLink.getAttribute('href')).toBe(
+      `/rig/${rig.id}/maintenance/history`,
+    );
   });
 });
 
@@ -550,14 +560,13 @@ describe('MaintenanceScreen — History view (issue #43)', () => {
     expect(screen.getByText('Replace water pump')).toBeTruthy();
   });
 
-  it('shows a back link that calls onBackToList', async () => {
-    const { onBackToList } = renderScreen(undefined, 'history');
-    // Wait for data to load
+  it('shows a back link that navigates to the list route', async () => {
+    renderScreen(undefined, 'history');
     await screen.findByText('$312.40');
 
     fireEvent.click(screen.getByRole('button', { name: /All tasks/ }));
 
-    expect(onBackToList).toHaveBeenCalled();
+    expect(mockPush).toHaveBeenCalledWith(`/rig/${rig.id}/maintenance`);
   });
 
   it('shows the spend-by-tag breakdown', async () => {

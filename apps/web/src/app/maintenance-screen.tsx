@@ -35,6 +35,8 @@ import {
   TagChip,
   type SortOption,
 } from '@rv-checklist/web-ui';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { formatIsoDate, todayIso } from './dates';
 import { LogEntryForm } from './log-entry-form';
@@ -67,23 +69,16 @@ const SORT_OPTIONS: readonly SortOption<MaintenanceSortKey>[] = [
 
 export function MaintenanceScreen({
   activeRig,
+  rigId,
   openTaskId,
   view,
-  onOpenTask,
-  onOpenHistory,
-  onOpenChecklist,
-  onBackToList,
-  onGoRig,
 }: {
   readonly activeRig: Rig | undefined;
-  readonly openTaskId: Id | undefined;
-  readonly view: string | undefined;
-  readonly onOpenTask: (id: Id) => void;
-  readonly onOpenHistory: () => void;
-  readonly onOpenChecklist: (id: Id) => void;
-  readonly onBackToList: () => void;
-  readonly onGoRig: () => void;
+  readonly rigId: Id;
+  readonly openTaskId?: Id | undefined;
+  readonly view?: string | undefined;
 }): JSX.Element {
+  const router = useRouter();
   const {
     data: tasks,
     isLoading,
@@ -132,13 +127,12 @@ export function MaintenanceScreen({
 
   if (!activeRig) {
     return (
-      <button
-        type="button"
-        onClick={onGoRig}
-        className="w-full rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted transition-colors hover:border-brand"
+      <Link
+        href="/rigs"
+        className="block w-full rounded-xl border border-dashed border-hairline p-6 text-center text-brand-muted transition-colors hover:border-brand"
       >
         Maintenance tasks belong to a rig — add your first rig to get started.
-      </button>
+      </Link>
     );
   }
 
@@ -208,7 +202,7 @@ export function MaintenanceScreen({
       tags: [...values.tags],
     }).unwrap();
     setAdding(false);
-    onOpenTask(created.id);
+    router.push(`/rig/${rigId}/maintenance/${created.id}`);
   };
 
   // ── Adding a task: full-page form ────────────────────────────────────────
@@ -219,6 +213,7 @@ export function MaintenanceScreen({
           label="‹ All tasks"
           onClick={() => {
             setAdding(false);
+            router.push(`/rig/${rigId}/maintenance`);
           }}
         />
         <TaskForm
@@ -262,7 +257,7 @@ export function MaintenanceScreen({
 
   const handleDelete = async (id: Id): Promise<void> => {
     await deleteTask({ id, rigId: activeRig.id }).unwrap();
-    onBackToList();
+    router.push(`/rig/${rigId}/maintenance`);
   };
 
   // ── Task detail open: full-page detail (or edit form) ───────────────────
@@ -274,7 +269,7 @@ export function MaintenanceScreen({
             label="‹ All tasks"
             onClick={() => {
               setEditing(false);
-              onBackToList();
+              router.push(`/rig/${rigId}/maintenance`);
             }}
           />
           <TaskForm
@@ -292,13 +287,18 @@ export function MaintenanceScreen({
     }
     return (
       <div className="flex flex-col gap-4">
-        <BackLink label="‹ All tasks" onClick={onBackToList} />
+        <BackLink
+          label="‹ All tasks"
+          onClick={() => {
+            router.push(`/rig/${rigId}/maintenance`);
+          }}
+        />
         <TaskDetail
           key={openTask.id}
           task={openTask}
           status={statusOf(openTask)}
           appearances={taskAppearances(checklists ?? [], openTask.id)}
-          onOpenChecklist={onOpenChecklist}
+          rigId={rigId}
           onEdit={() => {
             setEditing(true);
           }}
@@ -312,7 +312,12 @@ export function MaintenanceScreen({
   if (view === 'history') {
     return (
       <div className="flex flex-col gap-4">
-        <BackLink label="‹ All tasks" onClick={onBackToList} />
+        <BackLink
+          label="‹ All tasks"
+          onClick={() => {
+            router.push(`/rig/${rigId}/maintenance`);
+          }}
+        />
         <MaintenanceHistory
           entries={rigEntries ?? []}
           tasks={tasks ?? []}
@@ -343,11 +348,7 @@ export function MaintenanceScreen({
       statusOf={statusOf}
       lastPerformedOf={lastPerformedOf}
       today={today}
-      onOpenTask={(id) => {
-        setEditing(false);
-        onOpenTask(id);
-      }}
-      onOpenHistory={onOpenHistory}
+      rigId={rigId}
       onAdd={() => {
         setEditing(false);
         setAdding(true);
@@ -375,8 +376,7 @@ function TaskList({
   statusOf,
   lastPerformedOf,
   today,
-  onOpenTask,
-  onOpenHistory,
+  rigId,
   onAdd,
   orphanedEntries,
 }: {
@@ -395,8 +395,7 @@ function TaskList({
   readonly statusOf: (task: MaintenanceTask) => DueStatus;
   readonly lastPerformedOf: (task: MaintenanceTask) => string | undefined;
   readonly today: string;
-  readonly onOpenTask: (id: Id) => void;
-  readonly onOpenHistory: () => void;
+  readonly rigId: Id;
   readonly onAdd: () => void;
   readonly orphanedEntries: readonly LogEntry[];
 }): JSX.Element {
@@ -474,13 +473,12 @@ function TaskList({
             pressed={oneTimeOnly}
             onToggle={onToggleOneTime}
           />
-          <button
-            type="button"
-            onClick={onOpenHistory}
+          <Link
+            href={`/rig/${rigId}/maintenance/history`}
             className="shrink-0 rounded-md border border-hairline px-3 py-1.5 text-sm font-medium text-brand-muted transition-colors hover:border-brand hover:text-brand"
           >
             History
-          </button>
+          </Link>
           <button
             type="button"
             onClick={onAdd}
@@ -531,9 +529,7 @@ function TaskList({
               <TaskListRow
                 task={task}
                 status={statusOf(task)}
-                onOpen={() => {
-                  onOpenTask(task.id);
-                }}
+                href={`/rig/${rigId}/maintenance/${task.id}`}
               />
             </li>
           ))}
@@ -709,16 +705,15 @@ function DueBadge({
 function TaskListRow({
   task,
   status,
-  onOpen,
+  href,
 }: {
   readonly task: MaintenanceTask;
   readonly status: DueStatus;
-  readonly onOpen: () => void;
+  readonly href: string;
 }): JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <Link
+      href={href}
       className="flex w-full items-center gap-3 py-3 text-left hover:bg-hairline/30"
     >
       <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -738,7 +733,7 @@ function TaskListRow({
       <span aria-hidden className="shrink-0 text-brand-muted">
         ›
       </span>
-    </button>
+    </Link>
   );
 }
 
@@ -753,14 +748,14 @@ function TaskDetail({
   task,
   status,
   appearances,
-  onOpenChecklist,
+  rigId,
   onEdit,
   onDelete,
 }: {
   readonly task: MaintenanceTask;
   readonly status: DueStatus;
   readonly appearances: readonly TaskAppearance[];
-  readonly onOpenChecklist: (id: Id) => void;
+  readonly rigId: Id;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }): JSX.Element {
@@ -817,7 +812,7 @@ function TaskDetail({
 
       <FieldsSummary task={task} entries={entries} />
 
-      <AppearsOn appearances={appearances} onOpenChecklist={onOpenChecklist} />
+      <AppearsOn appearances={appearances} rigId={rigId} />
 
       <LogHistory task={task} />
     </div>
@@ -890,10 +885,10 @@ function FieldsSummary({
 
 function AppearsOn({
   appearances,
-  onOpenChecklist,
+  rigId,
 }: {
   readonly appearances: readonly TaskAppearance[];
-  readonly onOpenChecklist: (id: Id) => void;
+  readonly rigId: Id;
 }): JSX.Element | undefined {
   if (appearances.length === 0) {
     return undefined;
@@ -906,11 +901,8 @@ function AppearsOn({
       <ul className="flex flex-col gap-2">
         {appearances.map(({ checklist, steps }) => (
           <li key={checklist.id}>
-            <button
-              type="button"
-              onClick={() => {
-                onOpenChecklist(checklist.id);
-              }}
+            <Link
+              href={`/rig/${rigId}/checklists/${checklist.id}`}
               className="flex w-full items-center justify-between gap-3 rounded-lg border border-hairline p-3 text-left hover:border-brand"
             >
               <span className="flex min-w-0 flex-col gap-0.5">
@@ -926,7 +918,7 @@ function AppearsOn({
               <span aria-hidden className="shrink-0 text-brand-muted">
                 ›
               </span>
-            </button>
+            </Link>
           </li>
         ))}
       </ul>

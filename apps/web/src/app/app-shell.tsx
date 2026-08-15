@@ -189,19 +189,9 @@ export function AppShell(): JSX.Element {
         {route === 'maintenance' ? (
           <MaintenanceScreen
             activeRig={activeRig}
+            rigId={activeRig?.id ?? ''}
             openTaskId={openTaskId}
             view={location.view}
-            onOpenTask={(id) => {
-              navigate({ route: 'maintenance', openTaskId: id });
-            }}
-            onOpenHistory={() => {
-              navigate({ route: 'maintenance', view: 'history' });
-            }}
-            onOpenChecklist={openChecklist}
-            onBackToList={back}
-            onGoRig={() => {
-              go('rig');
-            }}
           />
         ) : undefined}
         {route === 'rig' ? <RigManager /> : undefined}

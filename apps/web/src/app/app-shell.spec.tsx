@@ -18,6 +18,29 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+jest.mock('next/link', () => {
+  return {
+    __esModule: true,
+    default: ({
+      href,
+      children,
+      ...rest
+    }: {
+      href: string;
+      children: React.ReactNode;
+      [key: string]: unknown;
+    }) => (
+      <a href={href} {...rest}>
+        {children}
+      </a>
+    ),
+  };
+});
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
+
 /**
  * The signed-in shell, end to end against a mocked API (issue #22): the home
  * summary clicks through into a real run (copy-on-start wiring, not local
