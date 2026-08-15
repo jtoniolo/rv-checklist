@@ -62,6 +62,10 @@ export function RigShell({
     };
   }, [vars]);
 
+  useEffect(() => {
+    document.cookie = `rv.last-rig=${rigId}; path=/; SameSite=Lax`;
+  }, [rigId]);
+
   const isActive = (href: string): boolean =>
     pathname === href ||
     (href !== `/rig/${rigId}` && pathname.startsWith(href));
@@ -110,7 +114,11 @@ export function RigShell({
             <div className="flex items-center gap-3">
               {rigs.length > 0 ? (
                 <div className="hidden items-center gap-1.5 text-sm text-brand-muted lg:flex">
-                  <RigSelect rigs={rigs} activeRigId={rigId} />
+                  <RigSelect
+                    rigs={rigs}
+                    activeRigId={rigId}
+                    pathname={pathname}
+                  />
                 </div>
               ) : undefined}
               <AvatarMenu owner={owner} />
@@ -156,19 +164,34 @@ export function RigShell({
   );
 }
 
+/**
+ * Compute the equivalent rig-scoped path when switching rigs. Preserves the
+ * first segment after the rigId (the section — maintenance, checklists, etc.)
+ * but drops deeper entity-specific segments. From `/rig/abc/maintenance/task123`
+ * switching to rig xyz produces `/rig/xyz/maintenance`.
+ */
+function equivalentPath(pathname: string, newRigId: string): string {
+  const segments = pathname.split('/');
+  const section = segments[3];
+  return section ? `/rig/${newRigId}/${section}` : `/rig/${newRigId}`;
+}
+
 function RigSelect({
   rigs,
   activeRigId,
+  pathname,
 }: {
   readonly rigs: readonly Rig[];
   readonly activeRigId: Id;
+  readonly pathname: string;
 }): JSX.Element {
   const router = useRouter();
   return (
     <Select
       value={activeRigId}
       onValueChange={(id: string) => {
-        router.push(`/rig/${id}`);
+        document.cookie = `rv.last-rig=${id}; path=/; SameSite=Lax`;
+        router.push(equivalentPath(pathname, id));
       }}
     >
       <SelectTrigger

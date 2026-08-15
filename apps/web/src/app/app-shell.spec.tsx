@@ -2,7 +2,7 @@ import type { Checklist, Owner, Rig, Run } from '@rv-checklist/domain';
 import { makeStore, signedIn } from '@rv-checklist/web-data-access';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
-import Index from './page';
+import { AppRoot } from './app-root';
 
 /**
  * The signed-in shell, end to end against a mocked API (issue #22): the home
@@ -121,7 +121,7 @@ function renderShell(): void {
   store.dispatch(signedIn());
   render(
     <Provider store={store}>
-      <Index />
+      <AppRoot />
     </Provider>,
   );
 }

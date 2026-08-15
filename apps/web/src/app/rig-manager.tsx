@@ -2,34 +2,27 @@
 
 import type { CreateRig, Id, Rig } from '@rv-checklist/domain';
 import {
-  activeRigCleared,
-  activeRigSelected,
-  selectActiveRigId,
-  useAppDispatch,
-  useAppSelector,
   useCreateRigMutation,
   useDeleteRigMutation,
   useListRigsQuery,
   useUpdateRigMutation,
 } from '@rv-checklist/web-data-access';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState, type JSX } from 'react';
 import { RigForm } from './rig-form';
 
 /**
- * The rig CRUD surface (issue #14) — the owner's rigs, end to end. Lists the
- * owner's rigs (RTK Query, owner-scoped by the API), adds, edits, and deletes
- * them, and selects the active rig (a client-local slice, ADR-0011). Every
- * mutation invalidates the `Rig` cache, so the list reflects each change without
- * a manual refetch.
+ * The rig CRUD surface (issue #14). Lists the owner's rigs, adds, edits, and
+ * deletes them. After creating a rig the owner lands on the new rig's
+ * dashboard. Each rig card links to its rig-scoped home.
  */
 export function RigManager(): JSX.Element {
   const { data: rigs, isLoading, isError } = useListRigsQuery();
   const [createRig, { isLoading: isCreating }] = useCreateRigMutation();
   const [updateRig, { isLoading: isUpdating }] = useUpdateRigMutation();
   const [deleteRig] = useDeleteRigMutation();
-
-  const dispatch = useAppDispatch();
-  const activeRigId = useAppSelector(selectActiveRigId);
+  const router = useRouter();
 
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<Id | undefined>(undefined);
@@ -37,10 +30,7 @@ export function RigManager(): JSX.Element {
   const handleCreate = async (values: CreateRig): Promise<void> => {
     const created = await createRig(values).unwrap();
     setAdding(false);
-    // A freshly added rig becomes the active one if none is selected yet.
-    if (!activeRigId) {
-      dispatch(activeRigSelected(created.id));
-    }
+    router.push(`/rig/${created.id}`);
   };
 
   const handleUpdate = async (id: Id, values: CreateRig): Promise<void> => {
@@ -56,10 +46,6 @@ export function RigManager(): JSX.Element {
 
   const handleDelete = async (id: Id): Promise<void> => {
     await deleteRig(id).unwrap();
-    // Deleting the active rig leaves no coherent selection — clear it.
-    if (activeRigId === id) {
-      dispatch(activeRigCleared());
-    }
   };
 
   return (
@@ -127,8 +113,6 @@ export function RigManager(): JSX.Element {
             <li key={rig.id}>
               <RigCard
                 rig={rig}
-                isActive={rig.id === activeRigId}
-                onSelect={() => dispatch(activeRigSelected(rig.id))}
                 onEdit={() => {
                   setAdding(false);
                   setEditingId(rig.id);
@@ -156,33 +140,24 @@ function toCreateRig(rig: Rig): CreateRig {
 
 interface RigCardProps {
   readonly rig: Rig;
-  readonly isActive: boolean;
-  readonly onSelect: () => void;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
 }
 
-function RigCard({
-  rig,
-  isActive,
-  onSelect,
-  onEdit,
-  onDelete,
-}: RigCardProps): JSX.Element {
+function RigCard({ rig, onEdit, onDelete }: RigCardProps): JSX.Element {
   const details = [rig.year, rig.make, rig.model]
     .filter((part): part is string | number => part !== undefined)
     .join(' ');
   return (
-    <div
-      className={`flex flex-col gap-2 rounded-xl border p-4 ${
-        isActive ? 'border-brand' : 'border-hairline'
-      }`}
-    >
+    <div className="flex flex-col gap-2 rounded-xl border border-hairline p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col">
-          <span className="text-lg font-semibold text-brand dark:text-ink-inverted">
+          <Link
+            href={`/rig/${rig.id}`}
+            className="text-lg font-semibold text-brand hover:underline dark:text-ink-inverted"
+          >
             {rig.nickname}
-          </span>
+          </Link>
           {details ? (
             <span className="text-sm text-brand-muted">{details}</span>
           ) : undefined}
@@ -192,22 +167,14 @@ function RigCard({
             </span>
           ) : undefined}
         </div>
-        {isActive ? (
-          <span className="rounded-full bg-brand px-2 py-0.5 text-xs font-medium text-white">
-            Active
-          </span>
-        ) : undefined}
       </div>
       <div className="flex gap-4 text-sm">
-        {isActive ? undefined : (
-          <button
-            type="button"
-            onClick={onSelect}
-            className="font-medium text-brand hover:opacity-80 dark:text-ink-inverted"
-          >
-            Set active
-          </button>
-        )}
+        <Link
+          href={`/rig/${rig.id}`}
+          className="font-medium text-brand hover:opacity-80 dark:text-ink-inverted"
+        >
+          View
+        </Link>
         <button
           type="button"
           onClick={onEdit}
