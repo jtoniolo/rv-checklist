@@ -262,8 +262,10 @@ export function ChecklistsScreen({
       (run) => run.checklistId === checklistId,
     );
     if (runs.length === 0) return undefined;
-    return runs.toSorted((a, b) => b.startedOn.localeCompare(a.startedOn))[0]
-      .startedOn;
+    const sorted = runs.toSorted((a, b) =>
+      b.startedOn.localeCompare(a.startedOn),
+    );
+    return sorted[0]?.startedOn;
   };
 
   // ── List view: search / sort / filter / checklist rows ──────────────────

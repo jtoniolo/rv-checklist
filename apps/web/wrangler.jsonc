@@ -1,0 +1,22 @@
+// Environment-blind wrangler config (ADR-0020).
+// No account IDs, hostnames, routes, or env values belong here.
+// The homelab IaC repo's CI job supplies those at deploy time via
+// --name, --route, and environment variables.
+//
+// External CI must provide at build time:
+//   NEXT_PUBLIC_API_BASE_URL  — production API origin (e.g. https://api.example.com/api)
+//   NEXT_PUBLIC_GOOGLE_CLIENT_ID — production Google OAuth client ID
+//
+// External CI deploys with:
+//   npx opennextjs-cloudflare build
+//   npx wrangler deploy --name <worker-name> --config apps/web/wrangler.jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+}

@@ -1,6 +1,10 @@
 //@ts-check
 const fs = require('fs');
 const path = require('path');
+if (process.env.NODE_ENV === 'development') {
+  const { initOpenNextCloudflareForDev } = require('@opennextjs/cloudflare');
+  initOpenNextCloudflareForDev();
+}
 
 /**
  * Load the repo-root `.env` (issue #13) so the single committed `.env.example`

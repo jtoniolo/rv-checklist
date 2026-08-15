@@ -59,6 +59,12 @@ test-output
 .next
 out
 
+# OpenNext (Cloudflare Worker build output)
+.open-next
+
+# Wrangler local dev state
+.wrangler
+
 # work-backlog run reports
 .reports/
 
