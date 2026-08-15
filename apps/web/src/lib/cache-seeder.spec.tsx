@@ -171,6 +171,30 @@ describe('CacheSeeder', () => {
     });
   });
 
+  it('seeds a single run by id', async () => {
+    const store = makeStore();
+    const run: Run = {
+      id: '550e8400-e29b-41d4-a716-446655440040',
+      checklistId: '550e8400-e29b-41d4-a716-446655440020',
+      rigId: rig.id,
+      startedOn: '2026-07-20',
+      steps: [],
+    };
+    render(
+      <Provider store={store}>
+        <CacheSeeder run={{ runId: run.id, data: run }}>
+          <span>child</span>
+        </CacheSeeder>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      const data = queryData(store, 'getRun(') as Run;
+      expect(data.id).toBe(run.id);
+      expect(data.startedOn).toBe('2026-07-20');
+    });
+  });
+
   it('seeds runs by rig', async () => {
     const store = makeStore();
     const run: Run = {

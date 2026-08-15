@@ -48,11 +48,13 @@ import { formatIsoDate } from './dates';
 export function RunScreen({
   runId,
   title,
+  exitLabel = '← Back to checklist',
   onExit,
 }: {
   readonly runId: Id;
   /** The checklist's name — the run itself holds only ids. */
   readonly title: string;
+  readonly exitLabel?: string;
   readonly onExit: () => void;
 }): JSX.Element {
   const query = useGetRunQuery(runId);
@@ -66,7 +68,7 @@ export function RunScreen({
         <p className="text-red-600 dark:text-red-400" role="alert">
           Couldn’t load this run. Please try again.
         </p>
-        <BackButton onExit={onExit} />
+        <BackButton label={exitLabel} onExit={onExit} />
       </div>
     );
   }
@@ -76,19 +78,26 @@ export function RunScreen({
       key={query.data.id}
       run={query.data}
       title={title}
+      exitLabel={exitLabel}
       onExit={onExit}
     />
   );
 }
 
-function BackButton({ onExit }: { readonly onExit: () => void }): JSX.Element {
+function BackButton({
+  label,
+  onExit,
+}: {
+  readonly label: string;
+  readonly onExit: () => void;
+}): JSX.Element {
   return (
     <button
       type="button"
       onClick={onExit}
       className="self-start text-sm font-medium text-brand-muted hover:text-brand dark:hover:text-ink-inverted"
     >
-      ← Back to runs
+      {label}
     </button>
   );
 }
@@ -105,10 +114,12 @@ function stepRank(step: RunStep): number {
 function RunWorkspace({
   run,
   title,
+  exitLabel,
   onExit,
 }: {
   readonly run: Run;
   readonly title: string;
+  readonly exitLabel: string;
   readonly onExit: () => void;
 }): JSX.Element {
   // Seeded once from the fresh load; `RunScreen` keys this component on the run
@@ -168,7 +179,7 @@ function RunWorkspace({
   return (
     <section className="flex flex-col gap-3" aria-label="Run">
       <div className="flex flex-col gap-2">
-        <BackButton onExit={onExit} />
+        <BackButton label={exitLabel} onExit={onExit} />
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="text-2xl font-semibold tracking-tight text-brand lg:text-xl dark:text-ink-inverted">
             {title}

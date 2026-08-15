@@ -23,7 +23,6 @@ import {
   type ChecklistFormValues,
 } from '../../../../checklist-form';
 import { RunHistory } from '../../../../run-history';
-import { RunScreen } from '../../../../run-screen';
 
 function toStepInput(step: Step): StepInput {
   return {
@@ -49,24 +48,11 @@ export function ChecklistDetailView({
   const [deleteChecklist] = useDeleteChecklistMutation();
 
   const [editing, setEditing] = useState(false);
-  const [openRunId, setOpenRunId] = useState<Id | undefined>(undefined);
 
   const checklist = checklists?.find((c) => c.id === checklistId);
 
   if (!checklist) {
     return <p className="text-brand-muted">Loading checklist…</p>;
-  }
-
-  if (openRunId) {
-    return (
-      <RunScreen
-        runId={openRunId}
-        title={checklist.name}
-        onExit={() => {
-          setOpenRunId(undefined);
-        }}
-      />
-    );
   }
 
   if (editing) {
@@ -123,13 +109,13 @@ export function ChecklistDetailView({
       </Link>
       <ChecklistDetail
         checklist={checklist}
+        rigId={rigId}
         tasks={rigTasks ?? []}
         onEdit={() => {
           setEditing(true);
         }}
         onDuplicate={() => void handleDuplicate()}
         onDelete={() => void handleDelete()}
-        onOpenRun={setOpenRunId}
       />
     </div>
   );
@@ -137,18 +123,18 @@ export function ChecklistDetailView({
 
 function ChecklistDetail({
   checklist,
+  rigId,
   tasks,
   onEdit,
   onDuplicate,
   onDelete,
-  onOpenRun,
 }: {
   readonly checklist: Checklist;
+  readonly rigId: Id;
   readonly tasks: readonly MaintenanceTask[];
   readonly onEdit: () => void;
   readonly onDuplicate: () => void;
   readonly onDelete: () => void;
-  readonly onOpenRun: (runId: Id) => void;
 }): JSX.Element {
   const stepCount = checklist.steps.length;
   return (
@@ -217,7 +203,7 @@ function ChecklistDetail({
         </p>
       )}
 
-      <RunHistory checklist={checklist} onOpenRun={onOpenRun} />
+      <RunHistory checklist={checklist} rigId={rigId} />
     </div>
   );
 }

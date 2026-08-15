@@ -62,6 +62,10 @@ export function seedChecklists(
   void store.dispatch(api.util.upsertQueryData('listChecklists', rigId, data));
 }
 
+export function seedRun(store: AppStore, runId: Id, data: Run): void {
+  void store.dispatch(api.util.upsertQueryData('getRun', runId, data));
+}
+
 export function seedRunsByRig(store: AppStore, rigId: Id, data: Run[]): void {
   void store.dispatch(api.util.upsertQueryData('listRunsByRig', rigId, data));
 }

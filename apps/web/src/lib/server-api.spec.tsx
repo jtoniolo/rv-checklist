@@ -1,4 +1,4 @@
-import type { Owner, Rig } from '@rv-checklist/domain';
+import type { Owner, Rig, Run } from '@rv-checklist/domain';
 
 jest.mock('next/headers', () => ({
   cookies: jest.fn(),
@@ -106,6 +106,24 @@ describe('server-api', () => {
       expect.anything(),
     );
     expect(result).toEqual([]);
+  });
+
+  it('fetches a single run by id', async () => {
+    const run: Run = {
+      id: '550e8400-e29b-41d4-a716-446655440040',
+      checklistId: '550e8400-e29b-41d4-a716-446655440020',
+      rigId: rig.id,
+      startedOn: '2026-07-20',
+      steps: [],
+    };
+    fetchSpy.mockResolvedValue(Response.json(run));
+    const { fetchRun } = await load();
+    const result = await fetchRun(run.id);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`/runs/${run.id}`),
+      expect.anything(),
+    );
+    expect(result.id).toBe(run.id);
   });
 
   it('fetches runs by rig', async () => {
