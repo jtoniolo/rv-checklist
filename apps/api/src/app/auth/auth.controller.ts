@@ -1,56 +1,88 @@
 import {
   BadRequestException,
-  Body,
   Controller,
   HttpCode,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import { RefreshSchema, type TokenPair } from '@rv-checklist/domain';
+import type { Response } from 'express';
 import { AuthService } from './auth.service.js';
 import { CurrentGoogleProfile } from './current-user.decorator.js';
 import type { GoogleProfile } from './google-verifier.js';
 import { GoogleAuthGuard } from './guards.js';
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  TokenService,
+} from './token.service.js';
 
 /**
- * Auth endpoints (ADR-0002). Sign-in exchanges a Google One Tap credential for a
- * first-party token pair; refresh rotates the long-lived token; logout revokes
- * it. All are stateless from the resource server's point of view — no session is
- * created.
+ * Auth endpoints (ADR-0002, ADR-0019). Sign-in exchanges a Google One Tap
+ * credential for httpOnly auth cookies; refresh rotates them; logout clears and
+ * revokes. The controller is the only HTTP-aware layer — the service stays
+ * transport-free.
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly tokens: TokenService,
+  ) {}
 
-  /** Exchange a verified Google credential (One Tap) for a first-party token pair. */
+  /** Exchange a verified Google credential (One Tap) for httpOnly auth cookies. */
   @UseGuards(GoogleAuthGuard)
   @HttpCode(200)
   @Post('google')
-  loginWithGoogle(
+  async loginWithGoogle(
     @CurrentGoogleProfile() profile: GoogleProfile,
-  ): Promise<TokenPair> {
-    return this.auth.loginWithGoogle(profile);
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<void> {
+    const { pair } = await this.auth.loginWithGoogle(profile);
+    res.cookie(
+      ACCESS_COOKIE,
+      pair.accessToken,
+      this.tokens.accessCookieOptions(),
+    );
+    res.cookie(
+      REFRESH_COOKIE,
+      pair.refreshToken,
+      this.tokens.refreshCookieOptions(),
+    );
   }
 
-  /** Rotate a refresh token for a fresh pair, keeping the session alive. */
+  /** Rotate cookies: read the refresh token from the cookie, issue fresh pair. */
   @HttpCode(200)
   @Post('refresh')
-  refresh(@Body() body: unknown): Promise<TokenPair> {
-    const parsed = RefreshSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException('refreshToken is required');
+  async refresh(@Res({ passthrough: true }) res: Response): Promise<void> {
+    const cookies = (res.req as { cookies?: Record<string, string> }).cookies;
+    const refreshToken = cookies?.[REFRESH_COOKIE];
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh cookie is required');
     }
-    return this.auth.refresh(parsed.data.refreshToken);
+    const { pair } = await this.auth.refresh(refreshToken);
+    res.cookie(
+      ACCESS_COOKIE,
+      pair.accessToken,
+      this.tokens.accessCookieOptions(),
+    );
+    res.cookie(
+      REFRESH_COOKIE,
+      pair.refreshToken,
+      this.tokens.refreshCookieOptions(),
+    );
   }
 
-  /** Revoke a refresh token (sign out on this device). */
+  /** Clear auth cookies and revoke the refresh token. */
   @HttpCode(204)
   @Post('logout')
-  async logout(@Body() body: unknown): Promise<void> {
-    const parsed = RefreshSchema.safeParse(body);
-    if (!parsed.success) {
-      throw new BadRequestException('refreshToken is required');
+  async logout(@Res({ passthrough: true }) res: Response): Promise<void> {
+    const cookies = (res.req as { cookies?: Record<string, string> }).cookies;
+    const refreshToken = cookies?.[REFRESH_COOKIE];
+    if (refreshToken) {
+      await this.auth.logout(refreshToken);
     }
-    await this.auth.logout(parsed.data.refreshToken);
+    res.cookie(ACCESS_COOKIE, '', this.tokens.clearCookieOptions());
+    res.cookie(REFRESH_COOKIE, '', this.tokens.clearCookieOptions());
   }
 }

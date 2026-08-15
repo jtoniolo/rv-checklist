@@ -12,7 +12,7 @@ import {
   type UpsertUserResult,
   type UserRecord,
 } from '@rv-checklist/api-data-access';
-import type { TokenPair } from '@rv-checklist/domain';
+import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { StarterContentSeeder } from '../seed/seed.service.js';
@@ -122,10 +122,47 @@ class FakeSeeder extends StarterContentSeeder {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function parseCookies(res: request.Response): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  const header = res.headers['set-cookie'] as string[] | undefined;
+  if (!header) return cookies;
+  for (const raw of header) {
+    const segment = raw.split(';', 1)[0] ?? '';
+    const eqIdx = segment.indexOf('=');
+    if (eqIdx === -1) continue;
+    cookies[segment.slice(0, eqIdx)] = segment.slice(eqIdx + 1);
+  }
+  return cookies;
+}
+
+function assertHttpOnlyCookie(res: request.Response, cookieName: string): void {
+  const header = res.headers['set-cookie'] as string[] | undefined;
+  expect(header).toBeDefined();
+  const prefix = cookieName + '=';
+  const cookie = header?.find((c: string) => c.startsWith(prefix));
+  expect(cookie).toBeDefined();
+  expect(cookie).toMatch(/HttpOnly/i);
+  expect(cookie).toMatch(/SameSite=Lax/i);
+}
+
+function cookieHeader(cookies: Record<string, string>): string {
+  const access = cookies['rv.access'] ?? '';
+  const refresh = cookies['rv.refresh'] ?? '';
+  return 'rv.access=' + access + '; rv.refresh=' + refresh;
+}
+
+function accessCookieHeader(cookies: Record<string, string>): string {
+  return 'rv.access=' + (cookies['rv.access'] ?? '');
+}
+
+// ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
 
-describe('Auth HTTP integration', () => {
+describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
   let app: INestApplication;
   let server: App;
 
@@ -164,6 +201,7 @@ describe('Auth HTTP integration', () => {
     }).compile();
 
     app = module.createNestApplication();
+    app.use(cookieParser());
     await app.init();
     server = app.getHttpServer() as App;
   });
@@ -172,25 +210,32 @@ describe('Auth HTTP integration', () => {
     await app.close();
   });
 
-  async function signIn(): Promise<TokenPair> {
+  async function signIn(): Promise<{
+    cookies: Record<string, string>;
+    res: request.Response;
+  }> {
     const res = await request(server)
       .post('/auth/google')
       .send({ idToken: 'any-credential' })
       .expect(200);
-    return res.body as TokenPair;
+    return { cookies: parseCookies(res), res };
   }
 
   // -- POST /auth/google ----------------------------------------------------
 
   describe('POST /auth/google', () => {
-    it('returns a token pair with the body-token contract', async () => {
-      const pair = await signIn();
+    it('sets httpOnly access and refresh cookies', async () => {
+      const { cookies, res } = await signIn();
 
-      expect(pair.accessToken).toBeDefined();
-      expect(typeof pair.accessToken).toBe('string');
-      expect(pair.refreshToken).toBeDefined();
-      expect(typeof pair.refreshToken).toBe('string');
-      expect(pair.expiresIn).toBe(900);
+      expect(cookies['rv.access']).toBeDefined();
+      expect(cookies['rv.refresh']).toBeDefined();
+      assertHttpOnlyCookie(res, 'rv.access');
+      assertHttpOnlyCookie(res, 'rv.refresh');
+    });
+
+    it('returns no token pair in the body', async () => {
+      const { res } = await signIn();
+      expect(res.body).toEqual({});
     });
 
     it('rejects a request with no body', async () => {
@@ -208,85 +253,76 @@ describe('Auth HTTP integration', () => {
   // -- POST /auth/refresh ---------------------------------------------------
 
   describe('POST /auth/refresh', () => {
-    it('rotates the refresh token and returns a fresh pair', async () => {
-      const first = await signIn();
+    it('rotates the refresh cookie and sets a fresh access cookie', async () => {
+      const { cookies: first } = await signIn();
 
-      const res = await request(server)
+      const refreshRes = await request(server)
         .post('/auth/refresh')
-        .send({ refreshToken: first.refreshToken })
+        .set('Cookie', cookieHeader(first))
         .expect(200);
 
-      const second = res.body as TokenPair;
-      expect(second.accessToken).toBeDefined();
-      expect(second.refreshToken).toBeDefined();
-      expect(second.refreshToken).not.toBe(first.refreshToken);
-      expect(second.expiresIn).toBe(900);
+      const second = parseCookies(refreshRes);
+      expect(second['rv.access']).toBeDefined();
+      expect(second['rv.refresh']).toBeDefined();
+      expect(second['rv.refresh']).not.toBe(first['rv.refresh']);
+      assertHttpOnlyCookie(refreshRes, 'rv.access');
+      assertHttpOnlyCookie(refreshRes, 'rv.refresh');
     });
 
-    it('rejects a spent refresh token (rotation)', async () => {
-      const pair = await signIn();
+    it('rejects a spent refresh cookie (rotation)', async () => {
+      const { cookies: first } = await signIn();
 
       await request(server)
         .post('/auth/refresh')
-        .send({ refreshToken: pair.refreshToken })
+        .set('Cookie', cookieHeader(first))
         .expect(200);
 
       await request(server)
         .post('/auth/refresh')
-        .send({ refreshToken: pair.refreshToken })
+        .set('Cookie', cookieHeader(first))
         .expect(401);
     });
 
-    it('rejects a missing refreshToken body', async () => {
-      await request(server).post('/auth/refresh').send({}).expect(400);
-    });
-
-    it('rejects an unknown refresh token', async () => {
-      await request(server)
-        .post('/auth/refresh')
-        .send({ refreshToken: 'bogus' })
-        .expect(401);
+    it('rejects a request with no refresh cookie', async () => {
+      await request(server).post('/auth/refresh').expect(400);
     });
   });
 
   // -- POST /auth/logout ----------------------------------------------------
 
   describe('POST /auth/logout', () => {
-    it('revokes the refresh token (204, no body)', async () => {
-      const pair = await signIn();
+    it('clears both cookies and revokes the refresh token', async () => {
+      const { cookies } = await signIn();
 
-      await request(server)
+      const logoutRes = await request(server)
         .post('/auth/logout')
-        .send({ refreshToken: pair.refreshToken })
+        .set('Cookie', cookieHeader(cookies))
         .expect(204);
+
+      const cleared = parseCookies(logoutRes);
+      expect(cleared['rv.access']).toBe('');
+      expect(cleared['rv.refresh']).toBe('');
 
       await request(server)
         .post('/auth/refresh')
-        .send({ refreshToken: pair.refreshToken })
+        .set('Cookie', cookieHeader(cookies))
         .expect(401);
     });
 
-    it('returns 204 for an unknown token (silent no-op)', async () => {
-      await request(server)
-        .post('/auth/logout')
-        .send({ refreshToken: 'unknown' })
-        .expect(204);
-    });
-
-    it('rejects a missing refreshToken body', async () => {
-      await request(server).post('/auth/logout').send({}).expect(400);
+    it('returns 204 even with no cookie (silent no-op)', async () => {
+      await request(server).post('/auth/logout').expect(204);
     });
   });
 
-  // -- GET /me (guarded route) ----------------------------------------------
+  // -- GET /me (guarded route) — cookie AND bearer -------------------------
 
   describe('GET /me', () => {
-    it('returns the owner when a valid access token is presented', async () => {
-      const pair = await signIn();
+    it('authenticates via access cookie', async () => {
+      const { cookies } = await signIn();
 
       const res = await request(server)
         .get('/me')
-        .set('Authorization', `Bearer ${pair.accessToken}`)
+        .set('Cookie', accessCookieHeader(cookies))
         .expect(200);
 
       const owner = res.body as { id: string; email: string; name: string };
@@ -297,7 +333,21 @@ describe('Auth HTTP integration', () => {
       expect(owner.id).toBeDefined();
     });
 
-    it('rejects an unauthenticated request (no bearer)', async () => {
+    it('authenticates via bearer token', async () => {
+      const { cookies } = await signIn();
+      const accessToken = cookies['rv.access'] ?? '';
+
+      const res = await request(server)
+        .get('/me')
+        .set('Authorization', 'Bearer ' + accessToken)
+        .expect(200);
+
+      expect(res.body).toMatchObject({
+        email: 'integration@example.com',
+      });
+    });
+
+    it('rejects an unauthenticated request (no cookie, no bearer)', async () => {
       await request(server).get('/me').expect(401);
     });
 

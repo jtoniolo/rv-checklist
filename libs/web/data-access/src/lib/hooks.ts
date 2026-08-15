@@ -14,13 +14,11 @@ export const useAppStore = useStore.withTypes<AppStore>();
  * `false` during the server render and the first client render, `true` once the
  * component has mounted in the browser.
  *
- * The session lives in localStorage (see `auth.storage.ts`), which the server
- * cannot see — so the store is signed-out on the server and signed-in on the
- * client. Rendering auth-dependent UI straight from that state makes the server
- * and first client render disagree, a hydration mismatch that flashes the
- * signed-out sign-in surface (and fires Google One Tap, re-authenticating the
- * owner) on every reload. Gate that UI behind this hook so both renders agree on
- * a neutral placeholder first, then reveal the real session after mount.
+ * The session is cookie-based (ADR-0019), invisible to JavaScript. On the
+ * server the auth slice starts unsigned-in; after mount the client fires a `/me`
+ * probe or waits for the first authenticated fetch. Gate auth-dependent UI
+ * behind this hook so server and first client render agree on a neutral
+ * placeholder, avoiding a hydration mismatch.
  */
 export function useHasHydrated(): boolean {
   const [isHydrated, setIsHydrated] = useState(false);

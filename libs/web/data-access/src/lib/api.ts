@@ -12,7 +12,6 @@ import {
   OwnerSchema,
   RigSchema,
   RunSchema,
-  TokenPairSchema,
   type Checklist,
   type CreateChecklist,
   type CreateLogEntry,
@@ -25,7 +24,6 @@ import {
   type Owner,
   type Rig,
   type Run,
-  type TokenPair,
   type UpdateChecklist,
   type UpdateLogEntry,
   type UpdateMaintenanceTask,
@@ -34,7 +32,7 @@ import {
 } from '@rv-checklist/domain';
 import { Mutex } from 'async-mutex';
 import { z } from 'zod';
-import { signedOut, tokensReceived, type AuthRoot } from './auth.slice.js';
+import { signedIn, signedOut } from './auth.slice.js';
 import { config } from './config.js';
 
 const RigArraySchema = z.array(RigSchema);
@@ -43,28 +41,22 @@ const RunArraySchema = z.array(RunSchema);
 const MaintenanceTaskArraySchema = z.array(MaintenanceTaskSchema);
 const LogEntryArraySchema = z.array(LogEntrySchema);
 
-/** The raw transport: attaches the bearer access token from the auth slice. */
+/**
+ * The raw transport (ADR-0019): sends cookies via `credentials: 'include'`.
+ * No bearer header — the httpOnly access cookie authenticates every request.
+ */
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: config.apiBaseUrl,
-  prepareHeaders: (headers, { getState }) => {
-    const token = (getState() as AuthRoot).auth.accessToken;
-    if (token) {
-      headers.set('authorization', `Bearer ${token}`);
-    }
-    return headers;
-  },
+  credentials: 'include',
 });
 
-// One in-flight refresh at a time: concurrent 401s wait on the same rotation
-// rather than each spending the single-use refresh token (ADR-0002).
 const refreshMutex = new Mutex();
 
 /**
- * The re-auth base query (the canonical RTK Query pattern). On a 401 it rotates
- * the refresh token once — guarded by a mutex so parallel requests trigger a
- * single refresh — writes the new pair to the auth slice, and retries the
- * original request. If there is no refresh token or the refresh itself fails,
- * the session is cleared.
+ * The re-auth base query (ADR-0019). On a 401 it sends a cookie-based refresh
+ * (the refresh cookie carries the token — no body needed), guarded by a mutex
+ * so parallel requests trigger a single refresh, then retries the original
+ * request. If the refresh itself fails, the session is cleared.
  */
 const baseQueryWithReauth: BaseQueryFn<
   string | FetchArgs,
@@ -79,29 +71,21 @@ const baseQueryWithReauth: BaseQueryFn<
   }
 
   if (refreshMutex.isLocked()) {
-    // A refresh is already running; wait for it, then retry with the new token.
     await refreshMutex.waitForUnlock();
     return rawBaseQuery(args, apiCtx, extraOptions);
   }
 
   const release = await refreshMutex.acquire();
   try {
-    const refreshToken = (apiCtx.getState() as AuthRoot).auth.refreshToken;
-    if (!refreshToken) {
-      apiCtx.dispatch(signedOut());
-      return result;
-    }
     const refreshResult = await rawBaseQuery(
-      { url: '/auth/refresh', method: 'POST', body: { refreshToken } },
+      { url: '/auth/refresh', method: 'POST' },
       apiCtx,
       extraOptions,
     );
-    const rotated = TokenPairSchema.safeParse(refreshResult.data);
-    if (!rotated.success) {
+    if (refreshResult.error) {
       apiCtx.dispatch(signedOut());
       return result;
     }
-    apiCtx.dispatch(tokensReceived(rotated.data));
     result = await rawBaseQuery(args, apiCtx, extraOptions);
   } finally {
     release();
@@ -110,12 +94,10 @@ const baseQueryWithReauth: BaseQueryFn<
 };
 
 /**
- * The single API slice (ADR-0011: RTK Query owns all server state). Rigs map to
- * the `Rig` tag type so a mutation invalidates exactly the reads it affects, and
- * responses are validated by the shared Zod schemas so the wire model has one
- * source of truth. Auth calls (sign-in, sign-out) live here too so they share
- * the re-auth transport; the token lifecycle is folded into the auth slice via
- * `onQueryStarted`.
+ * The single API slice (ADR-0011: RTK Query owns all server state). Auth calls
+ * (sign-in, sign-out) live here too so they share the re-auth transport; the
+ * auth slice is notified via `onQueryStarted` so the UI updates. No tokens
+ * are read from the body — the server sets httpOnly cookies (ADR-0019).
  */
 export const api = createApi({
   reducerPath: 'api',
@@ -128,31 +110,28 @@ export const api = createApi({
       providesTags: ['Me'],
     }),
 
-    loginWithGoogle: builder.mutation<TokenPair, string>({
+    loginWithGoogle: builder.mutation<void, string>({
       query: (idToken) => ({
         url: '/auth/google',
         method: 'POST',
         body: { idToken },
       }),
-      transformResponse: (raw: unknown) => TokenPairSchema.parse(raw),
       async onQueryStarted(_idToken, { dispatch, queryFulfilled }) {
-        const { data } = await queryFulfilled;
-        dispatch(tokensReceived(data));
+        await queryFulfilled;
+        dispatch(signedIn());
         dispatch(api.util.invalidateTags(['Me', 'Rig']));
       },
     }),
 
-    logout: builder.mutation<void, string>({
-      query: (refreshToken) => ({
+    logout: builder.mutation<void, void>({
+      query: () => ({
         url: '/auth/logout',
         method: 'POST',
-        body: { refreshToken },
       }),
-      async onQueryStarted(_refreshToken, { dispatch, queryFulfilled }) {
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         try {
           await queryFulfilled;
         } finally {
-          // Local sign-out proceeds even if the server revoke call fails.
           dispatch(signedOut());
           dispatch(api.util.resetApiState());
         }
@@ -198,10 +177,6 @@ export const api = createApi({
       ],
     }),
 
-    // Checklists are scoped to a rig (ADR-0006): the list read takes the active
-    // rig's id, and the `LIST` tag is per-rig so a create/delete on one rig
-    // never refetches another's. Responses are validated by the shared schema
-    // (its ADR-0008 step rules included), one source of wire-model truth.
     listChecklists: builder.query<Checklist[], Id>({
       query: (rigId) => `/checklists?rigId=${rigId}`,
       transformResponse: (raw: unknown) => ChecklistArraySchema.parse(raw),
@@ -234,7 +209,6 @@ export const api = createApi({
       transformResponse: (raw: unknown) => ChecklistSchema.parse(raw),
       invalidatesTags: (result, _error, { id }) => [
         { type: 'Checklist', id },
-        // The list tag is per-rig; `result` carries the rig on success.
         ...(result
           ? [{ type: 'Checklist' as const, id: `LIST:${result.rigId}` }]
           : []),
@@ -243,17 +217,9 @@ export const api = createApi({
 
     deleteChecklist: builder.mutation<void, Id>({
       query: (id) => ({ url: `/checklists/${id}`, method: 'DELETE' }),
-      // The per-rig list provides an element tag for each checklist it holds,
-      // so invalidating the deleted id's tag refetches exactly the list that
-      // contained it — no need to know its rig.
       invalidatesTags: (_result, _error, id) => [{ type: 'Checklist', id }],
     }),
 
-    // Runs are dated copies of a checklist's steps (CONTEXT.md). The list read
-    // is per-checklist ("past runs of a checklist"), so its `LIST` tag is keyed
-    // by the checklist id — starting/deleting a run on one checklist never
-    // refetches another's. Responses are validated by the shared schema (its
-    // step-state and ADR-0008 rules included), one source of wire-model truth.
     listRuns: builder.query<Run[], Id>({
       query: (checklistId) => `/runs?checklistId=${checklistId}`,
       transformResponse: (raw: unknown) => RunArraySchema.parse(raw),
@@ -266,10 +232,6 @@ export const api = createApi({
           : [{ type: 'Run' as const, id: `LIST:${checklistId}` }],
     }),
 
-    // A whole rig's runs across its checklists — the home summary read (issue
-    // #22: the "in progress" tile and continue cards). Keyed by rig id with its
-    // own list tag; each run also provides an element tag, so editing or
-    // deleting a run refetches this list without knowing its rig.
     listRunsByRig: builder.query<Run[], Id>({
       query: (rigId) => `/runs?rigId=${rigId}`,
       transformResponse: (raw: unknown) => RunArraySchema.parse(raw),
@@ -293,8 +255,6 @@ export const api = createApi({
       transformResponse: (raw: unknown) => RunSchema.parse(raw),
       invalidatesTags: (result, _error, { checklistId }) => [
         { type: 'Run', id: `LIST:${checklistId}` },
-        // A fresh run has no element tag anywhere yet, so the rig-level list
-        // must be invalidated explicitly; `result` carries the rig on success.
         ...(result
           ? [{ type: 'Run' as const, id: `RIG:${result.rigId}` }]
           : []),
@@ -310,7 +270,6 @@ export const api = createApi({
       transformResponse: (raw: unknown) => RunSchema.parse(raw),
       invalidatesTags: (result, _error, { id }) => [
         { type: 'Run', id },
-        // The list tag is per-checklist; `result` carries it on success.
         ...(result
           ? [{ type: 'Run' as const, id: `LIST:${result.checklistId}` }]
           : []),
@@ -319,16 +278,9 @@ export const api = createApi({
 
     deleteRun: builder.mutation<void, Id>({
       query: (id) => ({ url: `/runs/${id}`, method: 'DELETE' }),
-      // The per-checklist list provides an element tag for each run it holds, so
-      // invalidating the deleted id's tag refetches exactly the list that
-      // contained it — no need to know its checklist.
       invalidatesTags: (_result, _error, id) => [{ type: 'Run', id }],
     }),
 
-    // Maintenance tasks are scoped to a rig (ADR-0006), so the list read takes
-    // the active rig's id with a per-rig `LIST` tag, exactly as checklists do.
-    // Responses are validated by the shared schema (its ADR-0004 field rules
-    // included), one source of wire-model truth.
     listTasks: builder.query<MaintenanceTask[], Id>({
       query: (rigId) => `/tasks?rigId=${rigId}`,
       transformResponse: (raw: unknown) =>
@@ -362,7 +314,6 @@ export const api = createApi({
       transformResponse: (raw: unknown) => MaintenanceTaskSchema.parse(raw),
       invalidatesTags: (result, _error, { id }) => [
         { type: 'Task', id },
-        // The list tag is per-rig; `result` carries the rig on success.
         ...(result
           ? [{ type: 'Task' as const, id: `LIST:${result.rigId}` }]
           : []),
@@ -371,21 +322,12 @@ export const api = createApi({
 
     deleteTask: builder.mutation<void, { id: Id; rigId: Id }>({
       query: ({ id }) => ({ url: `/tasks/${id}`, method: 'DELETE' }),
-      // The per-rig list provides an element tag for each task it holds, so
-      // invalidating the deleted id's tag refetches exactly the list that
-      // contained it. Deleting a task also keeps its log entries, now orphaned
-      // (issue #28) — the rig's log list must refetch so they surface in the
-      // "Deleted tasks" history, so the caller passes the rig id too.
       invalidatesTags: (_result, _error, { id, rigId }) => [
         { type: 'Task', id },
         { type: 'LogEntry', id: `RIG:${rigId}` },
       ],
     }),
 
-    // Log entries are read two ways: one task's full history (`?taskId=`) and
-    // a whole rig's entries (`?rigId=`, the due-status read — ADR-0005: the
-    // task list computes each task's standing from the rig's entries without a
-    // request per task). Same two-scope tag layout as runs.
     listLogEntries: builder.query<LogEntry[], Id>({
       query: (taskId) => `/log-entries?taskId=${taskId}`,
       transformResponse: (raw: unknown) => LogEntryArraySchema.parse(raw),
@@ -415,16 +357,9 @@ export const api = createApi({
       transformResponse: (raw: unknown) => LogEntrySchema.parse(raw),
       invalidatesTags: (result, _error, { taskId }) => [
         { type: 'LogEntry', id: `LIST:${taskId}` },
-        // A fresh entry has no element tag anywhere yet, so the rig-level list
-        // (due-status) must be invalidated explicitly; `result` carries the
-        // rig on success.
         ...(result
           ? [
               { type: 'LogEntry' as const, id: `RIG:${result.rigId}` },
-              // Completing a one-time task deletes it (issue #29), so refetch the
-              // rig's task list to drop the self-deleted task (and the orphaned
-              // entry then surfaces via the rig log above). A recurring perform
-              // simply refetches an unchanged list — harmless.
               { type: 'Task' as const, id: `LIST:${result.rigId}` },
             ]
           : []),
@@ -446,9 +381,6 @@ export const api = createApi({
 
     deleteLogEntry: builder.mutation<void, Id>({
       query: (id) => ({ url: `/log-entries/${id}`, method: 'DELETE' }),
-      // Both lists (per-task and per-rig) provide an element tag for each entry
-      // they hold, so invalidating the deleted id's tag refetches exactly the
-      // lists that contained it.
       invalidatesTags: (_result, _error, id) => [{ type: 'LogEntry', id }],
     }),
   }),

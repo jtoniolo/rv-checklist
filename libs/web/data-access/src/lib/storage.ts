@@ -1,6 +1,6 @@
 /**
  * SSR-safe access to the browser's localStorage, shared by the persistence
- * modules (`auth.storage.ts`, `preferences.storage.ts`).
+ * modules (`preferences.storage.ts`).
  */
 
 /** The browser's localStorage, or `undefined` on the server / non-DOM contexts. */
