@@ -18,6 +18,12 @@ export default [
     },
   },
   {
-    ignores: ['.next/**/*', '**/out-tsc'],
+    ignores: [
+      '.next/**/*',
+      '.open-next/**/*',
+      '.wrangler/**/*',
+      '**/out-tsc',
+      'open-next.config.ts',
+    ],
   },
 ];
