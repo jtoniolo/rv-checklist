@@ -44,43 +44,53 @@ import { formatIsoDate } from './dates';
  * taps and boolean/date/select edits save immediately, while free-text and
  * number fields save on blur to avoid a request per keystroke. The run is loaded
  * fresh on open so resuming always shows the server's truth.
+ *
+ * When rendered inside a server-component page, pass `initialRun` so the first
+ * synchronous render already contains steps and progress in the HTML. The RTK
+ * Query hook takes over once the seeded cache resolves after hydration; until
+ * then `initialRun` is the source of truth (the `currentData ?? initialRun`
+ * pattern avoids a "Loading run…" flash during SSR).
  */
 export function RunScreen({
   runId,
   title,
+  initialRun,
   exitLabel = '← Back to checklist',
   onExit,
 }: {
   readonly runId: Id;
   /** The checklist's name — the run itself holds only ids. */
   readonly title: string;
+  readonly initialRun?: Run;
   readonly exitLabel?: string;
   readonly onExit: () => void;
 }): JSX.Element {
   const query = useGetRunQuery(runId);
+  const run = query.currentData ?? initialRun;
+
+  if (run) {
+    return (
+      <RunWorkspace
+        key={run.id}
+        run={run}
+        title={title}
+        exitLabel={exitLabel}
+        onExit={onExit}
+      />
+    );
+  }
 
   if (query.isLoading) {
     return <p className="text-brand-muted">Loading run…</p>;
   }
-  if (query.isError || !query.data) {
-    return (
-      <div className="flex flex-col gap-3">
-        <p className="text-red-600 dark:text-red-400" role="alert">
-          Couldn’t load this run. Please try again.
-        </p>
-        <BackButton label={exitLabel} onExit={onExit} />
-      </div>
-    );
-  }
-  // Remount on a different run so local step state is reseeded from the load.
+
   return (
-    <RunWorkspace
-      key={query.data.id}
-      run={query.data}
-      title={title}
-      exitLabel={exitLabel}
-      onExit={onExit}
-    />
+    <div className="flex flex-col gap-3">
+      <p className="text-red-600 dark:text-red-400" role="alert">
+        Couldn&apos;t load this run. Please try again.
+      </p>
+      <BackButton label={exitLabel} onExit={onExit} />
+    </div>
   );
 }
 

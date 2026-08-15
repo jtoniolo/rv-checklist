@@ -34,6 +34,7 @@ export default async function RunDetailPage({
         runId={runId}
         checklistId={run.checklistId}
         title={title}
+        initialRun={run}
       />
     </CacheSeeder>
   );
