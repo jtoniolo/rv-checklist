@@ -3,8 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { UserStore } from '@rv-checklist/api-data-access';
 import type { Owner } from '@rv-checklist/domain';
+import type { Request } from 'express';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Env } from '../../config/env.js';
+import { ACCESS_COOKIE } from '../token.service.js';
 
 /** The verified access-token payload (see {@link TokenService}). */
 interface JwtPayload {
@@ -12,11 +14,18 @@ interface JwtPayload {
   readonly email: string;
 }
 
+function fromAccessCookie(req: Request): string | null {
+  return (
+    // eslint-disable-next-line unicorn/no-null -- passport-jwt requires null
+    (req.cookies as Record<string, string> | undefined)?.[ACCESS_COOKIE] ?? null
+  );
+}
+
 /**
- * The resource-server guard (ADR-0002): validate the bearer access JWT on every
- * API call, statelessly. The token's signature and expiry are checked by
- * passport-jwt; `validate` then loads the owner it names so downstream handlers
- * receive a real {@link Owner}, and a token for a since-deleted user is rejected.
+ * The resource-server guard (ADR-0002, ADR-0019): validate the access JWT on
+ * every API call, statelessly. Two extractors: the httpOnly access cookie
+ * (browser and SSR) and the Authorization bearer header (future React Native).
+ * The cookie extractor runs first so browser requests hit the fast path.
  */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
@@ -25,7 +34,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private readonly users: UserStore,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        fromAccessCookie,
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
       ignoreExpiration: false,
       secretOrKey: config.get('JWT_SECRET', { infer: true }),
     });

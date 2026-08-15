@@ -26,6 +26,13 @@ export const EnvSchema = z.object({
   /** Refresh-token lifetime in days. Long (Gmail-like) so the owner rarely re-signs-in. */
   REFRESH_TTL_DAYS: z.coerce.number().int().positive().default(180),
 
+  /**
+   * Cookie domain for the httpOnly auth cookies (ADR-0019). In production this
+   * is `.rv.<apex>` so both the web host and the API subdomain receive them.
+   * Omit or leave empty in development to default to the request host.
+   */
+  COOKIE_DOMAIN: z.string().optional(),
+
   /** Postgres connection string — matches the dev Docker Compose service. */
   DATABASE_URL: z.string().min(1),
 });

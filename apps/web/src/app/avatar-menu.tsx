@@ -2,7 +2,6 @@
 
 import type { Owner } from '@rv-checklist/domain';
 import {
-  selectRefreshToken,
   selectThemeKey,
   themeSelected,
   useAppDispatch,
@@ -38,14 +37,11 @@ export function AvatarMenu({ owner }: { readonly owner: Owner }): JSX.Element {
   const [open, setOpen] = useState(false);
   const dispatch = useAppDispatch();
   const themeKey = useAppSelector(selectThemeKey);
-  const refreshToken = useAppSelector(selectRefreshToken);
   const [logout] = useLogoutMutation();
 
   const signOut = (): void => {
     disableGoogleAutoSelect();
-    if (refreshToken) {
-      void logout(refreshToken);
-    }
+    void logout();
   };
 
   return (

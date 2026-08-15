@@ -4,14 +4,20 @@ import {
   UserStore,
   type UserRecord,
 } from '@rv-checklist/api-data-access';
-import type { TokenPair } from '@rv-checklist/domain';
 import { StarterContentSeeder } from '../seed/seed.service.js';
 import { Clock } from './clock.js';
 import type { GoogleProfile } from './google-verifier.js';
 import { TokenService } from './token.service.js';
 
+/** The raw token values the controller uses to set cookies; no HTTP concern. */
+export interface IssuedTokens {
+  readonly accessToken: string;
+  readonly refreshToken: string;
+  readonly expiresIn: number;
+}
+
 /**
- * The auth flow (ADR-0002). Turns a verified Google identity into a first-party
+ * The auth flow (ADR-0002, ADR-0019). Turns a verified Google identity into a
  * token pair, renews it with rotating refresh tokens for a months-long session,
  * and revokes on logout. It holds no HTTP or persistence detail — it depends
  * only on the store ports and the token/clock helpers, so the whole flow is
@@ -32,7 +38,7 @@ export class AuthService {
   /** Mint an access JWT and a persisted refresh token for the user. */
   private async issue(
     user: UserRecord,
-  ): Promise<{ pair: TokenPair; refreshId: string }> {
+  ): Promise<{ pair: IssuedTokens; refreshId: string }> {
     const { token: accessToken, expiresIn } = this.tokens.signAccessToken(user);
     const rawRefresh = this.tokens.generateRefreshValue();
     const now = this.clock.now();
@@ -52,7 +58,9 @@ export class AuthService {
    * A brand-new owner also gets the starter rig seeded (issue #19), so day
    * one is never an empty app.
    */
-  async loginWithGoogle(profile: GoogleProfile): Promise<TokenPair> {
+  async loginWithGoogle(
+    profile: GoogleProfile,
+  ): Promise<{ pair: IssuedTokens }> {
     if (!profile.emailVerified) {
       throw new UnauthorizedException('Google email is not verified');
     }
@@ -63,9 +71,6 @@ export class AuthService {
       picture: profile.picture,
     });
     if (created) {
-      // Best-effort: a seed failure must not fail the sign-in — the owner
-      // lands in a working (if emptier) app rather than a 500, and a retry
-      // can't re-seed anyway (the owner now exists, so `created` stays false).
       try {
         await this.seeder.seedStarterContent(user.id);
       } catch (error) {
@@ -76,11 +81,11 @@ export class AuthService {
       }
     }
     const { pair } = await this.issue(user);
-    return pair;
+    return { pair };
   }
 
   /** Exchange a valid refresh token for a fresh pair, rotating the old one out. */
-  async refresh(rawToken: string): Promise<TokenPair> {
+  async refresh(rawToken: string): Promise<{ pair: IssuedTokens }> {
     const stored = await this.refreshTokens.findByHash(
       this.tokens.hash(rawToken),
     );
@@ -97,7 +102,7 @@ export class AuthService {
     }
     const { pair, refreshId } = await this.issue(user);
     await this.refreshTokens.revoke(stored.id, refreshId);
-    return pair;
+    return { pair };
   }
 
   /** Revoke the presented refresh token; unknown tokens are a silent no-op. */

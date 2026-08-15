@@ -160,7 +160,7 @@ describe('AuthService.loginWithGoogle', () => {
   it('upserts the user and issues a token pair', async () => {
     const { service, users } = build();
 
-    const pair = await service.loginWithGoogle(profile);
+    const { pair } = await service.loginWithGoogle(profile);
 
     expect(pair.accessToken).toContain('user-1');
     expect(pair.refreshToken).not.toBe('');
@@ -204,7 +204,7 @@ describe('AuthService.loginWithGoogle', () => {
     const { service, seeder } = build();
     seeder.failWith = new Error('database hiccup');
 
-    const pair = await service.loginWithGoogle(profile);
+    const { pair } = await service.loginWithGoogle(profile);
 
     expect(pair.accessToken).toContain('user-1');
   });
@@ -213,16 +213,14 @@ describe('AuthService.loginWithGoogle', () => {
 describe('AuthService.refresh', () => {
   it('rotates: the old token is revoked and a new pair issued', async () => {
     const { service, refresh } = build();
-    const first = await service.loginWithGoogle(profile);
+    const { pair: first } = await service.loginWithGoogle(profile);
 
-    const second = await service.refresh(first.refreshToken);
+    const { pair: second } = await service.refresh(first.refreshToken);
 
     expect(second.refreshToken).not.toBe(first.refreshToken);
-    // The originally-issued token is now revoked and can't be reused.
     await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-    // The new token works.
     expect(refresh.count).toBe(2);
     await expect(service.refresh(second.refreshToken)).resolves.toBeDefined();
   });
@@ -236,8 +234,7 @@ describe('AuthService.refresh', () => {
 
   it('rejects an expired refresh token', async () => {
     const { service, clock } = build();
-    const first = await service.loginWithGoogle(profile);
-    // Jump past the refresh lifetime (30 days in the test config).
+    const { pair: first } = await service.loginWithGoogle(profile);
     clock.current = new Date('2026-10-01T00:00:00.000Z');
     await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
       UnauthorizedException,
@@ -248,7 +245,7 @@ describe('AuthService.refresh', () => {
 describe('AuthService.logout', () => {
   it('revokes the presented token so it can no longer refresh', async () => {
     const { service } = build();
-    const pair = await service.loginWithGoogle(profile);
+    const { pair } = await service.loginWithGoogle(profile);
     await service.logout(pair.refreshToken);
     await expect(service.refresh(pair.refreshToken)).rejects.toBeInstanceOf(
       UnauthorizedException,

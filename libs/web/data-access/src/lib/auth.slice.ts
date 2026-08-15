@@ -1,54 +1,39 @@
-import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { TokenPair } from '@rv-checklist/domain';
+import { createSlice } from '@reduxjs/toolkit';
 
 /**
- * The client-local session (ADR-0011: a plain RTK slice for state that lives
- * nowhere on the server). It holds the first-party token pair (ADR-0002): the
- * access token is the bearer RTK Query attaches to every request, and the
- * refresh token renews it. This slice is the single runtime source of truth for
- * the session — `prepareHeaders` and the re-auth base query read the tokens from
- * here via `getState`; localStorage is only its persistence, hydrated on boot
- * and written back on change.
+ * The client-local session (ADR-0011, ADR-0019). With httpOnly cookies the
+ * browser no longer holds tokens — this slice tracks only whether the user is
+ * signed in (the server set cookies) or signed out (the server cleared them).
+ * It is the single runtime source of truth the UI reads to show the signed-in
+ * or signed-out surface. Cookie state itself is invisible to JavaScript.
  */
 export interface AuthState {
-  accessToken: string | undefined;
-  refreshToken: string | undefined;
+  isAuthenticated: boolean;
 }
 
-/** Any store whose state contains the auth slice — the shape its selectors need. */
 export interface AuthRoot {
   auth: AuthState;
 }
 
 const initialState: AuthState = {
-  accessToken: undefined,
-  refreshToken: undefined,
+  isAuthenticated: false,
 };
 
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    /** A fresh token pair arrived (sign-in or silent refresh). */
-    tokensReceived(state, action: PayloadAction<TokenPair>) {
-      state.accessToken = action.payload.accessToken;
-      state.refreshToken = action.payload.refreshToken;
+    signedIn(state) {
+      state.isAuthenticated = true;
     },
-    /** The session ended (sign-out, or an unrecoverable refresh failure). */
     signedOut(state) {
-      state.accessToken = undefined;
-      state.refreshToken = undefined;
+      state.isAuthenticated = false;
     },
   },
 });
 
 export const authReducer = authSlice.reducer;
-export const { tokensReceived, signedOut } = authSlice.actions;
+export const { signedIn, signedOut } = authSlice.actions;
 
-export const selectAccessToken = (state: AuthRoot): string | undefined =>
-  state.auth.accessToken;
-export const selectRefreshToken = (state: AuthRoot): string | undefined =>
-  state.auth.refreshToken;
-/** Signed in as far as the client can tell — a refresh token means a live session. */
 export const selectIsAuthenticated = (state: AuthRoot): boolean =>
-  state.auth.refreshToken !== undefined;
+  state.auth.isAuthenticated;

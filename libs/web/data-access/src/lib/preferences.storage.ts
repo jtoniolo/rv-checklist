@@ -8,8 +8,8 @@ import {
 
 /**
  * localStorage persistence for the owner's client-local preferences (ADR-0011):
- * the picked theme and the active rig. Same shape as `auth.storage.ts` — the
- * slices are the runtime source of truth; the store hydrates its
+ * the picked theme and the active rig. The slices are the runtime source of
+ * truth; the store hydrates its
  * `preloadedState` from here on boot and mirrors every change back, so a reload
  * resumes where the owner left off. SSR-safe: with no `localStorage` (the
  * server) it reads defaults and writes nothing.

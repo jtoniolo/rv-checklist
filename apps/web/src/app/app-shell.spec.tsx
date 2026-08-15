@@ -1,7 +1,8 @@
 import type { Checklist, Owner, Rig, Run } from '@rv-checklist/domain';
+import { makeStore, signedIn } from '@rv-checklist/web-data-access';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Provider } from 'react-redux';
 import Index from './page';
-import { StoreProvider } from './store-provider';
 
 /**
  * The signed-in shell, end to end against a mocked API (issue #22): the home
@@ -116,10 +117,12 @@ async function fakeApi(request: Request): Promise<Response> {
 }
 
 function renderShell(): void {
+  const store = makeStore();
+  store.dispatch(signedIn());
   render(
-    <StoreProvider>
+    <Provider store={store}>
       <Index />
-    </StoreProvider>,
+    </Provider>,
   );
 }
 
@@ -128,9 +131,6 @@ describe('web shell, signed in', () => {
 
   beforeEach(() => {
     patchedRuns.length = 0;
-    // The persisted session the browser carries into the reload.
-    localStorage.setItem('rv.accessToken', 'access-1');
-    localStorage.setItem('rv.refreshToken', 'refresh-1');
     fetchSpy = jest
       .spyOn(globalThis, 'fetch')
       .mockImplementation((input) => fakeApi(input as Request));

@@ -7,7 +7,6 @@ import type {
   Run,
 } from '@rv-checklist/domain';
 import { api } from './api.js';
-import { tokensReceived } from './auth.slice.js';
 import { makeStore } from './store.js';
 
 const rig: Rig = {
@@ -66,22 +65,13 @@ describe('rig endpoints', () => {
     expect(requestOf(fetchSpy, 0).url).toBe('https://api.test/rigs');
   });
 
-  it('attaches the bearer access token from the auth slice', async () => {
+  it('sends credentials: include (cookie transport)', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse([]));
     const store = makeStore();
-    store.dispatch(
-      tokensReceived({
-        accessToken: 'access-1',
-        refreshToken: 'refresh-1',
-        expiresIn: 900,
-      }),
-    );
 
     await store.dispatch(api.endpoints.listRigs.initiate());
 
-    expect(requestOf(fetchSpy, 0).headers.get('authorization')).toBe(
-      'Bearer access-1',
-    );
+    expect(requestOf(fetchSpy, 0).credentials).toBe('include');
   });
 
   it('creates a rig with POST /rigs', async () => {
