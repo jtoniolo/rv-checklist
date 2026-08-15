@@ -1,9 +1,11 @@
 import type {
+  Checklist,
   Id,
   LogEntry,
   MaintenanceTask,
   Owner,
   Rig,
+  Run,
 } from '@rv-checklist/domain';
 import { api } from './api.js';
 import { signedIn } from './auth.slice.js';
@@ -50,4 +52,16 @@ export function seedLogEntriesByRig(
   void store.dispatch(
     api.util.upsertQueryData('listLogEntriesByRig', rigId, data),
   );
+}
+
+export function seedChecklists(
+  store: AppStore,
+  rigId: Id,
+  data: Checklist[],
+): void {
+  void store.dispatch(api.util.upsertQueryData('listChecklists', rigId, data));
+}
+
+export function seedRunsByRig(store: AppStore, rigId: Id, data: Run[]): void {
+  void store.dispatch(api.util.upsertQueryData('listRunsByRig', rigId, data));
 }

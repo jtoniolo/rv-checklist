@@ -4,6 +4,20 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { AppRoot } from './app-root';
 
+const mockPush = jest.fn();
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: jest.fn(),
+    back: jest.fn(),
+    forward: jest.fn(),
+    refresh: jest.fn(),
+    prefetch: jest.fn(),
+  }),
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 /**
  * The signed-in shell, end to end against a mocked API (issue #22): the home
  * summary clicks through into a real run (copy-on-start wiring, not local
@@ -139,6 +153,7 @@ describe('web shell, signed in', () => {
   afterEach(() => {
     fetchSpy.mockRestore();
     localStorage.clear();
+    mockPush.mockClear();
     // Reset the URL so the navigation hook initialises on home in each test.
     // eslint-disable-next-line unicorn/no-null
     globalThis.history.replaceState(null, '', '/');
@@ -163,46 +178,35 @@ describe('web shell, signed in', () => {
     ).toBeTruthy();
   });
 
-  it('jumps from the continue card into the run and persists a checked step', async () => {
+  it('navigates to the checklist detail route from the continue card', async () => {
     renderShell();
 
     fireEvent.click(
       await screen.findByRole('button', { name: /pre-departure.*1\/2/is }),
     );
 
-    // The run screen loads the server's copy of the steps (copy-on-start).
-    const checkbox = await screen.findByRole('checkbox', {
-      name: 'Close roof vents',
-    });
-    fireEvent.click(checkbox);
-
-    // The change was persisted straight away: PATCH /runs/:id with the whole
-    // steps array, the tapped step now complete.
+    // The continue card navigates to the rig-scoped checklist detail route
+    // (ADR-0018 migration from client-state navigation to URL routes).
     await waitFor(() => {
-      expect(patchedRuns.length).toBeGreaterThan(0);
+      expect(mockPush).toHaveBeenCalledWith(
+        `/rig/${rig.id}/checklists/${checklist.id}`,
+      );
     });
-    const patch = patchedRuns[0];
-    expect(patch?.url).toBe(`https://api.test/runs/${run.id}`);
-    expect(
-      patch?.body.steps?.find((s) => s.text === 'Close roof vents')?.state,
-    ).toBe('complete');
   });
 
-  it('opens a checklist detail from the list (drill-in, issue #42)', async () => {
+  it('links to the checklist detail route (drill-in, issue #42)', async () => {
     renderShell();
 
     // Navigate to the Checklists tab.
     const buttons = screen.getAllByRole('button', { name: /checklists/i });
     fireEvent.click(buttons[0]);
 
-    // The list view loads — click Spring opening to drill in.
-    fireEvent.click(
-      await screen.findByRole('button', { name: /spring opening/i }),
+    // The list view loads — checklist rows are now Link elements with the
+    // correct route (ADR-0018 migration from client-state navigation).
+    const link = await screen.findByRole('link', { name: /spring opening/i });
+    expect(link.getAttribute('href')).toBe(
+      `/rig/${rig.id}/checklists/${otherChecklist.id}`,
     );
-
-    expect(
-      await screen.findByRole('heading', { name: 'Spring opening' }),
-    ).toBeTruthy();
   });
 
   it('re-tokens the surface from the avatar menu and persists the theme', async () => {
