@@ -11,30 +11,33 @@ import {
   useDeleteRunMutation,
   useListRunsQuery,
 } from '@rv-checklist/web-data-access';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { JSX } from 'react';
 import { formatIsoDate } from './dates';
 
 /**
  * One checklist's runs, inside the detail pane (issue #16, reshaped for the
  * #22 shell). Starting a run copies the checklist's steps on the server —
- * copy-on-start, never local state — and drops straight into the run screen.
+ * copy-on-start, never local state — and navigates to the new run's URL.
  * Past runs are listed newest first with their progress, so an in-progress one
  * is easy to spot and resume, and a run started by mistake can be deleted.
  */
 export function RunHistory({
   checklist,
-  onOpenRun,
+  rigId,
 }: {
   readonly checklist: Checklist;
-  readonly onOpenRun: (runId: Id) => void;
+  readonly rigId: Id;
 }): JSX.Element {
+  const router = useRouter();
   const { data: runs, isLoading, isError } = useListRunsQuery(checklist.id);
   const [createRun, { isLoading: isStarting }] = useCreateRunMutation();
   const [deleteRun] = useDeleteRunMutation();
 
   const handleStart = async (): Promise<void> => {
     const run = await createRun({ checklistId: checklist.id }).unwrap();
-    onOpenRun(run.id);
+    router.push(`/rig/${rigId}/runs/${run.id}`);
   };
 
   return (
@@ -62,7 +65,7 @@ export function RunHistory({
 
       {isError ? (
         <p className="text-red-600 dark:text-red-400" role="alert">
-          Couldn’t load runs. Please try again.
+          Couldn&apos;t load runs. Please try again.
         </p>
       ) : undefined}
 
@@ -77,9 +80,7 @@ export function RunHistory({
           <li key={run.id}>
             <RunRow
               run={run}
-              onOpen={() => {
-                onOpenRun(run.id);
-              }}
+              rigId={rigId}
               onDelete={() => void deleteRun(run.id).unwrap()}
             />
           </li>
@@ -91,11 +92,11 @@ export function RunHistory({
 
 function RunRow({
   run,
-  onOpen,
+  rigId,
   onDelete,
 }: {
   readonly run: Run;
-  readonly onOpen: () => void;
+  readonly rigId: Id;
   readonly onDelete: () => void;
 }): JSX.Element {
   const progress = runProgress(run);
@@ -114,13 +115,12 @@ function RunRow({
         </span>
       </div>
       <div className="flex items-center gap-3 text-sm">
-        <button
-          type="button"
-          onClick={onOpen}
+        <Link
+          href={`/rig/${rigId}/runs/${run.id}`}
           className="font-medium text-brand hover:opacity-80 dark:text-ink-inverted"
         >
           {progress.inProgress ? 'Resume' : 'View'}
-        </button>
+        </Link>
         <button
           type="button"
           onClick={onDelete}

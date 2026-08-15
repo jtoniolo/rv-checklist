@@ -14,6 +14,7 @@ import {
   seedLogEntriesByRig,
   seedMe,
   seedRigs,
+  seedRun,
   seedRunsByRig,
   seedSignedIn,
   seedTasks,
@@ -37,6 +38,7 @@ export interface CacheSeedProps {
     readonly data: LogEntry[];
   };
   readonly checklists?: { readonly rigId: Id; readonly data: Checklist[] };
+  readonly run?: { readonly runId: Id; readonly data: Run };
   readonly runsByRig?: { readonly rigId: Id; readonly data: Run[] };
   readonly children: ReactNode;
 }
@@ -47,6 +49,7 @@ export function CacheSeeder({
   tasks,
   logEntries,
   checklists,
+  run,
   runsByRig,
   children,
 }: CacheSeedProps): JSX.Element {
@@ -70,6 +73,9 @@ export function CacheSeeder({
     }
     if (checklists !== undefined) {
       seedChecklists(store, checklists.rigId, checklists.data);
+    }
+    if (run !== undefined) {
+      seedRun(store, run.runId, run.data);
     }
     if (runsByRig !== undefined) {
       seedRunsByRig(store, runsByRig.rigId, runsByRig.data);

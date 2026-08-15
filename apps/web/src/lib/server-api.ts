@@ -88,6 +88,10 @@ export function fetchChecklists(rigId: Id): Promise<Checklist[]> {
   return serverFetch(`/checklists?rigId=${rigId}`, arrayOf(ChecklistSchema));
 }
 
+export function fetchRun(runId: Id): Promise<Run> {
+  return serverFetch(`/runs/${runId}`, RunSchema);
+}
+
 export function fetchRunsByRig(rigId: Id): Promise<Run[]> {
   return serverFetch(`/runs?rigId=${rigId}`, arrayOf(RunSchema));
 }
