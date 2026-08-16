@@ -1,8 +1,35 @@
 'use client';
 
-import { CreateRigSchema, type CreateRig } from '@rv-checklist/domain';
+import {
+  CreateRigSchema,
+  type CreateRig,
+  type Rig,
+  type UpdateRig,
+} from '@rv-checklist/domain';
 import { Button, Input, Label } from '@rv-checklist/web-ui';
 import { useState, type ChangeEvent, type JSX } from 'react';
+
+/** Map a rig's current values to the form's initial values. */
+export function toCreateRig(rig: Rig): CreateRig {
+  return {
+    vin: rig.vin,
+    make: rig.make,
+    model: rig.model,
+    year: rig.year,
+    nickname: rig.nickname,
+    distanceKm: rig.distanceKm,
+  };
+}
+
+/**
+ * Map submitted form values to a rig update. A blank distance clears the
+ * rig's current Distance (issue #32); the wire spells removal `null`, so a
+ * blank field maps to it rather than "unchanged".
+ */
+export function toRigUpdate(values: CreateRig): UpdateRig {
+  // eslint-disable-next-line unicorn/no-null
+  return { ...values, distanceKm: values.distanceKm ?? null };
+}
 
 /**
  * The add/edit rig form. Fields mirror {@link CreateRig}; the shared
