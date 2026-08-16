@@ -14,6 +14,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, type JSX, type ReactNode } from 'react';
 import { AvatarMenu } from '../../avatar-menu';
 import { themeFor } from '../../themes';
+import { equivalentPath } from './equivalent-path';
 
 const NAV_ITEMS: readonly {
   label: string;
@@ -162,18 +163,6 @@ export function RigShell({
       </div>
     </div>
   );
-}
-
-/**
- * Compute the equivalent rig-scoped path when switching rigs. Preserves the
- * first segment after the rigId (the section — maintenance, checklists, etc.)
- * but drops deeper entity-specific segments. From `/rig/abc/maintenance/task123`
- * switching to rig xyz produces `/rig/xyz/maintenance`.
- */
-function equivalentPath(pathname: string, newRigId: string): string {
-  const segments = pathname.split('/');
-  const section = segments[3];
-  return section ? `/rig/${newRigId}/${section}` : `/rig/${newRigId}`;
 }
 
 function RigSelect({

@@ -2,8 +2,9 @@
  * @jest-environment jsdom
  *
  * The store's persistence loop for the client-local preferences (ADR-0011):
- * hydrate theme + active rig from localStorage on boot, mirror every change
- * back. Runs under jsdom for a real localStorage (the lib's default is node).
+ * hydrate the theme from localStorage on boot, mirror every change back.
+ * (Active-rig persistence was deleted with the client-state navigation, #60.)
+ * Runs under jsdom for a real localStorage (the lib's default is node).
  */
 import { makeStore } from './store.js';
 import { themeSelected } from './theme.slice.js';

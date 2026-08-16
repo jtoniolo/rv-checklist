@@ -10,7 +10,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type JSX } from 'react';
-import { RigForm } from './rig-form';
+import { RigForm, toCreateRig, toRigUpdate } from './rig-form';
 
 /**
  * The rig CRUD surface (issue #14). Lists the owner's rigs, adds, edits, and
@@ -34,13 +34,7 @@ export function RigManager(): JSX.Element {
   };
 
   const handleUpdate = async (id: Id, values: CreateRig): Promise<void> => {
-    await updateRig({
-      id,
-      // A blank distance clears the rig's current Distance (issue #32); the wire
-      // spells removal `null`, so a blank field maps to it rather than "unchanged".
-      // eslint-disable-next-line unicorn/no-null
-      changes: { ...values, distanceKm: values.distanceKm ?? null },
-    }).unwrap();
+    await updateRig({ id, changes: toRigUpdate(values) }).unwrap();
     setEditingId(undefined);
   };
 
@@ -125,17 +119,6 @@ export function RigManager(): JSX.Element {
       </ul>
     </section>
   );
-}
-
-function toCreateRig(rig: Rig): CreateRig {
-  return {
-    vin: rig.vin,
-    make: rig.make,
-    model: rig.model,
-    year: rig.year,
-    nickname: rig.nickname,
-    distanceKm: rig.distanceKm,
-  };
 }
 
 interface RigCardProps {
