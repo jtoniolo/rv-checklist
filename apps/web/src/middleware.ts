@@ -65,13 +65,22 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
 
   // No session at all — redirect to welcome.
-  if (!accessToken) {
+  if (!accessToken && !refreshToken) {
     return redirectToWelcome(request);
   }
 
-  // Token present but near expiry — attempt silent refresh.
+  // Access cookie expired and dropped by the browser, but the long-lived
+  // refresh cookie remains — refresh instead of forcing a new sign-in. A
+  // network failure here means we have no usable session, so fall back to
+  // welcome.
+  if (!accessToken) {
+    return silentRefresh(request, redirectToWelcome(request));
+  }
+
+  // Token present but near expiry — attempt silent refresh. On network
+  // failure the still-valid access token can serve this request.
   if (refreshToken && isNearExpiry(accessToken, Date.now())) {
-    return silentRefresh(request);
+    return silentRefresh(request, NextResponse.next());
   }
 
   return NextResponse.next();
@@ -83,7 +92,10 @@ function redirectToWelcome(request: NextRequest): NextResponse {
   return NextResponse.redirect(welcomeUrl);
 }
 
-async function silentRefresh(request: NextRequest): Promise<NextResponse> {
+async function silentRefresh(
+  request: NextRequest,
+  onNetworkError: NextResponse,
+): Promise<NextResponse> {
   try {
     const refreshUrl = apiUrl('/auth/refresh', request.nextUrl);
     const apiResponse = await fetch(refreshUrl, {
@@ -101,7 +113,7 @@ async function silentRefresh(request: NextRequest): Promise<NextResponse> {
     }
     return response;
   } catch {
-    return NextResponse.next();
+    return onNetworkError;
   }
 }
 
