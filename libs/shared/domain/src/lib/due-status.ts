@@ -231,6 +231,54 @@ export function addMonths(date: IsoDate, months: number): IsoDate {
   return lastDay.toISOString().slice(0, 10);
 }
 
+/**
+ * The narrow task shape `dueStatusOf` needs — only the fields the due-status
+ * assembly reads, not the full MaintenanceTask. This lets the MCP layer (and
+ * any future consumer) call the function without depending on the full entity.
+ */
+export interface DueStatusTaskInput {
+  readonly interval?: Interval | undefined;
+  readonly oneTime?: true | undefined;
+  readonly lastPerformed?: IsoDate | undefined;
+}
+
+/**
+ * The entry shape `dueStatusOf` reads — the two fields the due-status helpers
+ * need from each log entry: the date it was performed on and an optional
+ * Distance reading.
+ */
+export interface DueStatusEntryInput {
+  readonly performedOn: IsoDate;
+  readonly distanceKm?: number | undefined;
+}
+
+/**
+ * Compute a task's {@link DueStatus} from its log entries, the rig's current
+ * Distance, and today's date. This is the shared assembly that gathers the
+ * inputs {@link dueStatus} needs — calling {@link latestPerformedOn} and
+ * {@link latestReadingKm} on the entries, conditionally spreading the one-time
+ * marker (exactOptionalPropertyTypes), and delegating.
+ *
+ * Both web callsites and the future MCP layer use this instead of duplicating
+ * the assembly inline (ADR-0023).
+ */
+export function dueStatusOf(
+  task: DueStatusTaskInput,
+  entries: readonly DueStatusEntryInput[],
+  rigDistanceKm: number | undefined,
+  today: IsoDate,
+): DueStatus {
+  return dueStatus({
+    interval: task.interval,
+    lastPerformedOn: latestPerformedOn(entries),
+    today,
+    ...(task.oneTime && { isOneTime: task.oneTime }),
+    lastPerformed: task.lastPerformed,
+    rigDistanceKm,
+    lastReadingKm: latestReadingKm(entries),
+  });
+}
+
 /** The newest entry date — the "last completion" that due-status reads from. */
 export function latestPerformedOn(
   entries: readonly { readonly performedOn: IsoDate }[],
