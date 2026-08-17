@@ -4,8 +4,11 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
+  McpTokenEntity,
+  McpTokenStore,
   RefreshTokenEntity,
   RefreshTokenStore,
+  TypeOrmMcpTokenStore,
   TypeOrmRefreshTokenStore,
   TypeOrmUserStore,
   UserEntity,
@@ -40,7 +43,7 @@ import { TokenService } from './token.service.js';
         secret: config.get('JWT_SECRET', { infer: true }),
       }),
     }),
-    TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity]),
+    TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity, McpTokenEntity]),
     // First sign-in seeds the starter rig (issue #19).
     SeedModule,
   ],
@@ -54,6 +57,7 @@ import { TokenService } from './token.service.js';
     { provide: GoogleIdTokenVerifier, useClass: GoogleAuthLibraryVerifier },
     { provide: UserStore, useClass: TypeOrmUserStore },
     { provide: RefreshTokenStore, useClass: TypeOrmRefreshTokenStore },
+    { provide: McpTokenStore, useClass: TypeOrmMcpTokenStore },
   ],
 })
 export class AuthModule {}
