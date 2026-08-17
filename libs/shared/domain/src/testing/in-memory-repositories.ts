@@ -1,9 +1,11 @@
 import type { Checklist } from '../lib/checklist.js';
 import type { Id } from '../lib/common.js';
+import type { EquipmentItem } from '../lib/equipment.js';
 import type { LogEntry } from '../lib/log-entry.js';
 import type { MaintenanceTask } from '../lib/maintenance-task.js';
 import type {
   ChecklistRepository,
+  EquipmentItemRepository,
   LogEntryRepository,
   MaintenanceTaskRepository,
   RigRepository,
@@ -105,6 +107,15 @@ export class InMemoryLogEntryRepository
   }
 }
 
+export class InMemoryEquipmentItemRepository
+  extends InMemoryRepository<EquipmentItem>
+  implements EquipmentItemRepository
+{
+  listByRig(rigId: Id): Promise<EquipmentItem[]> {
+    return this.where((e) => e.rigId === rigId);
+  }
+}
+
 /** The full set of in-memory repositories, one per aggregate. */
 export interface InMemoryRepositories {
   readonly rigs: InMemoryRigRepository;
@@ -112,6 +123,7 @@ export interface InMemoryRepositories {
   readonly runs: InMemoryRunRepository;
   readonly tasks: InMemoryMaintenanceTaskRepository;
   readonly logEntries: InMemoryLogEntryRepository;
+  readonly equipmentItems: InMemoryEquipmentItemRepository;
 }
 
 /** Fresh, empty in-memory repositories — the usual starting point for a use-case test. */
@@ -122,5 +134,6 @@ export function createInMemoryRepositories(): InMemoryRepositories {
     runs: new InMemoryRunRepository(),
     tasks: new InMemoryMaintenanceTaskRepository(),
     logEntries: new InMemoryLogEntryRepository(),
+    equipmentItems: new InMemoryEquipmentItemRepository(),
   };
 }
