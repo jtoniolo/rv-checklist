@@ -1,6 +1,7 @@
 import {
   addMonths,
   dueStatus,
+  dueStatusOf,
   latestPerformedOn,
   latestReadingKm,
 } from './due-status.js';
@@ -468,5 +469,120 @@ describe('latestReadingKm', () => {
         { performedOn: '2026-07-04' },
       ]),
     ).toBeUndefined();
+  });
+});
+
+// dueStatusOf — the shared assembly function that gathers a task's log entries,
+// rig distance, and today's date, then delegates to dueStatus(). Extracts the
+// duplicated pattern from the two web callsites into libs/shared/domain so the
+// MCP layer (ADR-0023) can share it.
+describe('dueStatusOf — shared enrichment from (task, entries, rig distance, today)', () => {
+  it('computes a calendar overdue standing from entries and a task interval', () => {
+    expect(
+      dueStatusOf(
+        { interval: calendar(12) },
+        [{ performedOn: '2025-07-21' }],
+        undefined,
+        '2026-07-22',
+      ),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  it('computes a distance ok standing from entries and the rig distance', () => {
+    expect(
+      dueStatusOf(
+        { interval: distance(20_000) },
+        [{ performedOn: '2026-01-15', distanceKm: 20_000 }],
+        38_200,
+        '2026-07-21',
+      ),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'distance',
+      dueAtKm: 40_000,
+      currentKm: 38_200,
+    });
+  });
+
+  it('picks the more urgent limit from a combined interval', () => {
+    expect(
+      dueStatusOf(
+        { interval: both(12, 20_000) },
+        [{ performedOn: '2025-07-21', distanceKm: 20_000 }],
+        41_500,
+        '2026-07-20',
+      ),
+    ).toEqual({
+      kind: 'overdue',
+      basis: 'distance',
+      dueAtKm: 40_000,
+      currentKm: 41_500,
+    });
+  });
+
+  it('returns one-time for a task flagged one-time', () => {
+    expect(dueStatusOf({ oneTime: true }, [], undefined, '2026-07-21')).toEqual(
+      { kind: 'one-time' },
+    );
+  });
+
+  it('returns untracked for a task with no interval and no one-time marker', () => {
+    expect(dueStatusOf({}, [], undefined, '2026-07-21')).toEqual({
+      kind: 'untracked',
+    });
+  });
+
+  it('returns reading-needed for a distance-only task with no rig distance', () => {
+    expect(
+      dueStatusOf(
+        { interval: distance(20_000) },
+        [{ performedOn: '2026-01-15' }],
+        undefined,
+        '2026-07-21',
+      ),
+    ).toEqual({ kind: 'reading-needed' });
+  });
+
+  it('returns never-performed for a calendar task with no entries', () => {
+    expect(
+      dueStatusOf({ interval: calendar(12) }, [], undefined, '2026-07-21'),
+    ).toEqual({ kind: 'never-performed' });
+  });
+
+  it('anchors off the manual lastPerformed when no entries exist', () => {
+    expect(
+      dueStatusOf(
+        { interval: calendar(12), lastPerformed: '2025-07-21' },
+        [],
+        undefined,
+        '2026-07-20',
+      ),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
+  });
+
+  it('picks the newest entry when multiple are present', () => {
+    expect(
+      dueStatusOf(
+        { interval: calendar(12) },
+        [{ performedOn: '2025-01-01' }, { performedOn: '2025-07-21' }],
+        undefined,
+        '2026-07-20',
+      ),
+    ).toEqual({
+      kind: 'ok',
+      basis: 'calendar',
+      lastPerformedOn: '2025-07-21',
+      dueOn: '2026-07-21',
+    });
   });
 });
