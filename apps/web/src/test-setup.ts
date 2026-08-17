@@ -5,7 +5,7 @@ import {
   WritableStream,
 } from 'node:stream/web';
 import { TextDecoder, TextEncoder } from 'node:util';
-import { MessageChannel, MessagePort } from 'node:worker_threads';
+import { MessagePort } from 'node:worker_threads';
 
 // Give the RTK Query base query an absolute base URL so `fetchBaseQuery` can
 // build a valid `Request` under jsdom (a relative URL throws). Runs before the
@@ -24,7 +24,13 @@ Object.assign(globalThis, {
   TransformStream,
   WritableStream,
   Blob,
-  MessageChannel,
+  // undici's webidl layer references the MessagePort type at load. The
+  // MessageChannel constructor itself deliberately stays off the global:
+  // React's scheduler would grab it, and a worker_threads port with a
+  // 'message' listener is a ref'd handle the scheduler never closes, so Jest
+  // (in-band, as in CI) could never exit and the job would hang until the
+  // timeout. Without a global MessageChannel the scheduler falls back to
+  // setTimeout, which leaks nothing.
   MessagePort,
 });
 // eslint-disable-next-line @typescript-eslint/no-require-imports
