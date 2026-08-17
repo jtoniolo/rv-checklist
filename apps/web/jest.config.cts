@@ -1,14 +1,14 @@
-const nextJest = require('next/jest.js');
-
-const createJestConfig = nextJest({
-  dir: './',
-});
-
+// Plain babel-jest, same recipe as web-ui. `next/jest` is deliberately not
+// used: it compiles suites through Next's native SWC binding inside Jest
+// workers, which deadlocks under Jest 30 (workers sit idle forever, so the
+// task never finishes — locally and in CI). The specs mock next/link and
+// next/navigation themselves, so nothing here needs the Next transform.
 const config = {
   displayName: '@rv-checklist/web',
   preset: '../../jest.preset.js',
   transform: {
     '^(?!.*\\.(js|jsx|ts|tsx|css|json)$)': '@nx/react/plugins/jest',
+    '^.+\\.[tj]sx?$': ['babel-jest', { presets: ['@nx/react/babel'] }],
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   coverageDirectory: '../../coverage/apps/web',
@@ -16,15 +16,4 @@ const config = {
   setupFiles: ['<rootDir>/src/test-setup.ts'],
 };
 
-const jestConfig = createJestConfig(config);
-
-module.exports = async () => {
-  const resolved = await jestConfig();
-  // Disable SWC path alias resolution — handled by Nx jest resolver.
-  for (const value of Object.values(resolved.transform)) {
-    if (Array.isArray(value) && value[1]?.resolvedBaseUrl) {
-      value[1] = { ...value[1], resolvedBaseUrl: undefined };
-    }
-  }
-  return resolved;
-};
+module.exports = config;
