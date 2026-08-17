@@ -103,6 +103,58 @@ describe('EquipmentController over HTTP (through the Zod serializer)', () => {
     expect(body.name).toBe('Solar panel 400W');
   });
 
+  it('creates an item with detail fields and lists them back', async () => {
+    const created = await fetch(`${baseUrl}/equipment`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        rigId,
+        name: 'Inverter',
+        make: 'Victron',
+        model: 'MultiPlus 3000',
+        purchaseDate: '2024-06-01',
+        notes: '5-year warranty',
+        costCents: 289_900,
+      }),
+    });
+    expect(created.status).toBe(201);
+    const body = (await created.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      name: 'Inverter',
+      make: 'Victron',
+      model: 'MultiPlus 3000',
+      purchaseDate: '2024-06-01',
+      notes: '5-year warranty',
+      costCents: 289_900,
+    });
+  });
+
+  it('patches detail fields and clears one with null', async () => {
+    const created = await fetch(`${baseUrl}/equipment`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        rigId,
+        name: 'Battery',
+        make: 'Battle Born',
+        costCents: 94_900,
+      }),
+    });
+    const { id } = (await created.json()) as { id: string };
+
+    const patched = await fetch(`${baseUrl}/equipment/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      // eslint-disable-next-line unicorn/no-null
+      body: JSON.stringify({ make: null, model: '100Ah LiFePO4' }),
+    });
+    expect(patched.status).toBe(200);
+    const body = (await patched.json()) as Record<string, unknown>;
+    expect(body['make']).toBeUndefined();
+    expect(body['model']).toBe('100Ah LiFePO4');
+    expect(body['costCents']).toBe(94_900);
+  });
+
   it('deletes an equipment item with 204', async () => {
     const created = await fetch(`${baseUrl}/equipment`, {
       method: 'POST',

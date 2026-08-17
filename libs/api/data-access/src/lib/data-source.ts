@@ -26,6 +26,7 @@ import { LogEntryCostCents1721001400000 } from './migrations/1721001400000-log-e
 import { TaskTags1721001500000 } from './migrations/1721001500000-task-tags.js';
 import { McpTokens1721001600000 } from './migrations/1721001600000-mcp-tokens.js';
 import { EquipmentItems1721001700000 } from './migrations/1721001700000-equipment-items.js';
+import { EquipmentDetail1721001800000 } from './migrations/1721001800000-equipment-detail.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -71,6 +72,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       TaskTags1721001500000,
       McpTokens1721001600000,
       EquipmentItems1721001700000,
+      EquipmentDetail1721001800000,
     ],
     migrationsRun: true,
     synchronize: false,

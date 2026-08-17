@@ -45,8 +45,7 @@ export class EquipmentService {
     await this.assertOwnsRig(ownerId, input.rigId);
     return this.items.save({
       id: randomUUID(),
-      rigId: input.rigId,
-      name: input.name,
+      ...input,
     });
   }
 
@@ -68,11 +67,21 @@ export class EquipmentService {
     id: Id,
     changes: UpdateEquipmentItem,
   ): Promise<EquipmentItem> {
-    const existing = await this.get(ownerId, id);
-    return this.items.save({
-      ...existing,
-      ...(changes.name !== undefined && { name: changes.name }),
-    });
+    const next: EquipmentItem = { ...(await this.get(ownerId, id)) };
+    if (changes.name !== undefined) next.name = changes.name;
+    if (changes.make === null) next.make = undefined;
+    else if (changes.make !== undefined) next.make = changes.make;
+    if (changes.model === null) next.model = undefined;
+    else if (changes.model !== undefined) next.model = changes.model;
+    if (changes.purchaseDate === null) next.purchaseDate = undefined;
+    else if (changes.purchaseDate !== undefined)
+      next.purchaseDate = changes.purchaseDate;
+    if (changes.notes === null) next.notes = undefined;
+    else if (changes.notes !== undefined) next.notes = changes.notes;
+    if (changes.costCents === null) next.costCents = undefined;
+    else if (changes.costCents !== undefined)
+      next.costCents = changes.costCents;
+    return this.items.save(next);
   }
 
   async remove(ownerId: Id, id: Id): Promise<void> {
