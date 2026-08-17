@@ -133,6 +133,33 @@ describe('edge middleware', () => {
       );
     });
 
+    it('refreshes when the access cookie is gone but a refresh cookie remains', async () => {
+      const { middleware } = await loadMiddleware();
+      const req = makeRequest('/rigs', {
+        'rv.refresh': 'opaque-refresh-value',
+      });
+
+      const mockCookieHeader =
+        'rv.access=new-jwt; HttpOnly; Path=/; SameSite=Lax';
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        headers: {
+          getSetCookie: () => [
+            mockCookieHeader,
+            'rv.refresh=new-refresh; HttpOnly; Path=/; SameSite=Lax',
+          ],
+        },
+      } as unknown as Response);
+
+      const res = await middleware(req);
+      expect(res.status).toBe(200);
+      expect(res.headers.getSetCookie()).toContain(mockCookieHeader);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.test/api/auth/refresh',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    });
+
     it('redirects to welcome when refresh fails', async () => {
       const { middleware } = await loadMiddleware();
       const nearExp = Math.floor(Date.now() / 1000) + 30;
