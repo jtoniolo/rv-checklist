@@ -1,9 +1,4 @@
-import {
-  dueStatus,
-  latestPerformedOn,
-  latestReadingKm,
-  type DueStatus,
-} from '@rv-checklist/domain';
+import { dueStatusOf, type DueStatus } from '@rv-checklist/domain';
 import type { JSX } from 'react';
 import { formatIsoDate, todayIso } from '../../dates';
 import { CacheSeeder } from '@/lib/cache-seeder';
@@ -40,21 +35,15 @@ export default async function RigHomePage({
   const firstName = me.name?.trim().split(/\s+/, 1)[0];
   const today = todayIso();
 
-  const taskStatuses = tasks.map((task) => {
-    const entries = logEntries.filter((e) => e.taskId === task.id);
-    return {
+  const taskStatuses = tasks.map((task) => ({
+    task,
+    status: dueStatusOf(
       task,
-      status: dueStatus({
-        interval: task.interval,
-        lastPerformedOn: latestPerformedOn(entries),
-        today,
-        ...(task.oneTime && { isOneTime: task.oneTime }),
-        lastPerformed: task.lastPerformed,
-        rigDistanceKm: rig?.distanceKm,
-        lastReadingKm: latestReadingKm(entries),
-      }),
-    };
-  });
+      logEntries.filter((e) => e.taskId === task.id),
+      rig?.distanceKm,
+      today,
+    ),
+  }));
 
   const attentionKinds = new Set(['due', 'overdue', 'one-time']);
   const needsAttention = taskStatuses.filter(({ status }) =>

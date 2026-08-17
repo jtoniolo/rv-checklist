@@ -1,9 +1,8 @@
 'use client';
 
 import {
-  dueStatus,
+  dueStatusOf,
   latestPerformedOn,
-  latestReadingKm,
   taskAppearances,
   type DueStatus,
   type Id,
@@ -143,20 +142,8 @@ export function MaintenanceScreen({
     (rigEntries ?? []).filter((entry) => entry.taskId === taskId);
 
   // Pre-compute due status for every task in one pass from the rig's entries.
-  const statusOf = (task: MaintenanceTask): DueStatus => {
-    const entries = entriesFor(task.id);
-    return dueStatus({
-      interval: task.interval,
-      lastPerformedOn: latestPerformedOn(entries),
-      today,
-      // Conditionally include isOneTime so an absent marker stays absent
-      // rather than passing `undefined` (exactOptionalPropertyTypes).
-      ...(task.oneTime && { isOneTime: task.oneTime }),
-      lastPerformed: task.lastPerformed,
-      rigDistanceKm: activeRig.distanceKm,
-      lastReadingKm: latestReadingKm(entries),
-    });
-  };
+  const statusOf = (task: MaintenanceTask): DueStatus =>
+    dueStatusOf(task, entriesFor(task.id), activeRig.distanceKm, today);
 
   /** The effective "last performed" date for a task — the later of log and manual anchor. */
   const lastPerformedOf = (task: MaintenanceTask): string | undefined => {
