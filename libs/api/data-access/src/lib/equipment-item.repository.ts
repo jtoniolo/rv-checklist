@@ -28,6 +28,29 @@ function toEquipmentItem(entity: EquipmentItemEntity): EquipmentItem {
     id: entity.id,
     rigId: entity.rigId,
     name: entity.name,
+    make: entity.make ?? undefined,
+    model: entity.model ?? undefined,
+    purchaseDate: entity.purchaseDate ?? undefined,
+    notes: entity.notes ?? undefined,
+    costCents: entity.costCents ?? undefined,
+  };
+}
+
+function toRow(item: EquipmentItem): Partial<EquipmentItemEntity> {
+  return {
+    id: item.id,
+    rigId: item.rigId,
+    name: item.name,
+    // eslint-disable-next-line unicorn/no-null
+    make: item.make ?? null,
+    // eslint-disable-next-line unicorn/no-null
+    model: item.model ?? null,
+    // eslint-disable-next-line unicorn/no-null
+    purchaseDate: item.purchaseDate ?? null,
+    // eslint-disable-next-line unicorn/no-null
+    notes: item.notes ?? null,
+    // eslint-disable-next-line unicorn/no-null
+    costCents: item.costCents ?? null,
   };
 }
 
@@ -52,7 +75,7 @@ export class TypeOrmEquipmentItemRepository extends EquipmentItemRepository {
   }
 
   async save(item: EquipmentItem): Promise<EquipmentItem> {
-    const saved = await this.repo.save(this.repo.create(item));
+    const saved = await this.repo.save(this.repo.create(toRow(item)));
     return toEquipmentItem(saved);
   }
 

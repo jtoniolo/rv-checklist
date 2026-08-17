@@ -23,6 +23,16 @@ const generator = (rigId: string): CreateEquipmentItem => ({
   name: 'Onan generator',
 });
 
+const detailedItem = (rigId: string): CreateEquipmentItem => ({
+  rigId,
+  name: 'Onan generator',
+  make: 'Onan',
+  model: 'QG 5500',
+  purchaseDate: '2024-03-15',
+  notes: '5-year warranty',
+  costCents: 389_900,
+});
+
 async function makeService(): Promise<{
   service: EquipmentService;
   items: InMemoryEquipmentItemRepository;
@@ -120,6 +130,84 @@ describe('EquipmentService', () => {
       });
 
       expect(updated.rigId).toBe(aliceRigId);
+    });
+  });
+
+  describe('detail fields (issue #80)', () => {
+    it('creates an item with all detail fields', async () => {
+      const { service } = await makeService();
+
+      const item = await service.create(alice, detailedItem(aliceRigId));
+
+      expect(item).toMatchObject({
+        name: 'Onan generator',
+        make: 'Onan',
+        model: 'QG 5500',
+        purchaseDate: '2024-03-15',
+        notes: '5-year warranty',
+        costCents: 389_900,
+      });
+    });
+
+    it('creates a name-only item with no detail fields', async () => {
+      const { service } = await makeService();
+
+      const item = await service.create(alice, generator(aliceRigId));
+
+      expect(item.make).toBeUndefined();
+      expect(item.model).toBeUndefined();
+      expect(item.purchaseDate).toBeUndefined();
+      expect(item.notes).toBeUndefined();
+      expect(item.costCents).toBeUndefined();
+    });
+
+    it('updates a detail field to a new value', async () => {
+      const { service } = await makeService();
+      const created = await service.create(alice, detailedItem(aliceRigId));
+
+      const updated = await service.update(alice, created.id, {
+        make: 'Cummins',
+      });
+
+      expect(updated.make).toBe('Cummins');
+      expect(updated.model).toBe('QG 5500');
+    });
+
+    it('clears a detail field with null', async () => {
+      const { service } = await makeService();
+      const created = await service.create(alice, detailedItem(aliceRigId));
+
+      // eslint-disable-next-line unicorn/no-null
+      const updated = await service.update(alice, created.id, { make: null });
+
+      expect(updated.make).toBeUndefined();
+      expect(updated.model).toBe('QG 5500');
+    });
+
+    it('leaves a detail field unchanged when omitted', async () => {
+      const { service } = await makeService();
+      const created = await service.create(alice, detailedItem(aliceRigId));
+
+      const updated = await service.update(alice, created.id, {
+        name: 'Cummins generator',
+      });
+
+      expect(updated.name).toBe('Cummins generator');
+      expect(updated.make).toBe('Onan');
+      expect(updated.costCents).toBe(389_900);
+    });
+
+    it('round-trips costCents exactly', async () => {
+      const { service } = await makeService();
+      const created = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Solar panel',
+        costCents: 11_240,
+      });
+
+      expect(created.costCents).toBe(11_240);
+      const fetched = await service.get(alice, created.id);
+      expect(fetched.costCents).toBe(11_240);
     });
   });
 

@@ -10,7 +10,7 @@ export class CreateEquipmentItemDto extends createZodDto(
   CreateEquipmentItemSchema,
 ) {}
 
-/** `PATCH /equipment/:id` body — only the name can change. */
+/** `PATCH /equipment/:id` body — all mutable fields optional; `null` clears. */
 export class UpdateEquipmentItemDto extends createZodDto(
   UpdateEquipmentItemSchema,
 ) {}
