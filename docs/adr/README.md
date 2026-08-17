@@ -29,6 +29,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0020](0020-public-repo-deployment-split.md) | Public-repo / home lab deployment split — generic config here, IaC specifics in home lab repo (supersedes 0001 topology) |
 | [0021](0021-mcp-server-inside-api.md) | MCP server inside the API — stateless `POST /api/mcp` via pinned `@rekog/mcp-nest`, direct service calls, no OAuth advertised |
 | [0022](0022-mcp-token-lifecycle.md) | MCP token lifecycle — opaque `rvmcp_` secret, hashed at rest, show-once, one active token, non-expiring, managed in an avatar-menu dialog |
+| [0023](0023-mcp-tool-surface.md) | MCP tool surface — 15 tools: reads on every resource with server-computed `dueStatus`, writes on checklists and maintenance tasks only; tools only, no resources or prompts |
 
 ## Archived prototypes
 
