@@ -55,5 +55,6 @@ import { RunService } from './run.service.js';
     { provide: LogEntryRepository, useClass: TypeOrmLogEntryRepository },
     { provide: Clock, useClass: SystemClock },
   ],
+  exports: [RunService],
 })
 export class RunModule {}
