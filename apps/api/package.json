@@ -90,6 +90,7 @@
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.4",
     "@rv-checklist/api-data-access": "workspace:*",
+    "cookie-parser": "^1.4.7",
     "@rv-checklist/domain": "workspace:*",
     "nestjs-zod": "^5.4.0",
     "zod": "^4.4.3",
