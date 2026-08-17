@@ -1,6 +1,13 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { api, makeStore } from '@rv-checklist/web-data-access';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { Provider } from 'react-redux';
 import { McpTokenDialog } from './mcp-token-dialog';
-import { StoreProvider } from './store-provider';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return Response.json(data, {
@@ -35,13 +42,27 @@ function fakeApi(request: Request): Response {
 
 const onOpenChange = jest.fn();
 
-function renderDialog(): void {
+const stores: ReturnType<typeof makeStore>[] = [];
+
+function trackedStore(): ReturnType<typeof makeStore> {
+  const store = makeStore();
+  stores.push(store);
+  return store;
+}
+
+function resetStores(): void {
+  for (const store of stores) store.dispatch(api.util.resetApiState());
+  stores.length = 0;
+}
+
+function renderDialog(store = trackedStore()) {
   onOpenChange.mockClear();
-  render(
-    <StoreProvider>
+  const result = render(
+    <Provider store={store}>
       <McpTokenDialog isOpen onOpenChange={onOpenChange} />
-    </StoreProvider>,
+    </Provider>,
   );
+  return { ...result, store };
 }
 
 describe('McpTokenDialog (issue #77)', () => {
@@ -59,6 +80,9 @@ describe('McpTokenDialog (issue #77)', () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+    act(() => {
+      resetStores();
+    });
   });
 
   it('shows the generate button when no token is active', async () => {
@@ -156,5 +180,51 @@ describe('McpTokenDialog (issue #77)', () => {
     expect(
       await screen.findByRole('button', { name: 'Copy token' }),
     ).toBeTruthy();
+  });
+
+  it('clears the raw token from the UI when the dialog closes', async () => {
+    const store = trackedStore();
+    const { rerender } = renderDialog(store);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate' }));
+    expect(await screen.findByText('rvmcp_test-token-abc123')).toBeTruthy();
+
+    state.statusResponse = () =>
+      jsonResponse({
+        active: true,
+        createdAt: '2026-08-15T00:00:00.000Z',
+      });
+
+    const closeButton = screen.getByRole('button', { name: 'Close' });
+    fireEvent.click(closeButton);
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    rerender(
+      <Provider store={store}>
+        <McpTokenDialog isOpen onOpenChange={onOpenChange} />
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('rvmcp_test-token-abc123')).toBeNull();
+    });
+  });
+
+  it('clears the mutation cache after generating a token', async () => {
+    const { store } = renderDialog();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate' }));
+    await screen.findByText('rvmcp_test-token-abc123');
+
+    await waitFor(() => {
+      const mutations = store.getState().api.mutations;
+      const hasRawToken = Object.values(mutations).some(
+        (entry) =>
+          entry?.endpointName === 'generateMcpToken' &&
+          entry.data !== undefined,
+      );
+      expect(hasRawToken).toBe(false);
+    });
   });
 });

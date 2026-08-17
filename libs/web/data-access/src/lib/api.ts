@@ -10,6 +10,8 @@ import {
   EquipmentItemSchema,
   LogEntrySchema,
   MaintenanceTaskSchema,
+  McpTokenCreatedSchema,
+  McpTokenStatusSchema,
   OwnerSchema,
   RigSchema,
   RunSchema,
@@ -24,6 +26,8 @@ import {
   type Id,
   type LogEntry,
   type MaintenanceTask,
+  type McpTokenCreated,
+  type McpTokenStatus,
   type Owner,
   type Rig,
   type Run,
@@ -447,16 +451,15 @@ export const api = createApi({
       ],
     }),
 
-    mcpTokenStatus: builder.query<
-      { active: boolean; createdAt?: string; lastUsedAt?: string },
-      void
-    >({
+    mcpTokenStatus: builder.query<McpTokenStatus, void>({
       query: () => '/mcp-token',
+      transformResponse: (raw: unknown) => McpTokenStatusSchema.parse(raw),
       providesTags: ['McpToken'],
     }),
 
-    generateMcpToken: builder.mutation<{ token: string }, void>({
+    generateMcpToken: builder.mutation<McpTokenCreated, void>({
       query: () => ({ url: '/mcp-token', method: 'POST' }),
+      transformResponse: (raw: unknown) => McpTokenCreatedSchema.parse(raw),
       invalidatesTags: ['McpToken'],
     }),
 
