@@ -1,5 +1,6 @@
 import type { Run } from '@rv-checklist/domain';
 import {
+  api,
   makeStore,
   seedSignedIn,
   seedRun,
@@ -42,8 +43,24 @@ const run: Run = {
 
 const mockExit = jest.fn();
 
-function renderWithInitialRun(initialRun: Run = run): void {
+// Every unsubscribe on unmount arms RTK Query's 60s keepUnusedDataFor
+// eviction timer; resetting each store in afterEach clears them so in-band
+// Jest can exit.
+const stores: ReturnType<typeof makeStore>[] = [];
+
+function trackedStore(): ReturnType<typeof makeStore> {
   const store = makeStore();
+  stores.push(store);
+  return store;
+}
+
+function resetStores(): void {
+  for (const store of stores) store.dispatch(api.util.resetApiState());
+  stores.length = 0;
+}
+
+function renderWithInitialRun(initialRun: Run = run): void {
+  const store = trackedStore();
   seedSignedIn(store);
   render(
     <Provider store={store}>
@@ -58,7 +75,7 @@ function renderWithInitialRun(initialRun: Run = run): void {
 }
 
 function renderWithSeededCache(seedData: Run = run): void {
-  const store = makeStore();
+  const store = trackedStore();
   seedSignedIn(store);
   seedRun(store, seedData.id, seedData);
   render(
@@ -78,6 +95,7 @@ describe('RunScreen — initialRun (SSR path)', () => {
   });
 
   afterEach(() => {
+    resetStores();
     fetchSpy.mockRestore();
     localStorage.clear();
     mockExit.mockClear();
@@ -152,6 +170,7 @@ describe('RunScreen — seeded cache (no initialRun)', () => {
   });
 
   afterEach(() => {
+    resetStores();
     fetchSpy.mockRestore();
     localStorage.clear();
     mockExit.mockClear();

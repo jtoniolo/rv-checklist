@@ -1,5 +1,5 @@
 import type { Run } from '@rv-checklist/domain';
-import { makeStore, seedSignedIn } from '@rv-checklist/web-data-access';
+import { api, makeStore, seedSignedIn } from '@rv-checklist/web-data-access';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { RunDetailView } from './run-detail-view';
@@ -31,8 +31,19 @@ const run: Run = {
   ],
 };
 
-function renderView(initialRun: Run = run): void {
+// Every unsubscribe on unmount arms RTK Query's 60s keepUnusedDataFor
+// eviction timer; resetting each store in afterEach clears them so in-band
+// Jest can exit.
+const stores: ReturnType<typeof makeStore>[] = [];
+
+function trackedStore(): ReturnType<typeof makeStore> {
   const store = makeStore();
+  stores.push(store);
+  return store;
+}
+
+function renderView(initialRun: Run = run): void {
+  const store = trackedStore();
   seedSignedIn(store);
   render(
     <Provider store={store}>
@@ -57,6 +68,8 @@ describe('RunDetailView (issue #58)', () => {
   });
 
   afterEach(() => {
+    for (const store of stores) store.dispatch(api.util.resetApiState());
+    stores.length = 0;
     fetchSpy.mockRestore();
     localStorage.clear();
     mockPush.mockClear();

@@ -5,10 +5,21 @@ import type {
   Rig,
   Run,
 } from '@rv-checklist/domain';
-import { makeStore } from '@rv-checklist/web-data-access';
+import { api, makeStore } from '@rv-checklist/web-data-access';
 import { render, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { CacheSeeder } from './cache-seeder';
+
+// Every unsubscribe on unmount arms RTK Query's 60s keepUnusedDataFor
+// eviction timer; resetting each store in afterEach clears them so in-band
+// Jest can exit.
+const stores: ReturnType<typeof makeStore>[] = [];
+
+function trackedStore(): ReturnType<typeof makeStore> {
+  const store = makeStore();
+  stores.push(store);
+  return store;
+}
 
 const owner: Owner = {
   id: '550e8400-e29b-41d4-a716-446655440001',
@@ -51,12 +62,14 @@ describe('CacheSeeder', () => {
   });
 
   afterEach(() => {
+    for (const store of stores) store.dispatch(api.util.resetApiState());
+    stores.length = 0;
     fetchSpy.mockRestore();
     localStorage.clear();
   });
 
   it('seeds the me data into the RTK Query cache', async () => {
-    const store = makeStore();
+    const store = trackedStore();
     render(
       <Provider store={store}>
         <CacheSeeder me={owner}>
@@ -73,7 +86,7 @@ describe('CacheSeeder', () => {
   });
 
   it('seeds rigs into the RTK Query cache', async () => {
-    const store = makeStore();
+    const store = trackedStore();
     render(
       <Provider store={store}>
         <CacheSeeder rigs={[rig]}>
@@ -90,7 +103,7 @@ describe('CacheSeeder', () => {
   });
 
   it('seeds tasks keyed by rig id', async () => {
-    const store = makeStore();
+    const store = trackedStore();
     render(
       <Provider store={store}>
         <CacheSeeder tasks={{ rigId: rig.id, data: [task] }}>
@@ -107,7 +120,7 @@ describe('CacheSeeder', () => {
   });
 
   it('seeds log entries keyed by rig id', async () => {
-    const store = makeStore();
+    const store = trackedStore();
     render(
       <Provider store={store}>
         <CacheSeeder logEntries={{ rigId: rig.id, data: [] }}>
@@ -122,7 +135,7 @@ describe('CacheSeeder', () => {
   });
 
   it('renders its children', () => {
-    const store = makeStore();
+    const store = trackedStore();
     render(
       <Provider store={store}>
         <CacheSeeder me={owner}>
@@ -135,7 +148,7 @@ describe('CacheSeeder', () => {
   });
 
   it('dispatches signedIn so downstream auth checks pass', () => {
-    const store = makeStore();
+    const store = trackedStore();
     render(
       <Provider store={store}>
         <CacheSeeder>
@@ -148,7 +161,7 @@ describe('CacheSeeder', () => {
   });
 
   it('seeds checklists keyed by rig id', async () => {
-    const store = makeStore();
+    const store = trackedStore();
     const checklist: Checklist = {
       id: '550e8400-e29b-41d4-a716-446655440020',
       rigId: rig.id,
@@ -172,7 +185,7 @@ describe('CacheSeeder', () => {
   });
 
   it('seeds a single run by id', async () => {
-    const store = makeStore();
+    const store = trackedStore();
     const run: Run = {
       id: '550e8400-e29b-41d4-a716-446655440040',
       checklistId: '550e8400-e29b-41d4-a716-446655440020',
@@ -196,7 +209,7 @@ describe('CacheSeeder', () => {
   });
 
   it('seeds runs by rig', async () => {
-    const store = makeStore();
+    const store = trackedStore();
     const run: Run = {
       id: '550e8400-e29b-41d4-a716-446655440040',
       checklistId: '550e8400-e29b-41d4-a716-446655440020',
