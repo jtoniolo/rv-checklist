@@ -46,19 +46,21 @@ function requestOf(spy: FetchSpy, call: number): Request {
 
 describe('rig endpoints', () => {
   let fetchSpy: FetchSpy;
+  let store: ReturnType<typeof makeStore>;
 
   beforeEach(() => {
     fetchSpy = jest.spyOn(globalThis, 'fetch');
+    store = makeStore();
   });
 
   afterEach(() => {
+    // Clear RTK Query's 60s cache-eviction timers so Jest exits promptly.
+    store.dispatch(api.util.resetApiState());
     fetchSpy.mockRestore();
   });
 
   it('lists rigs from GET /rigs and validates the response', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse([rig]));
-    const store = makeStore();
-
     const result = await store.dispatch(api.endpoints.listRigs.initiate());
 
     expect(result.data).toEqual([rig]);
@@ -67,8 +69,6 @@ describe('rig endpoints', () => {
 
   it('sends credentials: include (cookie transport)', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse([]));
-    const store = makeStore();
-
     await store.dispatch(api.endpoints.listRigs.initiate());
 
     expect(requestOf(fetchSpy, 0).credentials).toBe('include');
@@ -76,8 +76,6 @@ describe('rig endpoints', () => {
 
   it('creates a rig with POST /rigs', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse(rig, 201));
-    const store = makeStore();
-
     const result = await store.dispatch(
       api.endpoints.createRig.initiate(newRig),
     );
@@ -93,8 +91,6 @@ describe('rig endpoints', () => {
       .mockResolvedValueOnce(jsonResponse([])) // initial list
       .mockResolvedValueOnce(jsonResponse(rig, 201)) // create
       .mockResolvedValueOnce(jsonResponse([rig])); // invalidated refetch
-    const store = makeStore();
-
     // An active subscription keeps the list cached, so invalidation refetches it.
     const subscription = store.dispatch(api.endpoints.listRigs.initiate());
     await subscription;
@@ -129,19 +125,21 @@ const newChecklist: CreateChecklist = {
 
 describe('checklist endpoints', () => {
   let fetchSpy: FetchSpy;
+  let store: ReturnType<typeof makeStore>;
 
   beforeEach(() => {
     fetchSpy = jest.spyOn(globalThis, 'fetch');
+    store = makeStore();
   });
 
   afterEach(() => {
+    // Clear RTK Query's 60s cache-eviction timers so Jest exits promptly.
+    store.dispatch(api.util.resetApiState());
     fetchSpy.mockRestore();
   });
 
   it('lists a rig’s checklists from GET /checklists?rigId= and validates the response', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse([checklist]));
-    const store = makeStore();
-
     const result = await store.dispatch(
       api.endpoints.listChecklists.initiate(rig.id),
     );
@@ -154,8 +152,6 @@ describe('checklist endpoints', () => {
 
   it('creates a checklist with POST /checklists', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse(checklist, 201));
-    const store = makeStore();
-
     const result = await store.dispatch(
       api.endpoints.createChecklist.initiate(newChecklist),
     );
@@ -171,8 +167,6 @@ describe('checklist endpoints', () => {
       .mockResolvedValueOnce(jsonResponse([])) // initial list
       .mockResolvedValueOnce(jsonResponse(checklist, 201)) // create
       .mockResolvedValueOnce(jsonResponse([checklist])); // invalidated refetch
-    const store = makeStore();
-
     const subscription = store.dispatch(
       api.endpoints.listChecklists.initiate(rig.id),
     );
@@ -192,8 +186,6 @@ describe('checklist endpoints', () => {
   it('updates a checklist with PATCH /checklists/:id', async () => {
     const renamed = { ...checklist, name: 'Departure' };
     fetchSpy.mockResolvedValueOnce(jsonResponse(renamed));
-    const store = makeStore();
-
     const result = await store.dispatch(
       api.endpoints.updateChecklist.initiate({
         id: checklist.id,
@@ -209,8 +201,6 @@ describe('checklist endpoints', () => {
 
   it('deletes a checklist with DELETE /checklists/:id', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse(undefined, 204));
-    const store = makeStore();
-
     await store.dispatch(api.endpoints.deleteChecklist.initiate(checklist.id));
 
     const request = requestOf(fetchSpy, 0);
@@ -237,19 +227,21 @@ const newRun: CreateRun = { checklistId: checklist.id };
 
 describe('run endpoints', () => {
   let fetchSpy: FetchSpy;
+  let store: ReturnType<typeof makeStore>;
 
   beforeEach(() => {
     fetchSpy = jest.spyOn(globalThis, 'fetch');
+    store = makeStore();
   });
 
   afterEach(() => {
+    // Clear RTK Query's 60s cache-eviction timers so Jest exits promptly.
+    store.dispatch(api.util.resetApiState());
     fetchSpy.mockRestore();
   });
 
   it('lists a checklist’s runs from GET /runs?checklistId= and validates the response', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse([run]));
-    const store = makeStore();
-
     const result = await store.dispatch(
       api.endpoints.listRuns.initiate(checklist.id),
     );
@@ -262,8 +254,6 @@ describe('run endpoints', () => {
 
   it('reads one run from GET /runs/:id', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse(run));
-    const store = makeStore();
-
     const result = await store.dispatch(api.endpoints.getRun.initiate(run.id));
 
     expect(result.data).toEqual(run);
@@ -272,8 +262,6 @@ describe('run endpoints', () => {
 
   it('starts a run with POST /runs', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse(run, 201));
-    const store = makeStore();
-
     const result = await store.dispatch(
       api.endpoints.createRun.initiate(newRun),
     );
@@ -289,8 +277,6 @@ describe('run endpoints', () => {
       .mockResolvedValueOnce(jsonResponse([])) // initial list
       .mockResolvedValueOnce(jsonResponse(run, 201)) // create
       .mockResolvedValueOnce(jsonResponse([run])); // invalidated refetch
-    const store = makeStore();
-
     const subscription = store.dispatch(
       api.endpoints.listRuns.initiate(checklist.id),
     );
@@ -313,8 +299,6 @@ describe('run endpoints', () => {
       steps: run.steps.map((s) => ({ ...s, state: 'complete' as const })),
     };
     fetchSpy.mockResolvedValueOnce(jsonResponse(completed));
-    const store = makeStore();
-
     const result = await store.dispatch(
       api.endpoints.updateRun.initiate({
         id: run.id,
@@ -330,8 +314,6 @@ describe('run endpoints', () => {
 
   it('deletes a run with DELETE /runs/:id', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse(undefined, 204));
-    const store = makeStore();
-
     await store.dispatch(api.endpoints.deleteRun.initiate(run.id));
 
     const request = requestOf(fetchSpy, 0);
