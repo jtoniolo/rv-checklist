@@ -13,6 +13,9 @@ import {
  * removes its equipment. Indexed because the rig-scoped list read
  * (`listByRig`) filters on it. Ownership resolves through the rig, not
  * carried here (ADR-0003 via ADR-0006).
+ *
+ * Optional detail columns (issue #80): all nullable so existing name-only
+ * rows remain valid.
  */
 @Entity({ name: 'equipment_items' })
 export class EquipmentItemEntity {
@@ -25,6 +28,21 @@ export class EquipmentItemEntity {
 
   @Column({ type: 'text' })
   name!: string;
+
+  @Column({ type: 'text', nullable: true })
+  make!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  model!: string | null;
+
+  @Column({ name: 'purchase_date', type: 'date', nullable: true })
+  purchaseDate!: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  notes!: string | null;
+
+  @Column({ name: 'cost_cents', type: 'int', nullable: true })
+  costCents!: number | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
