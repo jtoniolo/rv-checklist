@@ -5,12 +5,16 @@ A personal aid for an RV owner whose failure mode is **object permanence** — w
 ## Language
 
 **Rig**:
-An RV owned by a user, identified by VIN, make, model, year, and a nickname. Everything — checklists, tasks, logs — belongs to a rig, not directly to a user. A user may own several. A rig also carries a current **Distance** — the yardstick a distance-based maintenance interval is measured against. Rig type is not modelled: a rig may be towable or driveable, and nothing here assumes one or the other.
+An RV owned by a user, identified by VIN, make, model, year, and a nickname. Everything — checklists, tasks, logs — belongs to a rig, not directly to a user. A user may own several. A rig also carries a current **Distance** — the yardstick a distance-based maintenance interval is measured against — and an **Equipment** list. Rig type is not modelled: a rig may be towable or driveable, and nothing here assumes one or the other.
 _Avoid_: RV, vehicle, camper
 
 **Distance**:
 How far a rig has travelled — driven or towed — as a running total in **kilometres**, kept current by the owner (a future trip logger may maintain it automatically). It is the yardstick for an **Interval**'s distance limit: a task due "every 20,000 km" compares the rig's current Distance against the Distance recorded when the task was last performed. Trailers have no odometer, so this is an owner-maintained figure, not an instrument reading.
 _Avoid_: mileage, odometer (a towable rig has no odometer), miles (kilometres only)
+
+**Equipment**:
+A notable item on a rig — generator, batteries, solar system, vent fan — whether factory-installed or added later (origin is not modelled; provenance goes in notes when it matters). Purely descriptive inventory: the app computes nothing from it. It exists so a reader of the rig — chiefly an AI agent authoring maintenance — knows what the rig carries. An item has a name and, optionally, make, model, **purchase date** (the warranty anchor; install lag is trivial and not recorded), free-text notes (specs, warranty length, provenance), and a **Cost** — what was paid to buy and install it, blank for factory items. Warranty is not tracked: the purchase date plus a note is enough for a reader to judge warranty status. Maintenance on equipment is an ordinary Maintenance Task; equipment items are not tracked, not linked to tasks, and never due. Removing an item deletes it — no history is kept.
+_Avoid_: upgrade, mod, addition (origin does not matter), accessory, gear (reserved for packed belongings), asset
 
 **Checklist**:
 A reusable, ordered template of steps for a procedure or packing job (e.g. pre-departure, spring opening, a packing list). Identified by its name, with optional free-form tags for organizing (packing lists vary by trip length; there is no fixed category system). It is a template — it can be edited over time, and running it never modifies it.

@@ -7,6 +7,7 @@ import {
 } from '@reduxjs/toolkit/query/react';
 import {
   ChecklistSchema,
+  EquipmentItemSchema,
   LogEntrySchema,
   MaintenanceTaskSchema,
   OwnerSchema,
@@ -14,10 +15,12 @@ import {
   RunSchema,
   type Checklist,
   type CreateChecklist,
+  type CreateEquipmentItem,
   type CreateLogEntry,
   type CreateMaintenanceTask,
   type CreateRig,
   type CreateRun,
+  type EquipmentItem,
   type Id,
   type LogEntry,
   type MaintenanceTask,
@@ -25,6 +28,7 @@ import {
   type Rig,
   type Run,
   type UpdateChecklist,
+  type UpdateEquipmentItem,
   type UpdateLogEntry,
   type UpdateMaintenanceTask,
   type UpdateRig,
@@ -40,6 +44,7 @@ const ChecklistArraySchema = z.array(ChecklistSchema);
 const RunArraySchema = z.array(RunSchema);
 const MaintenanceTaskArraySchema = z.array(MaintenanceTaskSchema);
 const LogEntryArraySchema = z.array(LogEntrySchema);
+const EquipmentItemArraySchema = z.array(EquipmentItemSchema);
 
 /**
  * The raw transport (ADR-0019): sends cookies via `credentials: 'include'`.
@@ -102,7 +107,7 @@ const baseQueryWithReauth: BaseQueryFn<
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Rig', 'Checklist', 'Run', 'Task', 'LogEntry', 'Me'],
+  tagTypes: ['Rig', 'Checklist', 'Run', 'Task', 'LogEntry', 'Equipment', 'Me'],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
       query: () => '/me',
@@ -383,6 +388,55 @@ export const api = createApi({
       query: (id) => ({ url: `/log-entries/${id}`, method: 'DELETE' }),
       invalidatesTags: (_result, _error, id) => [{ type: 'LogEntry', id }],
     }),
+
+    listEquipment: builder.query<EquipmentItem[], Id>({
+      query: (rigId) => `/equipment?rigId=${rigId}`,
+      transformResponse: (raw: unknown) => EquipmentItemArraySchema.parse(raw),
+      providesTags: (result, _error, rigId) =>
+        result
+          ? [
+              ...result.map((e) => ({
+                type: 'Equipment' as const,
+                id: e.id,
+              })),
+              { type: 'Equipment' as const, id: `LIST:${rigId}` },
+            ]
+          : [{ type: 'Equipment' as const, id: `LIST:${rigId}` }],
+    }),
+
+    createEquipment: builder.mutation<EquipmentItem, CreateEquipmentItem>({
+      query: (body) => ({ url: '/equipment', method: 'POST', body }),
+      transformResponse: (raw: unknown) => EquipmentItemSchema.parse(raw),
+      invalidatesTags: (_result, _error, { rigId }) => [
+        { type: 'Equipment', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    updateEquipment: builder.mutation<
+      EquipmentItem,
+      { id: Id; changes: UpdateEquipmentItem }
+    >({
+      query: ({ id, changes }) => ({
+        url: `/equipment/${id}`,
+        method: 'PATCH',
+        body: changes,
+      }),
+      transformResponse: (raw: unknown) => EquipmentItemSchema.parse(raw),
+      invalidatesTags: (result, _error, { id }) => [
+        { type: 'Equipment', id },
+        ...(result
+          ? [{ type: 'Equipment' as const, id: `LIST:${result.rigId}` }]
+          : []),
+      ],
+    }),
+
+    deleteEquipment: builder.mutation<void, { id: Id; rigId: Id }>({
+      query: ({ id }) => ({ url: `/equipment/${id}`, method: 'DELETE' }),
+      invalidatesTags: (_result, _error, { id, rigId }) => [
+        { type: 'Equipment', id },
+        { type: 'Equipment', id: `LIST:${rigId}` },
+      ],
+    }),
   }),
 });
 
@@ -413,4 +467,8 @@ export const {
   useCreateLogEntryMutation,
   useUpdateLogEntryMutation,
   useDeleteLogEntryMutation,
+  useListEquipmentQuery,
+  useCreateEquipmentMutation,
+  useUpdateEquipmentMutation,
+  useDeleteEquipmentMutation,
 } = api;

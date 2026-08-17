@@ -8,4 +8,5 @@ export * from './lib/run.js';
 export * from './lib/maintenance-task.js';
 export * from './lib/due-status.js';
 export * from './lib/log-entry.js';
+export * from './lib/equipment.js';
 export * from './lib/ports.js';

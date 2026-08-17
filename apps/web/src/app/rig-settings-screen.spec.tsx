@@ -1,4 +1,4 @@
-import type { Rig } from '@rv-checklist/domain';
+import type { EquipmentItem, Rig } from '@rv-checklist/domain';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RigSettingsScreen } from './rig-settings-screen';
 import { StoreProvider } from './store-provider';
@@ -30,7 +30,7 @@ jest.mock('next/navigation', () => ({
 /**
  * The rig settings screen (issue #62): the "Rig" nav destination. Edits the
  * active rig in place with the shared RigForm and links to the rig manager
- * for adding/removing rigs.
+ * for adding/removing rigs. Equipment section added in issue #79.
  */
 
 const rig: Rig = {
@@ -41,6 +41,19 @@ const rig: Rig = {
   distanceKm: 42_000,
 };
 
+const equipment: EquipmentItem[] = [
+  {
+    id: '550e8400-e29b-41d4-a716-446655440020',
+    rigId: rig.id,
+    name: 'Onan generator',
+  },
+  {
+    id: '550e8400-e29b-41d4-a716-446655440021',
+    rigId: rig.id,
+    name: 'Solar panel',
+  },
+];
+
 function jsonResponse(data: unknown): Response {
   return Response.json(data, {
     status: 200,
@@ -49,6 +62,7 @@ function jsonResponse(data: unknown): Response {
 }
 
 const patched: Request[] = [];
+const postedEquipment: Request[] = [];
 
 function fakeApi(request: Request): Response {
   const url = new URL(request.url);
@@ -58,6 +72,24 @@ function fakeApi(request: Request): Response {
   if (route === `PATCH /rigs/${rig.id}`) {
     patched.push(request);
     return jsonResponse(rig);
+  }
+  if (route === 'GET /equipment' && url.searchParams.get('rigId') === rig.id) {
+    return jsonResponse(equipment);
+  }
+  if (route === 'POST /equipment') {
+    postedEquipment.push(request);
+    return jsonResponse({
+      id: '550e8400-e29b-41d4-a716-446655440099',
+      rigId: rig.id,
+      name: 'New item',
+    });
+  }
+  if (request.method === 'DELETE' && url.pathname.startsWith('/equipment/')) {
+    // eslint-disable-next-line unicorn/no-null
+    return new Response(null, { status: 204 });
+  }
+  if (request.method === 'PATCH' && url.pathname.startsWith('/equipment/')) {
+    return jsonResponse({ ...equipment[0], name: 'Renamed' });
   }
 
   throw new Error(`Unstubbed request: ${route}${url.search}`);
@@ -77,6 +109,7 @@ describe('RigSettingsScreen (issue #62)', () => {
 
   beforeEach(() => {
     patched.length = 0;
+    postedEquipment.length = 0;
     fetchSpy = jest
       .spyOn(globalThis, 'fetch')
       .mockImplementation((input) =>
@@ -140,5 +173,21 @@ describe('RigSettingsScreen (issue #62)', () => {
 
     const link = screen.getByRole('link', { name: /Manage all rigs/ });
     expect(link.getAttribute('href')).toBe('/rigs');
+  });
+
+  it('shows the equipment section with items', async () => {
+    renderScreen();
+
+    expect(await screen.findByText('Equipment')).toBeTruthy();
+    expect(await screen.findByText('Onan generator')).toBeTruthy();
+    expect(screen.getByText('Solar panel')).toBeTruthy();
+  });
+
+  it('has an add-equipment form', async () => {
+    renderScreen();
+
+    const form = await screen.findByRole('form', { name: 'Add equipment' });
+    expect(form).toBeTruthy();
+    expect(screen.getByPlaceholderText('Equipment name')).toBeTruthy();
   });
 });
