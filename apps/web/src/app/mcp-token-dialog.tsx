@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from '@rv-checklist/web-ui';
 import { CheckIcon, CopyIcon } from 'lucide-react';
-import { useCallback, useState, type JSX } from 'react';
+import { useCallback, useEffect, useState, type JSX } from 'react';
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return 'Never';
@@ -36,7 +36,7 @@ export function McpTokenDialog({
   const { data: status, isLoading } = useMcpTokenStatusQuery(undefined, {
     skip: !isOpen,
   });
-  const [generate] = useGenerateMcpTokenMutation();
+  const [generate, { reset: resetGenerate }] = useGenerateMcpTokenMutation();
   const [revoke] = useRevokeMcpTokenMutation();
 
   const [rawToken, setRawToken] = useState<string | undefined>(undefined);
@@ -49,11 +49,16 @@ export function McpTokenDialog({
         setRawToken(undefined);
         setCopied(false);
         setConfirmRegenerate(false);
+        resetGenerate();
       }
       onOpenChange(isNext);
     },
-    [onOpenChange],
+    [onOpenChange, resetGenerate],
   );
+
+  useEffect(() => {
+    if (rawToken) resetGenerate();
+  }, [rawToken, resetGenerate]);
 
   const handleGenerate = async (): Promise<void> => {
     const result = await generate().unwrap();
