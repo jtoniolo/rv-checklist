@@ -1,9 +1,9 @@
 # Connecting Claude to the MCP endpoint
 
-The app exposes an MCP (Model Context Protocol) endpoint so Claude can read
-your rigs, checklists, maintenance tasks, runs, and log entries — and author
-checklists and maintenance tasks on your behalf. Runs, log entries, and rig
-edits stay in the UI.
+The app exposes an MCP (Model Context Protocol) endpoint that gives Claude
+access to your rigs, checklists, maintenance tasks, runs, and log entries.
+The read surface covers all five; the write surface is scoped to checklists
+and maintenance tasks. Runs, log entries, and rig edits stay in the UI.
 
 ## Endpoint
 
@@ -22,11 +22,10 @@ the old token is revoked and you must paste the new one into every client.
 
 ## Scope
 
-The agent can **read** everything: rigs, checklists, steps, runs,
-maintenance tasks, and log entries. It can **write** checklists and
-maintenance tasks only — creating, updating, and deleting them. It cannot
-start or modify runs, record log entries, or edit rigs. Distance is always
-in kilometres.
+The **read** surface covers rigs, checklists, steps, runs, maintenance
+tasks, and log entries. The **write** surface is scoped to checklists and
+maintenance tasks only — creating, updating, and deleting them. Runs, log
+entries, and rigs are read-only. Distance is always in kilometres.
 
 ## Claude Code
 
