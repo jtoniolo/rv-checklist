@@ -10,6 +10,8 @@ import {
   EquipmentItemSchema,
   LogEntrySchema,
   MaintenanceTaskSchema,
+  McpTokenCreatedSchema,
+  McpTokenStatusSchema,
   OwnerSchema,
   RigSchema,
   RunSchema,
@@ -24,6 +26,8 @@ import {
   type Id,
   type LogEntry,
   type MaintenanceTask,
+  type McpTokenCreated,
+  type McpTokenStatus,
   type Owner,
   type Rig,
   type Run,
@@ -107,7 +111,16 @@ const baseQueryWithReauth: BaseQueryFn<
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Rig', 'Checklist', 'Run', 'Task', 'LogEntry', 'Equipment', 'Me'],
+  tagTypes: [
+    'Rig',
+    'Checklist',
+    'Run',
+    'Task',
+    'LogEntry',
+    'Equipment',
+    'Me',
+    'McpToken',
+  ],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
       query: () => '/me',
@@ -437,6 +450,23 @@ export const api = createApi({
         { type: 'Equipment', id: `LIST:${rigId}` },
       ],
     }),
+
+    mcpTokenStatus: builder.query<McpTokenStatus, void>({
+      query: () => '/mcp-token',
+      transformResponse: (raw: unknown) => McpTokenStatusSchema.parse(raw),
+      providesTags: ['McpToken'],
+    }),
+
+    generateMcpToken: builder.mutation<McpTokenCreated, void>({
+      query: () => ({ url: '/mcp-token', method: 'POST' }),
+      transformResponse: (raw: unknown) => McpTokenCreatedSchema.parse(raw),
+      invalidatesTags: ['McpToken'],
+    }),
+
+    revokeMcpToken: builder.mutation<void, void>({
+      query: () => ({ url: '/mcp-token', method: 'DELETE' }),
+      invalidatesTags: ['McpToken'],
+    }),
   }),
 });
 
@@ -471,4 +501,7 @@ export const {
   useCreateEquipmentMutation,
   useUpdateEquipmentMutation,
   useDeleteEquipmentMutation,
+  useMcpTokenStatusQuery,
+  useGenerateMcpTokenMutation,
+  useRevokeMcpTokenMutation,
 } = api;
