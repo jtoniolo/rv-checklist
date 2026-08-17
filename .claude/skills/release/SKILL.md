@@ -12,7 +12,7 @@ Cutting that tag by hand is a sequence that is easy to do half of: bump without 
 
 This skill runs the sequence whole, or fails **preflight** and touches nothing.
 
-Invoked as `/release patch`, `/release minor`, `/release major`, or `/release 1.4.0`.
+Invoked as `/release patch`, `/release minor`, `/release major`, or `/release 1.4.0`. No argument means `patch`.
 
 ## 1. Resolve the target version
 
@@ -22,7 +22,7 @@ Invoked as `/release patch`, `/release minor`, `/release major`, or `/release 1.
 awk '/^version:/ {print $2}' charts/api/Chart.yaml | tr -d '"'
 ```
 
-- `patch` — bump Z
+- `patch` (or no argument) — bump Z
 - `minor` — bump Y, Z to `0`
 - `major` — bump X, Y and Z to `0`
 - `X.Y.Z` — that version verbatim, if it matches `^[0-9]+\.[0-9]+\.[0-9]+$` and does not move backwards from the current one
