@@ -87,8 +87,13 @@
     ]
   },
   "dependencies": {
+    "@modelcontextprotocol/core": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.4",
+    "@nestjs/microservices": "^11.0.0",
+    "@rekog/mcp-nest": "2.0.1",
     "@rv-checklist/api-data-access": "workspace:*",
     "cookie-parser": "^1.4.7",
     "@rv-checklist/domain": "workspace:*",
