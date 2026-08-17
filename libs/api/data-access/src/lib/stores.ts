@@ -61,3 +61,29 @@ export abstract class RefreshTokenStore {
   /** Revoke a token, recording the token that replaced it (rotation), if any. */
   abstract revoke(id: string, replacedById: string | undefined): Promise<void>;
 }
+
+/** A persisted MCP token (ADR-0022), minus the secret (only its hash is stored). */
+export interface McpTokenRecord {
+  readonly id: string;
+  readonly userId: string;
+  readonly tokenHash: string;
+  readonly createdAt: Date;
+  readonly revokedAt: Date | undefined;
+  readonly lastUsedAt: Date | undefined;
+}
+
+export abstract class McpTokenStore {
+  /** Atomically revoke all active tokens for the user and create a new one. */
+  abstract replaceForUser(
+    userId: string,
+    tokenHash: string,
+  ): Promise<McpTokenRecord>;
+  abstract findActiveByHash(
+    tokenHash: string,
+  ): Promise<McpTokenRecord | undefined>;
+  abstract findActiveByUser(
+    userId: string,
+  ): Promise<McpTokenRecord | undefined>;
+  abstract revokeForUser(userId: string): Promise<void>;
+  abstract updateLastUsed(id: string): Promise<void>;
+}
