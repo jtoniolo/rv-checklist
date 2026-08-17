@@ -107,7 +107,16 @@ const baseQueryWithReauth: BaseQueryFn<
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: baseQueryWithReauth,
-  tagTypes: ['Rig', 'Checklist', 'Run', 'Task', 'LogEntry', 'Equipment', 'Me'],
+  tagTypes: [
+    'Rig',
+    'Checklist',
+    'Run',
+    'Task',
+    'LogEntry',
+    'Equipment',
+    'Me',
+    'McpToken',
+  ],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
       query: () => '/me',
@@ -437,6 +446,24 @@ export const api = createApi({
         { type: 'Equipment', id: `LIST:${rigId}` },
       ],
     }),
+
+    mcpTokenStatus: builder.query<
+      { active: boolean; createdAt?: string; lastUsedAt?: string },
+      void
+    >({
+      query: () => '/mcp-token',
+      providesTags: ['McpToken'],
+    }),
+
+    generateMcpToken: builder.mutation<{ token: string }, void>({
+      query: () => ({ url: '/mcp-token', method: 'POST' }),
+      invalidatesTags: ['McpToken'],
+    }),
+
+    revokeMcpToken: builder.mutation<void, void>({
+      query: () => ({ url: '/mcp-token', method: 'DELETE' }),
+      invalidatesTags: ['McpToken'],
+    }),
   }),
 });
 
@@ -471,4 +498,7 @@ export const {
   useCreateEquipmentMutation,
   useUpdateEquipmentMutation,
   useDeleteEquipmentMutation,
+  useMcpTokenStatusQuery,
+  useGenerateMcpTokenMutation,
+  useRevokeMcpTokenMutation,
 } = api;
