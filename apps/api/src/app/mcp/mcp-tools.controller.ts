@@ -67,7 +67,7 @@ export class McpToolsController {
   @Tool({
     name: 'list_checklists',
     description:
-      'List all checklists on a rig. A checklist is a reusable ordered template of steps.',
+      'List all checklists on a rig. A checklist is a reusable ordered sequence of steps.',
     parameters: z.object({ rigId: IdSchema }),
     annotations: { readOnlyHint: true },
   })
