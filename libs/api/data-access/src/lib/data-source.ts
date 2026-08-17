@@ -2,6 +2,7 @@ import { type DataSourceOptions } from 'typeorm';
 import { ChecklistEntity } from './entities/checklist.entity.js';
 import { LogEntryEntity } from './entities/log-entry.entity.js';
 import { MaintenanceTaskEntity } from './entities/maintenance-task.entity.js';
+import { McpTokenEntity } from './entities/mcp-token.entity.js';
 import { RefreshTokenEntity } from './entities/refresh-token.entity.js';
 import { RigEntity } from './entities/rig.entity.js';
 import { RunEntity } from './entities/run.entity.js';
@@ -22,6 +23,7 @@ import { TaskLastPerformed1721001200000 } from './migrations/1721001200000-task-
 import { IntervalCombinedLimits1721001300000 } from './migrations/1721001300000-interval-combined-limits.js';
 import { LogEntryCostCents1721001400000 } from './migrations/1721001400000-log-entry-cost-cents.js';
 import { TaskTags1721001500000 } from './migrations/1721001500000-task-tags.js';
+import { McpTokens1721001600000 } from './migrations/1721001600000-mcp-tokens.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -40,6 +42,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
     entities: [
       UserEntity,
       RefreshTokenEntity,
+      McpTokenEntity,
       RigEntity,
       ChecklistEntity,
       RunEntity,
@@ -63,6 +66,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       IntervalCombinedLimits1721001300000,
       LogEntryCostCents1721001400000,
       TaskTags1721001500000,
+      McpTokens1721001600000,
     ],
     migrationsRun: true,
     synchronize: false,
