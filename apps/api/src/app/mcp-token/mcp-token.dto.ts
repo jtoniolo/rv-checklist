@@ -1,16 +1,15 @@
+import { McpTokenCreatedSchema } from '@rv-checklist/domain';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-const McpTokenCreatedSchema = z.object({
-  token: z.string(),
-});
+export class McpTokenCreatedDto extends createZodDto(McpTokenCreatedSchema) {}
 
-const McpTokenStatusSchema = z.object({
+const McpTokenStatusInternalSchema = z.object({
   active: z.boolean(),
   createdAt: z.coerce.date().optional(),
   lastUsedAt: z.coerce.date().optional(),
 });
 
-export class McpTokenCreatedDto extends createZodDto(McpTokenCreatedSchema) {}
-
-export class McpTokenStatusDto extends createZodDto(McpTokenStatusSchema) {}
+export class McpTokenStatusDto extends createZodDto(
+  McpTokenStatusInternalSchema,
+) {}
