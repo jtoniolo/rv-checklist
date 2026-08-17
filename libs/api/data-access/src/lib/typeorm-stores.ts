@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
+import { McpTokenEntity } from './entities/mcp-token.entity.js';
 import { RefreshTokenEntity } from './entities/refresh-token.entity.js';
 import { UserEntity } from './entities/user.entity.js';
 import {
+  McpTokenStore,
   RefreshTokenStore,
   UserStore,
   type CreateRefreshTokenInput,
+  type McpTokenRecord,
   type RefreshTokenRecord,
   type UpsertUserInput,
   type UpsertUserResult,
@@ -96,5 +99,69 @@ export class TypeOrmRefreshTokenStore extends RefreshTokenStore {
 
   async revoke(id: string, replacedById: string | undefined): Promise<void> {
     await this.repo.update(id, { revokedAt: new Date(), replacedById });
+  }
+}
+
+function toMcpTokenRecord(entity: McpTokenEntity): McpTokenRecord {
+  return {
+    id: entity.id,
+    userId: entity.userId,
+    tokenHash: entity.tokenHash,
+    createdAt: entity.createdAt,
+    revokedAt: entity.revokedAt ?? undefined,
+    lastUsedAt: entity.lastUsedAt ?? undefined,
+  };
+}
+
+/** TypeORM-backed {@link McpTokenStore}. */
+@Injectable()
+export class TypeOrmMcpTokenStore extends McpTokenStore {
+  constructor(
+    @InjectRepository(McpTokenEntity)
+    private readonly repo: Repository<McpTokenEntity>,
+  ) {
+    super();
+  }
+
+  async replaceForUser(
+    userId: string,
+    tokenHash: string,
+  ): Promise<McpTokenRecord> {
+    return this.repo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(McpTokenEntity);
+      await repo.update(
+        { userId, revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+      const saved = await repo.save(repo.create({ userId, tokenHash }));
+      return toMcpTokenRecord(saved);
+    });
+  }
+
+  async findActiveByHash(
+    tokenHash: string,
+  ): Promise<McpTokenRecord | undefined> {
+    const found = await this.repo.findOne({
+      where: { tokenHash, revokedAt: IsNull() },
+    });
+    return found ? toMcpTokenRecord(found) : undefined;
+  }
+
+  async findActiveByUser(userId: string): Promise<McpTokenRecord | undefined> {
+    const found = await this.repo.findOne({
+      where: { userId, revokedAt: IsNull() },
+    });
+    return found ? toMcpTokenRecord(found) : undefined;
+  }
+
+  async revokeForUser(userId: string): Promise<void> {
+    await this.repo.update(
+      { userId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
+  }
+
+  async updateLastUsed(id: string): Promise<void> {
+    await this.repo.update(id, { lastUsedAt: new Date() });
   }
 }
