@@ -10,6 +10,7 @@ import {
 } from '@rekog/mcp-nest';
 import {
   ChecklistRepository,
+  EquipmentItemRepository,
   LogEntryRepository,
   MaintenanceTaskRepository,
   McpTokenStore,
@@ -23,6 +24,7 @@ import {
 } from '@rv-checklist/api-data-access';
 import {
   InMemoryChecklistRepository,
+  InMemoryEquipmentItemRepository,
   InMemoryLogEntryRepository,
   InMemoryMaintenanceTaskRepository,
   InMemoryRigRepository,
@@ -192,6 +194,7 @@ const CHECKLIST_ID = 'bbbbbbbb-0000-4000-8000-000000000001';
 const RUN_ID = 'cccccccc-0000-4000-8000-000000000001';
 const TASK_ID = 'dddddddd-0000-4000-8000-000000000001';
 const LOG_ENTRY_ID = 'eeeeeeee-0000-4000-8000-000000000001';
+const EQUIPMENT_ID = 'ffffffff-0000-4000-8000-000000000001';
 
 void RUN_ID;
 void CHECKLIST_ID;
@@ -202,6 +205,7 @@ async function seedData(repos: {
   runs: InMemoryRunRepository;
   tasks: InMemoryMaintenanceTaskRepository;
   logEntries: InMemoryLogEntryRepository;
+  equipmentItems: InMemoryEquipmentItemRepository;
 }): Promise<void> {
   await repos.rigs.save({
     id: RIG_ID,
@@ -250,6 +254,14 @@ async function seedData(repos: {
     performedOn: '2026-06-15',
     fields: [],
   });
+
+  await repos.equipmentItems.save({
+    id: EQUIPMENT_ID,
+    rigId: RIG_ID,
+    name: 'Surge protector',
+    purchaseDate: '2025-03-15',
+    costCents: 8999,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +289,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
   const runRepo = new InMemoryRunRepository();
   const taskRepo = new InMemoryMaintenanceTaskRepository();
   const logEntryRepo = new InMemoryLogEntryRepository();
+  const equipmentItemRepo = new InMemoryEquipmentItemRepository();
 
   beforeAll(async () => {
     await seedData({
@@ -285,6 +298,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       runs: runRepo,
       tasks: taskRepo,
       logEntries: logEntryRepo,
+      equipmentItems: equipmentItemRepo,
     });
 
     const module = await Test.createTestingModule({
@@ -311,6 +325,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
         MaintenanceTaskService,
         LogEntryService,
         { provide: RigRepository, useValue: rigRepo },
+        { provide: EquipmentItemRepository, useValue: equipmentItemRepo },
         { provide: ChecklistRepository, useValue: checklistRepo },
         { provide: RunRepository, useValue: runRepo },
         { provide: MaintenanceTaskRepository, useValue: taskRepo },
@@ -470,7 +485,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       expect(rigs[0]).toMatchObject({ nickname: 'Bigfoot' });
     });
 
-    it('get_rig returns a single rig', async () => {
+    it('get_rig returns a single rig with its equipment', async () => {
       const res = await mcpPost(
         jsonrpc(
           'tools/call',
@@ -482,9 +497,16 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       const rig = parseToolText(res.body as JsonRpcResponse) as {
         id: string;
         distanceKm: number;
+        equipment: { id: string; name: string; costCents: number }[];
       };
       expect(rig.id).toBe(RIG_ID);
       expect(rig.distanceKm).toBe(45_000);
+      expect(rig.equipment).toHaveLength(1);
+      expect(rig.equipment[0]).toMatchObject({
+        id: EQUIPMENT_ID,
+        name: 'Surge protector',
+        costCents: 8999,
+      });
     });
 
     it('list_maintenance_tasks enriches with dueStatus', async () => {

@@ -1,6 +1,9 @@
 import { NotFoundException } from '@nestjs/common';
 import type { CreateRig } from '@rv-checklist/domain';
-import { InMemoryRigRepository } from '@rv-checklist/domain/testing';
+import {
+  InMemoryEquipmentItemRepository,
+  InMemoryRigRepository,
+} from '@rv-checklist/domain/testing';
 import { RigService } from './rig.service.js';
 
 const alice = '550e8400-e29b-41d4-a716-446655440001';
@@ -14,9 +17,14 @@ const airstream: CreateRig = {
   nickname: 'Silver Bullet',
 };
 
-function makeService(): { service: RigService; repo: InMemoryRigRepository } {
+function makeService(): {
+  service: RigService;
+  repo: InMemoryRigRepository;
+  equipmentRepo: InMemoryEquipmentItemRepository;
+} {
   const repo = new InMemoryRigRepository();
-  return { service: new RigService(repo), repo };
+  const equipmentRepo = new InMemoryEquipmentItemRepository();
+  return { service: new RigService(repo, equipmentRepo), repo, equipmentRepo };
 }
 
 describe('RigService', () => {
@@ -60,7 +68,10 @@ describe('RigService', () => {
       const { service } = makeService();
       const created = await service.create(alice, airstream);
 
-      await expect(service.get(alice, created.id)).resolves.toEqual(created);
+      await expect(service.get(alice, created.id)).resolves.toEqual({
+        ...created,
+        equipment: [],
+      });
     });
 
     it('throws NotFound for an id that does not exist', async () => {
@@ -69,6 +80,35 @@ describe('RigService', () => {
       await expect(service.get(alice, bob)).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it('includes the rig’s equipment items', async () => {
+      const { service, equipmentRepo } = makeService();
+      const created = await service.create(alice, airstream);
+
+      await equipmentRepo.save({
+        id: '550e8400-e29b-41d4-a716-446655440010',
+        rigId: created.id,
+        name: 'Surge protector',
+        costCents: 8999,
+      });
+
+      const result = await service.get(alice, created.id);
+
+      expect(result.equipment).toHaveLength(1);
+      expect(result.equipment[0]).toMatchObject({
+        name: 'Surge protector',
+        costCents: 8999,
+      });
+    });
+
+    it('returns an empty equipment array when the rig has none', async () => {
+      const { service } = makeService();
+      const created = await service.create(alice, airstream);
+
+      const result = await service.get(alice, created.id);
+
+      expect(result.equipment).toEqual([]);
     });
   });
 
@@ -80,7 +120,10 @@ describe('RigService', () => {
       const updated = await service.update(alice, created.id, { year: 2022 });
 
       expect(updated).toEqual({ ...created, year: 2022 });
-      await expect(service.get(alice, created.id)).resolves.toEqual(updated);
+      await expect(service.get(alice, created.id)).resolves.toEqual({
+        ...updated,
+        equipment: [],
+      });
     });
 
     // The rig's current Distance (issue #32) is set and cleared by the owner.
@@ -158,13 +201,19 @@ describe('RigService', () => {
       await expect(
         service.update(bob, aliceRig.id, { nickname: 'Hijacked' }),
       ).rejects.toBeInstanceOf(NotFoundException);
-      await expect(service.get(alice, aliceRig.id)).resolves.toEqual(aliceRig);
+      await expect(service.get(alice, aliceRig.id)).resolves.toEqual({
+        ...aliceRig,
+        equipment: [],
+      });
 
       // Bob cannot delete it, and Alice's rig survives.
       await expect(service.remove(bob, aliceRig.id)).rejects.toBeInstanceOf(
         NotFoundException,
       );
-      await expect(service.get(alice, aliceRig.id)).resolves.toEqual(aliceRig);
+      await expect(service.get(alice, aliceRig.id)).resolves.toEqual({
+        ...aliceRig,
+        equipment: [],
+      });
     });
   });
 });

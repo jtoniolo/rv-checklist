@@ -1,9 +1,15 @@
 import { type ExecutionContext, type INestApplication } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { RigRepository } from '@rv-checklist/api-data-access';
+import {
+  EquipmentItemRepository,
+  RigRepository,
+} from '@rv-checklist/api-data-access';
 import type { Owner } from '@rv-checklist/domain';
-import { InMemoryRigRepository } from '@rv-checklist/domain/testing';
+import {
+  InMemoryEquipmentItemRepository,
+  InMemoryRigRepository,
+} from '@rv-checklist/domain/testing';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { JwtAuthGuard } from '../auth/guards.js';
 import { RigController } from './rig.controller.js';
@@ -32,6 +38,10 @@ describe('RigController over HTTP (through the Zod serializer)', () => {
       providers: [
         RigService,
         { provide: RigRepository, useValue: new InMemoryRigRepository() },
+        {
+          provide: EquipmentItemRepository,
+          useValue: new InMemoryEquipmentItemRepository(),
+        },
         { provide: APP_PIPE, useClass: ZodValidationPipe },
         { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
       ],
