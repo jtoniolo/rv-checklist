@@ -1,5 +1,6 @@
 import type { Checklist } from './checklist.js';
 import type { Id } from './common.js';
+import type { EquipmentItem } from './equipment.js';
 import type { LogEntry } from './log-entry.js';
 import type { MaintenanceTask } from './maintenance-task.js';
 import type { Rig } from './rig.js';
@@ -47,4 +48,9 @@ export interface MaintenanceTaskRepository extends Repository<MaintenanceTask> {
 export interface LogEntryRepository extends Repository<LogEntry> {
   listByRig(rigId: Id): Promise<LogEntry[]>;
   listByTask(taskId: Id): Promise<LogEntry[]>;
+}
+
+/** Equipment items — descriptive inventory on a rig (issue #79). */
+export interface EquipmentItemRepository extends Repository<EquipmentItem> {
+  listByRig(rigId: Id): Promise<EquipmentItem[]>;
 }
