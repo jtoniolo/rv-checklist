@@ -14,6 +14,7 @@ import {
   useUpdateEquipmentMutation,
   useUpdateRigMutation,
 } from '@rv-checklist/web-data-access';
+import { Button, Input, Label, Textarea } from '@rv-checklist/web-ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { type JSX, useRef, useState } from 'react';
@@ -131,11 +132,11 @@ function EquipmentSection({ rigId }: { readonly rigId: Id }): JSX.Element {
       </h3>
 
       {isLoading ? (
-        <p className="text-brand-muted">Loading equipment&hellip;</p>
+        <p className="text-muted-foreground">Loading equipment&hellip;</p>
       ) : undefined}
 
       {items?.length === 0 ? (
-        <p className="text-brand-muted">No equipment added yet.</p>
+        <p className="text-muted-foreground">No equipment added yet.</p>
       ) : undefined}
 
       {items && items.length > 0 ? (
@@ -164,7 +165,7 @@ function EquipmentSection({ rigId }: { readonly rigId: Id }): JSX.Element {
           void handleAdd();
         }}
       >
-        <input
+        <Input
           ref={inputRef}
           type="text"
           placeholder="Equipment name"
@@ -172,22 +173,18 @@ function EquipmentSection({ rigId }: { readonly rigId: Id }): JSX.Element {
           onChange={(e) => {
             setNewName(e.target.value);
           }}
-          className="dark:bg-surface-elevated flex-1 rounded-lg border border-hairline bg-surface px-3 py-2 text-sm text-ink placeholder:text-brand-muted focus:border-brand focus:outline-none dark:text-ink-inverted"
+          className="flex-1"
         />
-        <button
-          type="submit"
-          disabled={!newName.trim()}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 dark:bg-brand-muted"
-        >
+        <Button type="submit" disabled={!newName.trim()}>
           Add
-        </button>
+        </Button>
       </form>
     </section>
   );
 }
 
-const fieldInputClass =
-  'dark:bg-surface-elevated w-full rounded-lg border border-hairline bg-surface px-3 py-2 text-sm text-ink placeholder:text-brand-muted focus:border-brand focus:outline-none dark:text-ink-inverted';
+const fieldLabelClass =
+  'flex-col items-start gap-1 font-normal text-muted-foreground';
 
 function EquipmentRow({
   item,
@@ -282,24 +279,24 @@ function EquipmentRow({
 
   return (
     <li
-      className="dark:bg-surface-elevated rounded-lg border border-hairline bg-surface"
+      className="rounded-lg border border-hairline"
       data-equipment-id={item.id}
       data-rig-id={rigId}
     >
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex flex-col">
-          <span className="text-sm font-medium text-ink dark:text-ink-inverted">
-            {item.name}
-          </span>
+          <span className="text-sm font-medium">{item.name}</span>
           {summaryParts.length > 0 ? (
-            <span className="text-xs text-brand-muted">
+            <span className="text-xs text-muted-foreground">
               {summaryParts.join(' · ')}
             </span>
           ) : undefined}
         </div>
         <div className="flex gap-1">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={() => {
               if (expanded) {
                 handleCancel();
@@ -308,87 +305,79 @@ function EquipmentRow({
                 setExpanded(true);
               }
             }}
-            className="rounded px-2 py-1 text-xs text-brand-muted hover:text-brand dark:hover:text-ink-inverted"
+            className="text-muted-foreground"
             aria-label={expanded ? `Close ${item.name}` : `Edit ${item.name}`}
           >
             {expanded ? 'Close' : 'Edit'}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={onRemove}
-            className="rounded px-2 py-1 text-xs text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            className="text-destructive hover:text-destructive"
             aria-label={`Remove ${item.name}`}
           >
             Remove
-          </button>
+          </Button>
         </div>
       </div>
 
       {expanded ? (
         <div className="flex flex-col gap-3 border-t border-hairline px-3 py-3">
           {error ? (
-            <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+            <p className="text-sm text-destructive" role="alert">
               {error}
             </p>
           ) : undefined}
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-brand-muted">Name</span>
-            <input
+          <Label className={fieldLabelClass}>
+            Name
+            <Input
               type="text"
               value={editName}
               onChange={(e) => {
                 setEditName(e.target.value);
               }}
-              className={fieldInputClass}
             />
-          </label>
+          </Label>
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-brand-muted">Make</span>
-              <input
+            <Label className={fieldLabelClass}>
+              Make
+              <Input
                 type="text"
                 value={editMake}
                 onChange={(e) => {
                   setEditMake(e.target.value);
                 }}
                 placeholder="e.g. Onan"
-                className={fieldInputClass}
               />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-brand-muted">
-                Model
-              </span>
-              <input
+            </Label>
+            <Label className={fieldLabelClass}>
+              Model
+              <Input
                 type="text"
                 value={editModel}
                 onChange={(e) => {
                   setEditModel(e.target.value);
                 }}
                 placeholder="e.g. QG 5500"
-                className={fieldInputClass}
               />
-            </label>
+            </Label>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-brand-muted">
-                Purchase date
-              </span>
-              <input
+            <Label className={fieldLabelClass}>
+              Purchase date
+              <Input
                 type="date"
                 value={editPurchaseDate}
                 onChange={(e) => {
                   setEditPurchaseDate(e.target.value);
                 }}
-                className={fieldInputClass}
               />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-brand-muted">
-                Cost ($)
-              </span>
-              <input
+            </Label>
+            <Label className={fieldLabelClass}>
+              Cost ($)
+              <Input
                 type="text"
                 inputMode="decimal"
                 value={editCost}
@@ -396,37 +385,27 @@ function EquipmentRow({
                   setEditCost(e.target.value);
                 }}
                 placeholder="0.00"
-                className={fieldInputClass}
               />
-            </label>
+            </Label>
           </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-brand-muted">Notes</span>
-            <textarea
+          <Label className={fieldLabelClass}>
+            Notes
+            <Textarea
               value={editNotes}
               onChange={(e) => {
                 setEditNotes(e.target.value);
               }}
               rows={2}
               placeholder="Specs, warranty length, provenance..."
-              className={fieldInputClass}
             />
-          </label>
+          </Label>
           <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleCancel}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-brand-muted hover:text-brand dark:hover:text-ink-inverted"
-            >
+            <Button type="button" variant="ghost" onClick={handleCancel}>
               Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:opacity-90 dark:bg-brand-muted"
-            >
+            </Button>
+            <Button type="button" onClick={handleSave}>
               Save
-            </button>
+            </Button>
           </div>
         </div>
       ) : undefined}
