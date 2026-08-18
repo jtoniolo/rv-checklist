@@ -15,8 +15,8 @@ import { TokenService } from './token.service.js';
 const MCP_PREFIX = 'rvmcp_';
 
 interface OAuthModuleOptions {
-  serverUrl?: string;
-  resource?: string;
+  serverUrl: string;
+  resource: string;
 }
 
 /**
@@ -101,14 +101,19 @@ export class McpAuthGuard implements CanActivate {
     const grantId = (payload as JwtPayload & { grant_id?: string }).grant_id;
     if (grantId) {
       const grantService = this.resolveByClass(OAuthGrantService);
-      if (grantService) {
-        const isActive = await grantService.isGrantActive(grantId);
-        if (!isActive) {
-          this.attachChallenge(context, options);
-          throw new UnauthorizedException();
-        }
-        void grantService.touchLastUsed(grantId);
+      if (!grantService) {
+        this.logger.warn(
+          'OAuthGrantService not available; rejecting JWT with grant_id',
+        );
+        this.attachChallenge(context, options);
+        throw new UnauthorizedException();
       }
+      const isActive = await grantService.isGrantActive(grantId);
+      if (!isActive) {
+        this.attachChallenge(context, options);
+        throw new UnauthorizedException();
+      }
+      void grantService.touchLastUsed(grantId);
     }
 
     const owner = await this.resolveOwnerFromJwt(
@@ -156,8 +161,8 @@ export class McpAuthGuard implements CanActivate {
     return {
       id: user.id,
       email: user.email,
-      name: user.name,
-      picture: user.picture,
+      ...(user.name !== undefined && { name: user.name }),
+      ...(user.picture !== undefined && { picture: user.picture }),
     };
   }
 

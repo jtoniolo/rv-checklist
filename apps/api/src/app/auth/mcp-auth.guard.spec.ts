@@ -320,6 +320,20 @@ describe('McpAuthGuard -- JWT path', () => {
     );
   });
 
+  it('rejects a JWT with grant_id when OAuthGrantService is unavailable', async () => {
+    const overrides = jwtModuleOverrides();
+    delete overrides['OAuthGrantService'];
+    const guard = buildGuard({
+      userStore: new FakeUserStore(OWNER),
+      moduleRefOverrides: overrides,
+    });
+    const { ctx, res } = makeContext('Bearer eyJ.valid-jwt');
+    await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
+    expect(res.headers['www-authenticate']).toBe(
+      `Bearer resource_metadata="${PRM_URL}"`,
+    );
+  });
+
   it('rejects a JWT whose grant has been revoked', async () => {
     const guard = buildGuard({
       userStore: new FakeUserStore(OWNER),

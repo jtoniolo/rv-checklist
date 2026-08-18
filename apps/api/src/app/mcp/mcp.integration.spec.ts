@@ -167,19 +167,15 @@ class FakeOAuthStore {
   }
 }
 
-class FakeOAuthGrantService extends OAuthGrantService {
+class FakeOAuthGrantService {
   private readonly grants = new Map<string, boolean>([[GRANT_ID, true]]);
   readonly touchCalls: string[] = [];
 
-  constructor() {
-    super(undefined as never);
-  }
-
-  override isGrantActive(grantId: string): Promise<boolean> {
+  isGrantActive(grantId: string): Promise<boolean> {
     return Promise.resolve(this.grants.get(grantId) ?? false);
   }
 
-  override touchLastUsed(grantId: string): Promise<void> {
+  touchLastUsed(grantId: string): Promise<void> {
     this.touchCalls.push(grantId);
     return Promise.resolve();
   }
@@ -432,7 +428,12 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
         },
         {
           provide: JwtTokenService,
-          useFactory: () => new JwtTokenService(OAUTH_OPTIONS),
+          useFactory: () =>
+            new JwtTokenService(
+              OAUTH_OPTIONS as unknown as ConstructorParameters<
+                typeof JwtTokenService
+              >[0],
+            ),
         },
         { provide: 'IOAuthStore', useClass: FakeOAuthStore },
         { provide: OAuthGrantService, useValue: grantService },
