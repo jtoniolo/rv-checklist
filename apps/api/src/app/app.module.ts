@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildDataSourceOptions } from '@rv-checklist/api-data-access';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
@@ -40,6 +41,7 @@ import { RunModule } from './run/run.module.js';
       useFactory: (config: ConfigService<Env, true>) =>
         buildDataSourceOptions(config.get('DATABASE_URL', { infer: true })),
     }),
+    ScheduleModule.forRoot(),
     AuthModule,
     RigModule,
     ChecklistModule,
