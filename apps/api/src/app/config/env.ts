@@ -35,6 +35,53 @@ export const EnvSchema = z.object({
 
   /** Postgres connection string — matches the dev Docker Compose service. */
   DATABASE_URL: z.string().min(1),
+
+  /**
+   * Google OAuth client secret for the server-side authorization code flow
+   * used by `@rekog/mcp-nest-auth`. Same Google Cloud console client as
+   * GOOGLE_CLIENT_ID, but One Tap (ADR-0002) only needed the id — the MCP
+   * OAuth flow (ADR-0024) needs the secret too. Required at boot; the
+   * authorize/callback flow that actually uses it ships in #94.
+   */
+  GOOGLE_CLIENT_SECRET: z.string().min(1),
+
+  /**
+   * MCP OAuth 2.1 issuer URL (ADR-0024). Must be a bare origin — no path
+   * component — because claude.ai fetches
+   * `<issuer>/.well-known/oauth-authorization-server` and breaks if the
+   * issuer contains a path.
+   */
+  MCP_ISSUER_URL: z
+    .url()
+    .refine((u) => new URL(u).pathname === '/', {
+      message: 'MCP_ISSUER_URL must have no path component (bare origin)',
+    })
+    .default('http://localhost:3000'),
+
+  /**
+   * HS256 signing secret for MCP OAuth JWTs (ADR-0024). Separate from the
+   * first-party JWT_SECRET so rotating one does not invalidate the other.
+   * Must be at least 32 characters.
+   */
+  MCP_JWT_SECRET: z.string().min(32),
+
+  /**
+   * MCP resource URL — the value advertised in RFC 9728 protected-resource
+   * metadata. Defaults to `<MCP_ISSUER_URL>/api/mcp`.
+   */
+  MCP_RESOURCE_URL: z.url().optional(),
+
+  /**
+   * Comma-separated allowlist of redirect URIs accepted during dynamic
+   * client registration (ADR-0024). Loopback URIs (`http://localhost` and
+   * `http://127.0.0.1`, any port, any path) are always accepted regardless
+   * of this list.
+   */
+  MCP_REDIRECT_ALLOWLIST: z
+    .string()
+    .default(
+      'https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback',
+    ),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
