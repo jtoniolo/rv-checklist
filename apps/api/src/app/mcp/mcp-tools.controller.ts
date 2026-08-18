@@ -1,7 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Payload } from '@nestjs/microservices';
 import { McpController, McpRawRequest, Tool } from '@rekog/mcp-nest';
-import { IdSchema, type Owner, dueStatusOf } from '@rv-checklist/domain';
+import {
+  CreateChecklistSchema,
+  CreateMaintenanceTaskSchema,
+  IdSchema,
+  UpdateChecklistSchema,
+  UpdateMaintenanceTaskSchema,
+  type Owner,
+  dueStatusOf,
+} from '@rv-checklist/domain';
 import type { Request } from 'express';
 import { z } from 'zod';
 import { ChecklistService } from '../checklist/checklist.service.js';
@@ -233,5 +241,154 @@ export class McpToolsController {
       );
     }
     return toolError('Provide one of taskId or rigId.');
+  }
+
+  // -- Checklist writes -----------------------------------------------------
+
+  @Tool({
+    name: 'create_checklist',
+    description:
+      'Create a checklist on a rig. A checklist is a reusable ordered sequence of steps. A task-linked step (has a taskId) takes its fields from the task, never its own fieldSchema.',
+    parameters: CreateChecklistSchema,
+    annotations: { readOnlyHint: false },
+  })
+  async createChecklist(
+    @Payload() input: z.infer<typeof CreateChecklistSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    try {
+      return JSON.stringify(
+        await this.checklistService.create(owner.id, input),
+      );
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return toolError(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Tool({
+    name: 'update_checklist',
+    description:
+      'Update a checklist by id. Replaces the full ordered step list when steps are provided — omit steps to leave them unchanged. A task-linked step (has a taskId) takes its fields from the task, never its own fieldSchema.',
+    parameters: z.object({ id: IdSchema }).extend(UpdateChecklistSchema.shape),
+    annotations: { readOnlyHint: false },
+  })
+  async updateChecklist(
+    @Payload()
+    { id, ...changes }: { id: string } & z.infer<typeof UpdateChecklistSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    try {
+      return JSON.stringify(
+        await this.checklistService.update(owner.id, id, changes),
+      );
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return toolError(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Tool({
+    name: 'delete_checklist',
+    description: 'Delete a checklist by id.',
+    parameters: z.object({ id: IdSchema }),
+    annotations: { readOnlyHint: false },
+  })
+  async deleteChecklist(
+    @Payload() { id }: { id: string },
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    try {
+      await this.checklistService.remove(owner.id, id);
+      return 'Checklist deleted.';
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return toolError(error.message);
+      }
+      throw error;
+    }
+  }
+
+  // -- Maintenance task writes ----------------------------------------------
+
+  @Tool({
+    name: 'create_maintenance_task',
+    description:
+      'Create a maintenance task on a rig. A task is tracked by an interval (recurring), as one-time, or is untracked. Interval and one-time are mutually exclusive. Distance is in kilometres.',
+    parameters: CreateMaintenanceTaskSchema,
+    annotations: { readOnlyHint: false },
+  })
+  async createMaintenanceTask(
+    @Payload() input: z.infer<typeof CreateMaintenanceTaskSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    try {
+      return JSON.stringify(await this.taskService.create(owner.id, input));
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return toolError(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Tool({
+    name: 'update_maintenance_task',
+    description:
+      'Update a maintenance task by id. Interval and one-time are mutually exclusive. Distance is in kilometres. Set interval or oneTime to null to remove them.',
+    parameters: z
+      .object({ id: IdSchema })
+      .extend(UpdateMaintenanceTaskSchema.shape),
+    annotations: { readOnlyHint: false },
+  })
+  async updateMaintenanceTask(
+    @Payload()
+    {
+      id,
+      ...changes
+    }: { id: string } & z.infer<typeof UpdateMaintenanceTaskSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    try {
+      return JSON.stringify(
+        await this.taskService.update(owner.id, id, changes),
+      );
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return toolError(error.message);
+      }
+      throw error;
+    }
+  }
+
+  @Tool({
+    name: 'delete_maintenance_task',
+    description: 'Delete a maintenance task by id.',
+    parameters: z.object({ id: IdSchema }),
+    annotations: { readOnlyHint: false },
+  })
+  async deleteMaintenanceTask(
+    @Payload() { id }: { id: string },
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    try {
+      await this.taskService.remove(owner.id, id);
+      return 'Maintenance task deleted.';
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return toolError(error.message);
+      }
+      throw error;
+    }
   }
 }
