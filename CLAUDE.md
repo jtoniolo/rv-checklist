@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Commit to main!
+
 ## Agent skills
 
 ### Issue tracker
