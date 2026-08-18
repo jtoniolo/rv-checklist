@@ -4,7 +4,9 @@ Date: 2026-08-17
 
 ## Status
 
-Accepted
+Accepted — amended by [ADR-0024](0024-mcp-oauth-authorization.md):
+the "never advertises OAuth" bullet is superseded by its dual-auth
+discovery rules.
 
 ## Context
 

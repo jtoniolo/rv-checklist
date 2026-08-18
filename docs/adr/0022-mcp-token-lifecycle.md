@@ -4,7 +4,10 @@ Date: 2026-08-17
 
 ## Status
 
-Accepted
+Accepted — amended by [ADR-0024](0024-mcp-oauth-authorization.md):
+OAuth grants coexist behind a composite guard, and the avatar menu
+gains a Connected apps page beside the MCP Token dialog. The `rvmcp_`
+lifecycle rules here stand unchanged.
 
 ## Context
 
