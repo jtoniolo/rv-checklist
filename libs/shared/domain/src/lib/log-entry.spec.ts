@@ -93,6 +93,32 @@ describe('LogEntrySchema', () => {
     );
   });
 
+  // The optional comment (issue #101) — free text alongside the entry.
+  it('accepts a multi-line comment up to 500 characters', () => {
+    const withComment = {
+      ...entry,
+      comment: 'Seal looked worn.\nUsed the 303 protectant this time.',
+    };
+    expect(LogEntrySchema.parse(withComment)).toEqual(withComment);
+  });
+
+  it('parses an entry with no comment — absent means "no comment"', () => {
+    const parsed = LogEntrySchema.parse(entry);
+    expect('comment' in parsed).toBe(false);
+  });
+
+  it('rejects a comment over 500 characters', () => {
+    expect(
+      LogEntrySchema.safeParse({ ...entry, comment: 'x'.repeat(501) }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an empty comment — no comment is absence, not ""', () => {
+    expect(LogEntrySchema.safeParse({ ...entry, comment: '' }).success).toBe(
+      false,
+    );
+  });
+
   it('rejects duplicate field names in the snapshot', () => {
     expect(
       LogEntrySchema.safeParse({
@@ -180,6 +206,18 @@ describe('CreateLogEntrySchema', () => {
 });
 
 describe('UpdateLogEntrySchema', () => {
+  it('accepts a null comment — the clear marker (issue #101)', () => {
+    // eslint-disable-next-line unicorn/no-null
+    const parsed = UpdateLogEntrySchema.parse({ comment: null });
+    expect(parsed.comment).toBeNull();
+  });
+
+  it('caps an updated comment at 500 characters', () => {
+    expect(
+      UpdateLogEntrySchema.safeParse({ comment: 'x'.repeat(501) }).success,
+    ).toBe(false);
+  });
+
   it('never lets the frozen taskName be edited through an entry update', () => {
     const parsed = UpdateLogEntrySchema.parse({
       performedOn: '2026-07-19',

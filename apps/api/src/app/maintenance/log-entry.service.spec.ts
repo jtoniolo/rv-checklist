@@ -180,6 +180,26 @@ describe('LogEntryService', () => {
 
       expect(entry.costCents).toBeUndefined();
     });
+
+    // The free-text comment (issue #101) — findings, an observation, the method used.
+    it('records the comment when given', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, {
+        ...performSeals,
+        comment: 'Seal looked worn — replace next season.',
+      });
+
+      expect(entry.comment).toBe('Seal looked worn — replace next season.');
+    });
+
+    it('records no comment when none is given — absent means absent', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, performSeals);
+
+      expect(entry.comment).toBeUndefined();
+    });
   });
 
   // A one-time task is done once (issue #29): performing it writes a normal Log
@@ -419,6 +439,36 @@ describe('LogEntryService', () => {
       });
 
       expect(updated.costCents).toBe(5000);
+    });
+
+    it('sets a comment on a past entry, then clears it with null (issue #101)', async () => {
+      const { service } = await makeService();
+      const entry = await service.create(alice, performSeals);
+
+      const withComment = await service.update(alice, entry.id, {
+        comment: 'Used the 303 protectant this time.',
+      });
+      expect(withComment.comment).toBe('Used the 303 protectant this time.');
+
+      const cleared = await service.update(alice, entry.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        comment: null,
+      });
+      expect(cleared.comment).toBeUndefined();
+    });
+
+    it('leaves the comment unchanged when the key is omitted', async () => {
+      const { service } = await makeService();
+      const entry = await service.create(alice, {
+        ...performSeals,
+        comment: 'Used the 303 protectant this time.',
+      });
+
+      const updated = await service.update(alice, entry.id, {
+        performedOn: '2026-07-19',
+      });
+
+      expect(updated.comment).toBe('Used the 303 protectant this time.');
     });
 
     it('never changes which task or rig an entry belongs to', async () => {
