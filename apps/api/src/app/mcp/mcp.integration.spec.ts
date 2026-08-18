@@ -415,7 +415,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       expect(result.serverInfo.name).toBe('rv-checklist-test');
     });
 
-    it('lists all nine tools', async () => {
+    it('lists all fifteen tools', async () => {
       await mcpPost(
         jsonrpc('initialize', {
           protocolVersion: '2025-03-26',
@@ -431,6 +431,10 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       const names: string[] = result.tools.map((t) => t.name);
       names.sort((a, b) => a.localeCompare(b));
       expect(names).toEqual([
+        'create_checklist',
+        'create_maintenance_task',
+        'delete_checklist',
+        'delete_maintenance_task',
         'get_checklist',
         'get_maintenance_task',
         'get_rig',
@@ -440,6 +444,8 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
         'list_maintenance_tasks',
         'list_rigs',
         'list_runs',
+        'update_checklist',
+        'update_maintenance_task',
       ]);
     });
   });
@@ -549,6 +555,162 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       const body = res.body as JsonRpcResponse;
       const result = body.result as ToolCallResult;
       expect(result.isError).toBe(true);
+    });
+
+    it('checklist create / update / delete round-trip', async () => {
+      const res1 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'create_checklist',
+            arguments: {
+              rigId: RIG_ID,
+              name: 'Winterize',
+              steps: [{ text: 'Drain water heater' }],
+            },
+          },
+          20,
+        ),
+      ).expect(200);
+
+      const created = parseToolText(res1.body as JsonRpcResponse) as {
+        id: string;
+        name: string;
+        steps: { id: string; text: string }[];
+      };
+      expect(created.name).toBe('Winterize');
+      expect(created.steps).toHaveLength(1);
+      expect(created.steps[0]?.text).toBe('Drain water heater');
+
+      // Update — replaces the full step list
+      const res2 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'update_checklist',
+            arguments: {
+              id: created.id,
+              name: 'Winterize v2',
+              steps: [
+                { id: created.steps[0]?.id, text: 'Drain water heater' },
+                { text: 'Bypass water heater' },
+              ],
+            },
+          },
+          21,
+        ),
+      ).expect(200);
+
+      const updated = parseToolText(res2.body as JsonRpcResponse) as {
+        id: string;
+        name: string;
+        steps: { text: string }[];
+      };
+      expect(updated.name).toBe('Winterize v2');
+      expect(updated.steps).toHaveLength(2);
+
+      // Delete
+      const res3 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          { name: 'delete_checklist', arguments: { id: created.id } },
+          22,
+        ),
+      ).expect(200);
+
+      const removed = (res3.body as JsonRpcResponse).result as ToolCallResult;
+      expect(removed.isError).toBeUndefined();
+
+      // Confirm deleted — a subsequent read returns an error
+      const res4 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          { name: 'get_checklist', arguments: { id: created.id } },
+          23,
+        ),
+      ).expect(200);
+
+      const notFound = (res4.body as JsonRpcResponse).result as ToolCallResult;
+      expect(notFound.isError).toBe(true);
+    });
+
+    it('maintenance task create / update / delete round-trip', async () => {
+      const res1 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'create_maintenance_task',
+            arguments: {
+              rigId: RIG_ID,
+              name: 'Replace engine oil',
+              interval: { km: 10_000 },
+            },
+          },
+          30,
+        ),
+      ).expect(200);
+
+      const created = parseToolText(res1.body as JsonRpcResponse) as {
+        id: string;
+        name: string;
+        interval: { km: number };
+      };
+      expect(created.name).toBe('Replace engine oil');
+      expect(created.interval).toEqual({ km: 10_000 });
+
+      // Update — switch to combined interval
+      const res2 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'update_maintenance_task',
+            arguments: {
+              id: created.id,
+              name: 'Replace engine oil and filter',
+              interval: { months: 12, km: 10_000 },
+            },
+          },
+          31,
+        ),
+      ).expect(200);
+
+      const updated = parseToolText(res2.body as JsonRpcResponse) as {
+        id: string;
+        name: string;
+        interval: { months: number; km: number };
+      };
+      expect(updated.name).toBe('Replace engine oil and filter');
+      expect(updated.interval).toEqual({ months: 12, km: 10_000 });
+
+      // Delete
+      const res3 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'delete_maintenance_task',
+            arguments: { id: created.id },
+          },
+          32,
+        ),
+      ).expect(200);
+
+      const removed = (res3.body as JsonRpcResponse).result as ToolCallResult;
+      expect(removed.isError).toBeUndefined();
+
+      // Confirm deleted — a subsequent read returns an error
+      const res4 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'get_maintenance_task',
+            arguments: { id: created.id },
+          },
+          33,
+        ),
+      ).expect(200);
+
+      const notFound = (res4.body as JsonRpcResponse).result as ToolCallResult;
+      expect(notFound.isError).toBe(true);
     });
   });
 });

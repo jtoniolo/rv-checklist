@@ -26,10 +26,10 @@ export const mcpStrategy = new McpStrategy({
 class McpHttpController extends McpHttpControllerFor(mcpTransport) {}
 
 /**
- * MCP server module (ADR-0021). Exposes the nine read tools (ADR-0023) on a
- * single stateless endpoint, guarded by the MCP bearer-token guard (ADR-0022).
- * The {@link McpHttpController} handles HTTP routing and auth; the
- * {@link McpToolsController} defines the tools as message-pattern handlers.
+ * MCP server module (ADR-0021). Exposes fifteen tools — nine read, six write
+ * (ADR-0023) — on a single stateless endpoint, guarded by the MCP bearer-token
+ * guard (ADR-0022). The {@link McpHttpController} handles HTTP routing and auth;
+ * the {@link McpToolsController} defines the tools as message-pattern handlers.
  */
 @Module({
   imports: [
