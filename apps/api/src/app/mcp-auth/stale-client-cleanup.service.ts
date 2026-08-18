@@ -33,6 +33,11 @@ export class StaleClientCleanupService {
            SELECT DISTINCT "clientId"
              FROM rekog_mcp_auth_sessions
             WHERE "clientId" IS NOT NULL
+         )
+         AND client_id NOT IN (
+           SELECT DISTINCT client_id
+             FROM mcp_oauth_grants
+            WHERE revoked_at IS NULL
          )`,
       [STALE_DAYS],
     );

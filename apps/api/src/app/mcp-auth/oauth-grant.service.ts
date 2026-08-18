@@ -146,11 +146,12 @@ export class OAuthGrantService {
 
   async listActiveByUser(email: string): Promise<ActiveGrantRow[]> {
     const rows: ActiveGrantRow[] = await this.dataSource.query(
-      `SELECT g."id", c."client_name" AS "clientName",
+      `SELECT g."id",
+              COALESCE(c."client_name", '(unknown app)') AS "clientName",
               g."created_at" AS "createdAt", g."last_used_at" AS "lastUsedAt"
        FROM "mcp_oauth_grants" g
        JOIN "rekog_mcp_auth_user_profiles" p ON p."profile_id" = g."user_id"
-       JOIN "rekog_mcp_auth_clients" c ON c."client_id" = g."client_id"
+       LEFT JOIN "rekog_mcp_auth_clients" c ON c."client_id" = g."client_id"
        WHERE p."email" = $1 AND g."revoked_at" IS NULL
        ORDER BY g."created_at" DESC`,
       [email],
