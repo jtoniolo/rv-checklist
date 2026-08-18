@@ -121,6 +121,22 @@ export class OAuthGrantService {
     return { grantId: record.grant_id, generation: record.generation };
   }
 
+  async isGrantActive(grantId: string): Promise<boolean> {
+    const rows: GrantRow[] = await this.dataSource.query(
+      `SELECT "id", "revoked_at" FROM "mcp_oauth_grants" WHERE "id" = $1`,
+      [grantId],
+    );
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- length check above
+    return rows.length > 0 && !rows[0]!.revoked_at;
+  }
+
+  async touchLastUsed(grantId: string): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE "mcp_oauth_grants" SET "last_used_at" = now() WHERE "id" = $1`,
+      [grantId],
+    );
+  }
+
   async revokeGrant(grantId: string): Promise<void> {
     await this.dataSource.query(
       `UPDATE "mcp_oauth_grants" SET "revoked_at" = now() WHERE "id" = $1`,

@@ -58,6 +58,10 @@ class FakeUserStore extends UserStore {
     return Promise.resolve(this.rows.find((u) => u.id === id));
   }
 
+  findByEmail(email: string): Promise<UserRecord | undefined> {
+    return Promise.resolve(this.rows.find((u) => u.email === email));
+  }
+
   upsertByGoogleSub(input: UpsertUserInput): Promise<UpsertUserResult> {
     const existing = this.rows.find((u) => u.googleSub === input.googleSub);
     const record: UserRecord = {

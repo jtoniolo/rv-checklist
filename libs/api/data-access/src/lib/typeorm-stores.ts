@@ -51,6 +51,11 @@ export class TypeOrmUserStore extends UserStore {
     return found ? toUserRecord(found) : undefined;
   }
 
+  async findByEmail(email: string): Promise<UserRecord | undefined> {
+    const found = await this.repo.findOne({ where: { email } });
+    return found ? toUserRecord(found) : undefined;
+  }
+
   async upsertByGoogleSub(input: UpsertUserInput): Promise<UpsertUserResult> {
     const existing = await this.repo.findOne({
       where: { googleSub: input.googleSub },
