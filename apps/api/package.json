@@ -1,6 +1,6 @@
 {
   "name": "@rv-checklist/api",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "nx": {
     "targets": {
