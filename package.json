@@ -1,6 +1,6 @@
 {
   "name": "@rv-checklist/source",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "license": "MIT",
   "packageManager": "pnpm@11.14.0",
   "scripts": {},
