@@ -6,7 +6,7 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import {
   McpAuthModule,
   GoogleOAuthProvider,
@@ -15,10 +15,12 @@ import {
 import { DataSource } from 'typeorm';
 import type { Env } from '../config/env.js';
 import { GatedOAuthStore } from './gated-oauth-store.js';
+import { OAuthGrantService } from './oauth-grant.service.js';
 import {
   MCP_REDIRECT_ALLOWLIST,
   RedirectAllowlistMiddleware,
 } from './redirect-allowlist.middleware.js';
+import { TokenGrantInterceptor } from './token-grant.interceptor.js';
 import { UnknownOAuthUserFilter } from './unknown-user.filter.js';
 
 const issuerUrl = process.env['MCP_ISSUER_URL'] ?? 'http://localhost:3000';
@@ -138,6 +140,10 @@ function buildAuthModule(): DynamicModule {
  * screen, TypeORM store on the existing Postgres, and the redirect-URI
  * allowlist middleware on the DCR endpoint.
  *
+ * Token-level security (refresh-token rotation, reuse detection, grant_id
+ * claims, and redirect_uri validation) is enforced by the
+ * {@link TokenGrantInterceptor}, which wraps the library's token endpoint.
+ *
  * Unknown Google accounts (no matching row in the app's `users` table) are
  * rejected with `error=access_denied` via {@link GatedOAuthStore} and the
  * {@link UnknownOAuthUserFilter}.
@@ -149,6 +155,11 @@ function buildAuthModule(): DynamicModule {
       provide: APP_FILTER,
       useClass: UnknownOAuthUserFilter,
     },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: TokenGrantInterceptor,
+    },
+    OAuthGrantService,
     {
       provide: MCP_REDIRECT_ALLOWLIST,
       inject: [ConfigService],
