@@ -61,8 +61,11 @@ The merger fixes the red gate.
 Exactly `npx nx run-many -t typecheck lint test` from the repo root.
 
 **Final review**
-One code review per run, outside every wave and every round, after all of them
-are done. Its findings become a **new ticket** — they never reopen a closed one.
+A code review outside every wave and every round, run once all of them are
+done. Its findings become a **new ticket** — they never reopen a closed one. If
+it files a ticket and loops remain, that ticket becomes the frontier and the run
+loops again, ending with another final review; only a passing final review (or
+a spent budget) ends the run.
 
 ## Worktrees
 
@@ -71,6 +74,6 @@ ticket — each work round, each review round, each rework — uses the same one
 ticket handed forward keeps its worktree, so the next run inherits the work
 rather than restarting it.
 
-Worktrees are removed in one step, at the very end, and only when the final
-review passed and started nothing further. Only the worktrees of **closed**
-tickets are removed.
+Worktrees are removed in one step, at the very end, and only when the last
+final review passed and started nothing further. Only the worktrees of
+**closed** tickets are removed.

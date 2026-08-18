@@ -46,7 +46,9 @@ Once the run is out of loops or the frontier is empty — after every wave and e
 
 1. **Final review.** One `/code-review` over everything the run merged. This is the only check that can see two tickets breaking each other; a reviewer scoped to one ticket in one worktree structurally cannot. Its findings become **one new ticket**, `ready-for-agent`, carrying the findings and the exact failing output. They never reopen a closed ticket.
 
-2. **Clean up worktrees** — only if the final review passed and started nothing further, and then only the worktrees of **closed** tickets. An open ticket keeps its worktree: it holds unmerged work the next run inherits.
+2. **A filed ticket re-opens the loop.** If the final review filed a ticket and the run has loops left, the run is not over: that ticket is the new frontier, and the run goes back to **Per loop** for another wave. When that wave is done, the final review runs again — over everything the run has merged, including the fix. Repeat until a final review passes or the budget is spent. A ticket filed with no loops left is simply left for the next run.
+
+3. **Clean up worktrees** — only if the last final review passed and started nothing further, and then only the worktrees of **closed** tickets. An open ticket keeps its worktree: it holds unmerged work the next run inherits.
 
 ## Report
 
