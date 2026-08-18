@@ -1,5 +1,11 @@
 import type { LogEntry, MaintenanceTask, Rig } from '@rv-checklist/domain';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { MaintenanceScreen } from './maintenance-screen';
 import { StoreProvider } from './store-provider';
 
@@ -99,6 +105,7 @@ const entries: LogEntry[] = [
     performedOn: '2025-06-01',
     distanceKm: 31_200,
     costCents: 11_240,
+    comment: 'Filter was tighter than usual.',
     fields: [
       { name: 'Brand', type: 'text', required: false, value: 'Mobil 1' },
       {
@@ -172,8 +179,27 @@ function fakeApi(request: Request): Response {
     return jsonResponse(entries);
   }
   if (route === 'GET /checklists') return jsonResponse([]);
+  if (request.method === 'PATCH' && url.pathname.startsWith('/log-entries/')) {
+    const id = url.pathname.split('/').at(-1);
+    const existing = entries.find((e) => e.id === id);
+    if (existing) return jsonResponse(existing);
+  }
 
   throw new Error(`Unstubbed request: ${route}${url.search}`);
+}
+
+/** The body of the first PATCH /log-entries request the spy saw. */
+async function patchedLogEntryBody(
+  spy: jest.SpyInstance,
+): Promise<{ comment?: string | null }> {
+  const patch = await waitFor(() => {
+    const request = spy.mock.calls
+      .map((call: readonly unknown[]) => call[0] as Request)
+      .find((r) => r.method === 'PATCH');
+    if (!request) throw new Error('No PATCH request yet');
+    return request;
+  });
+  return (await patch.clone().json()) as { comment?: string | null };
 }
 
 function renderScreen(openTaskId?: string, view?: string): void {
@@ -357,6 +383,61 @@ describe('MaintenanceScreen (issue #38)', () => {
     });
   });
 
+  it('shows the recorded comment on a log entry row (issue #101)', async () => {
+    renderScreen(OIL_ID);
+
+    await waitFor(() => {
+      expect(screen.getByText('Filter was tighter than usual.')).toBeTruthy();
+    });
+  });
+
+  it('offers an optional comment input on the log-entry form, capped at 500 characters (issue #101)', async () => {
+    renderScreen(OIL_ID);
+    await screen.findByRole('heading', { name: 'Oil change' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add log entry' }));
+
+    const comment = screen.getByLabelText(/Comment/);
+    expect(comment.tagName).toBe('TEXTAREA');
+    expect(comment.getAttribute('maxlength')).toBe('500');
+  });
+
+  it('editing an entry submits the changed comment (issue #101)', async () => {
+    renderScreen(OIL_ID);
+    const commentText = await screen.findByText(
+      'Filter was tighter than usual.',
+    );
+    const row = commentText.closest('li');
+    if (!row) throw new Error('No entry row for the commented entry');
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText(/Comment/), {
+      target: { value: 'Went with the strap wrench this time.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
+
+    const body = await patchedLogEntryBody(fetchSpy);
+    expect(body.comment).toBe('Went with the strap wrench this time.');
+  });
+
+  it('editing an entry with a blank comment clears it with null (issue #101)', async () => {
+    renderScreen(OIL_ID);
+    const commentText = await screen.findByText(
+      'Filter was tighter than usual.',
+    );
+    const row = commentText.closest('li');
+    if (!row) throw new Error('No entry row for the commented entry');
+
+    fireEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByLabelText(/Comment/), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save correction' }));
+
+    const body = await patchedLogEntryBody(fetchSpy);
+    expect(body.comment).toBeNull();
+  });
+
   it('navigates to the list route when the back link is clicked from the detail', async () => {
     renderScreen(OIL_ID);
     await screen.findByRole('heading', { name: 'Oil change' });
@@ -517,6 +598,14 @@ describe('MaintenanceScreen — History view (issue #43)', () => {
     expect(await screen.findByText('July 2026')).toBeTruthy();
     // February 2026 (second oil change)
     expect(screen.getByText('February 2026')).toBeTruthy();
+  });
+
+  it('shows the entry comment in the timeline (issue #101)', async () => {
+    renderScreen(undefined, 'history');
+
+    expect(
+      await screen.findByText('Filter was tighter than usual.'),
+    ).toBeTruthy();
   });
 
   it('shows orphaned entries with a "deleted task" label', async () => {

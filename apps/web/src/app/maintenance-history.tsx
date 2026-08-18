@@ -368,6 +368,11 @@ function TimelineRow({
               {entry.distanceKm.toLocaleString('en-US')} km
             </span>
           )}
+          {entry.comment === undefined ? undefined : (
+            <span className="text-sm whitespace-pre-line text-brand-muted">
+              {entry.comment}
+            </span>
+          )}
         </div>
         <span
           className={cn(

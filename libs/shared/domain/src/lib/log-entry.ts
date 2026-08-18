@@ -25,6 +25,9 @@ export const LoggedFieldSchema = FieldDefinitionBaseSchema.extend({
   .refine(isUnitOnlyOnNumber, UNIT_ONLY_ON_NUMBER_ISSUE);
 export type LoggedField = z.infer<typeof LoggedFieldSchema>;
 
+/** The longest comment a log entry can carry (issue #101) — shared with the web form. */
+export const LOG_ENTRY_COMMENT_MAX_LENGTH = 500;
+
 /**
  * A Log Entry — the dated record that a maintenance task was performed (CONTEXT.md).
  * Carries its own snapshot copy of the task's fields with the recorded values, plus
@@ -45,6 +48,11 @@ export type LoggedField = z.infer<typeof LoggedFieldSchema>;
  * `costCents` is what the task cost (issue #39): an integer count of cents
  * (mechanic labour, parts, consumables). Optional — absent means no cost was
  * recorded. The UI shows decimal dollars; storage is always integer cents.
+ *
+ * `comment` is a short free-text note about the completion (issue #101) —
+ * findings, an unusual observation, the method used. Multi-line, at most 500
+ * characters. Optional — absent means "no comment"; an empty string is never
+ * stored, so absence is the only "no comment" shape.
  */
 export const LogEntrySchema = z.object({
   id: IdSchema,
@@ -54,6 +62,7 @@ export const LogEntrySchema = z.object({
   performedOn: IsoDateSchema,
   distanceKm: z.number().int().nonnegative().optional(),
   costCents: z.number().int().nonnegative().optional(),
+  comment: z.string().min(1).max(LOG_ENTRY_COMMENT_MAX_LENGTH).optional(),
   fields: z.array(LoggedFieldSchema).superRefine((fields, ctx) => {
     for (const { name, index } of duplicateFieldNameIssues(fields)) {
       ctx.addIssue({
@@ -109,13 +118,15 @@ export function toLoggedFields(
  * `distanceKm` is additionally nullable: an explicit `null` clears a recorded
  * Distance reading (issue #32), while an omitted key leaves it unchanged.
  * `costCents` follows the same nullable pattern (issue #39): `null` clears a
- * recorded cost, omitted leaves it unchanged.
+ * recorded cost, omitted leaves it unchanged, and `comment` follows it too
+ * (issue #101): `null` clears a comment, omitted leaves it unchanged.
  */
 export const UpdateLogEntrySchema = z
   .object({
     performedOn: IsoDateSchema,
     distanceKm: z.number().int().nonnegative().nullable(),
     costCents: z.number().int().nonnegative().nullable(),
+    comment: z.string().min(1).max(LOG_ENTRY_COMMENT_MAX_LENGTH).nullable(),
     fields: LogEntrySchema.shape.fields,
   })
   .partial();

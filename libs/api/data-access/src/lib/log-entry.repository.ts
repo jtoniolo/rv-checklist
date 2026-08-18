@@ -36,6 +36,8 @@ function toLogEntry(entity: LogEntryEntity): LogEntry {
     distanceKm: entity.distanceKm ?? undefined,
     // What the task cost in cents (issue #39) — NULL when none.
     costCents: entity.costCents ?? undefined,
+    // The free-text comment (issue #101) — NULL when none.
+    comment: entity.comment ?? undefined,
     fields: entity.fields,
   };
 }
@@ -50,6 +52,8 @@ function toRow(entry: LogEntry): Partial<LogEntryEntity> {
     distanceKm: entry.distanceKm ?? null,
     // eslint-disable-next-line unicorn/no-null
     costCents: entry.costCents ?? null,
+    // eslint-disable-next-line unicorn/no-null
+    comment: entry.comment ?? null,
   };
 }
 

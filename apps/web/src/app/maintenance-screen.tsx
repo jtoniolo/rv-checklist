@@ -953,6 +953,7 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
     fields: LoggedField[],
     distanceKm: number | undefined,
     costCents: number | undefined,
+    comment: string | undefined,
   ): Promise<void> => {
     await createEntry({
       taskId: task.id,
@@ -960,6 +961,7 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
       fields,
       ...(distanceKm !== undefined && { distanceKm }),
       ...(costCents !== undefined && { costCents }),
+      ...(comment !== undefined && { comment }),
     }).unwrap();
     setLogging(false);
   };
@@ -970,6 +972,7 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
     fields: LoggedField[],
     distanceKm: number | undefined,
     costCents: number | undefined,
+    comment: string | undefined,
   ): Promise<void> => {
     await updateEntry({
       id,
@@ -980,6 +983,8 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
         distanceKm: distanceKm ?? null,
         // eslint-disable-next-line unicorn/no-null
         costCents: costCents ?? null,
+        // eslint-disable-next-line unicorn/no-null
+        comment: comment ?? null,
       },
     }).unwrap();
     setEditingEntryId(undefined);
@@ -1009,8 +1014,8 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
           initialDate={todayIso()}
           submitLabel="Log it"
           pending={isLogging}
-          onSubmit={(performedOn, fields, distanceKm, costCents) =>
-            void handleLog(performedOn, fields, distanceKm, costCents)
+          onSubmit={(performedOn, fields, distanceKm, costCents, comment) =>
+            void handleLog(performedOn, fields, distanceKm, costCents, comment)
           }
           onCancel={() => {
             setLogging(false);
@@ -1041,15 +1046,23 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
                 initialDate={entry.performedOn}
                 initialDistanceKm={entry.distanceKm}
                 initialCostCents={entry.costCents}
+                initialComment={entry.comment}
                 submitLabel="Save correction"
                 pending={isCorrecting}
-                onSubmit={(performedOn, fields, distanceKm, costCents) =>
+                onSubmit={(
+                  performedOn,
+                  fields,
+                  distanceKm,
+                  costCents,
+                  comment,
+                ) =>
                   void handleCorrect(
                     entry.id,
                     performedOn,
                     fields,
                     distanceKm,
                     costCents,
+                    comment,
                   )
                 }
                 onCancel={() => {
@@ -1091,6 +1104,7 @@ function OrphanedHistory({
     fields: LoggedField[],
     distanceKm: number | undefined,
     costCents: number | undefined,
+    comment: string | undefined,
   ): Promise<void> => {
     await updateEntry({
       id,
@@ -1101,6 +1115,8 @@ function OrphanedHistory({
         distanceKm: distanceKm ?? null,
         // eslint-disable-next-line unicorn/no-null
         costCents: costCents ?? null,
+        // eslint-disable-next-line unicorn/no-null
+        comment: comment ?? null,
       },
     }).unwrap();
     setEditingEntryId(undefined);
@@ -1126,15 +1142,23 @@ function OrphanedHistory({
                 initialDate={entry.performedOn}
                 initialDistanceKm={entry.distanceKm}
                 initialCostCents={entry.costCents}
+                initialComment={entry.comment}
                 submitLabel="Save correction"
                 pending={isCorrecting}
-                onSubmit={(performedOn, fields, distanceKm, costCents) =>
+                onSubmit={(
+                  performedOn,
+                  fields,
+                  distanceKm,
+                  costCents,
+                  comment,
+                ) =>
                   void handleCorrect(
                     entry.id,
                     performedOn,
                     fields,
                     distanceKm,
                     costCents,
+                    comment,
                   )
                 }
                 onCancel={() => {
@@ -1184,6 +1208,11 @@ function LogEntryRow({
         {entry.costCents === undefined ? undefined : (
           <span className="text-sm text-brand-muted">
             {formatCost(entry.costCents)}
+          </span>
+        )}
+        {entry.comment === undefined ? undefined : (
+          <span className="text-sm whitespace-pre-line text-brand-muted">
+            {entry.comment}
           </span>
         )}
         {summary ? (

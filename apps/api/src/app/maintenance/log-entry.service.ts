@@ -95,6 +95,8 @@ export class LogEntryService {
       ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
       // The cost in cents (issue #39), if the owner recorded one. Absent means absent.
       ...(input.costCents !== undefined && { costCents: input.costCents }),
+      // The free-text comment (issue #101), if the owner wrote one. Absent means absent.
+      ...(input.comment !== undefined && { comment: input.comment }),
       fields: input.fields,
     });
     // A one-time task is done once (issue #29): performing it writes this entry,
@@ -165,6 +167,11 @@ export class LogEntryService {
       delete next.costCents;
     } else if (changes.costCents !== undefined) {
       next.costCents = changes.costCents;
+    }
+    if (changes.comment === null) {
+      delete next.comment;
+    } else if (changes.comment !== undefined) {
+      next.comment = changes.comment;
     }
     return this.logEntries.save(next);
   }

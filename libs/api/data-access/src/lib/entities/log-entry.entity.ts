@@ -59,6 +59,13 @@ export class LogEntryEntity {
   @Column({ name: 'cost_cents', type: 'integer', nullable: true })
   costCents!: number | null;
 
+  // A short free-text note about the completion (issue #101) — findings, an
+  // observation, the method used. The 500-character cap lives in the domain
+  // schema; the column is plain text. Nullable: SQL NULL means no comment,
+  // mapped to `undefined` in the domain.
+  @Column({ type: 'text', nullable: true })
+  comment!: string | null;
+
   @Column({ type: 'jsonb', default: () => "'[]'" })
   fields!: LoggedField[];
 

@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  LOG_ENTRY_COMMENT_MAX_LENGTH,
   validateFieldValues,
   type FieldValue,
   type IsoDate,
@@ -42,6 +43,8 @@ export interface LogEntryFormProps {
   readonly initialDistanceKm?: number | undefined;
   /** What the task cost in integer cents (issue #39), if the entry recorded one. */
   readonly initialCostCents?: number | undefined;
+  /** The entry's free-text comment (issue #101), if one was written. */
+  readonly initialComment?: string | undefined;
   readonly submitLabel: string;
   readonly pending: boolean;
   /**
@@ -49,12 +52,15 @@ export interface LogEntryFormProps {
    * or `undefined` when the field is left blank — absent means absent.
    * `costCents` is the optional cost (issue #39): integer cents, or `undefined`
    * when the field is left blank.
+   * `comment` is the optional free-text comment (issue #101): trimmed text, or
+   * `undefined` when the field is left blank.
    */
   readonly onSubmit: (
     performedOn: IsoDate,
     fields: LoggedField[],
     distanceKm: number | undefined,
     costCents: number | undefined,
+    comment: string | undefined,
   ) => void;
   readonly onCancel: () => void;
 }
@@ -84,6 +90,7 @@ export function LogEntryForm({
   initialDate,
   initialDistanceKm,
   initialCostCents,
+  initialComment,
   submitLabel,
   pending,
   onSubmit,
@@ -97,6 +104,7 @@ export function LogEntryForm({
   const [costText, setCostText] = useState(
     centsToDisplayDollars(initialCostCents),
   );
+  const [commentText, setCommentText] = useState(initialComment ?? '');
   const [error, setError] = useState<string | undefined>(undefined);
 
   const setValue = (name: string, value: FieldValue | undefined): void => {
@@ -143,8 +151,21 @@ export function LogEntryForm({
       }
       costCents = Math.round(dollars * 100);
     }
+    // The optional comment (issue #101): blank means none. The textarea's
+    // maxLength already caps typing; this guards programmatic state too.
+    const trimmedComment = commentText.trim();
+    const comment = trimmedComment === '' ? undefined : trimmedComment;
+    if (
+      comment !== undefined &&
+      comment.length > LOG_ENTRY_COMMENT_MAX_LENGTH
+    ) {
+      setError(
+        `A comment can be at most ${String(LOG_ENTRY_COMMENT_MAX_LENGTH)} characters.`,
+      );
+      return;
+    }
     setError(undefined);
-    onSubmit(performedOn, fields, distanceKm, costCents);
+    onSubmit(performedOn, fields, distanceKm, costCents, comment);
   };
 
   return (
@@ -202,6 +223,21 @@ export function LogEntryForm({
         />
         <span className="text-xs text-muted-foreground/70 italic">
           Optional — what this job cost (parts, labour, consumables).
+        </span>
+      </Label>
+
+      <Label className={labelClass}>
+        Comment
+        <Textarea
+          rows={3}
+          maxLength={LOG_ENTRY_COMMENT_MAX_LENGTH}
+          value={commentText}
+          onChange={(e) => {
+            setCommentText(e.target.value);
+          }}
+        />
+        <span className="text-xs text-muted-foreground/70 italic">
+          Optional — findings, an observation, or the method used.
         </span>
       </Label>
 
