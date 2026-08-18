@@ -97,17 +97,37 @@ launching Claude Desktop. Note the `Authorization:Bearer` format (no space
 after the colon) — this avoids a Windows argument-splitting issue with
 `mcp-remote`.
 
-## claude.ai
+## claude.ai (OAuth connector)
 
-claude.ai supports custom MCP connectors with the request-headers beta
-only. There is no fallback — without the beta, claude.ai cannot connect.
+claude.ai and Claude Desktop both support OAuth-based MCP connectors. No
+token to paste — the app's Google sign-in flow handles authentication.
 
 1. Open **Settings > MCP connectors > Add connector**.
 2. Set the URL to `https://<host>/api/mcp`.
-3. In the **Request headers** section, add a header with name
-   `authorization` and value `Bearer rvmcp_…` (your full token).
+3. Click **Connect**. You will be redirected to Google to sign in, then
+   shown a consent screen. Approve to complete the connection.
 
-Verify the beta is enabled on your account before relying on this surface.
+The OAuth connector works only for accounts that already exist in the app.
+If your Google account is not recognized, the connection will fail with
+`access_denied`.
+
+The static `rvmcp_` token (see the Token section above) also works for
+claude.ai and Claude Desktop when the request-headers beta is enabled.
+
+### Deploy note: Google Console redirect URI
+
+When deploying MCP OAuth for the first time, add the library's callback
+URL as a redirect URI on the existing Google OAuth client in the Google
+Cloud Console:
+
+```
+https://<host>/api/callback
+```
+
+This is the path `@rekog/mcp-nest-auth` serves for the Google OAuth
+callback. Without it, Google will reject the redirect during the MCP
+OAuth sign-in flow. The `<host>` is the same hostname used for
+`MCP_ISSUER_URL`.
 
 ## See also
 

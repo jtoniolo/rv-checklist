@@ -28,6 +28,7 @@ import { McpTokens1721001600000 } from './migrations/1721001600000-mcp-tokens.js
 import { EquipmentItems1721001700000 } from './migrations/1721001700000-equipment-items.js';
 import { EquipmentDetail1721001800000 } from './migrations/1721001800000-equipment-detail.js';
 import { McpOAuthTables1721001900000 } from './migrations/1721001900000-mcp-oauth-tables.js';
+import { McpOAuthGrants1721002000000 } from './migrations/1721002000000-mcp-oauth-grants.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -75,6 +76,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       EquipmentItems1721001700000,
       EquipmentDetail1721001800000,
       McpOAuthTables1721001900000,
+      McpOAuthGrants1721002000000,
     ],
     migrationsRun: true,
     synchronize: false,
