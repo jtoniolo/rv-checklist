@@ -55,3 +55,13 @@ _Avoid_: category (tags are flat, not hierarchical), label (reserved for UI text
 **Log Entry**:
 The record that a maintenance task was performed on a date. Carries its own copy of the task's fields as they were when recorded, with the recorded values — so later edits to the task don't alter it — and, optionally, the rig's **Distance** reading (km) at the time, the anchor a distance interval's next due is measured from, and/or the **Cost** of the work (entered in dollars and cents, stored as integer cents `costCents` so totals stay exact), and/or a short free-text **Comment** (`comment`, multi-line, max 500 characters) — findings, an unusual observation, or the method used. Like everything else, it stays editable; the user can correct past entries.
 _Avoid_: completion (as a noun for the record), history item
+
+## Deployment contract
+
+The Helm chart in `charts/api` is part of any change that touches runtime
+configuration. `charts/api/values.yaml` declares the deployment contract:
+non-secret env vars under `config`, required secret keys under `secretKeys`.
+A contract test (`apps/api/src/app/config/env-chart-contract.spec.ts`) fails
+CI when `EnvSchema` requires an env var the chart does not declare — so a new
+required env var means updating the chart, its README, and `.env.example` in
+the same change, plus a deploy note when an operator must supply the value.

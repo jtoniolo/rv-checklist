@@ -65,7 +65,8 @@
     "undici": "^8.10.0",
     "webpack": "^5.109.2",
     "webpack-cli": "^7.2.2",
-    "webpack-dev-server": "^5.2.6"
+    "webpack-dev-server": "^5.2.6",
+    "yaml": "^2.9.0"
   },
   "dependencies": {
     "@nestjs/common": "^11.2.1",
