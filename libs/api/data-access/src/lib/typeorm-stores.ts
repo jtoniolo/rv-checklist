@@ -14,6 +14,7 @@ import {
   type UpsertUserInput,
   type UpsertUserResult,
   type UserRecord,
+  type WebSessionRecord,
 } from './stores.js';
 
 function toUserRecord(entity: UserEntity): UserRecord {
@@ -33,6 +34,7 @@ function toRefreshRecord(entity: RefreshTokenEntity): RefreshTokenRecord {
     userId: entity.userId,
     expiresAt: entity.expiresAt,
     revokedAt: entity.revokedAt ?? undefined,
+    sessionId: entity.sessionId ?? undefined,
   };
 }
 
@@ -86,12 +88,13 @@ export class TypeOrmRefreshTokenStore extends RefreshTokenStore {
   }
 
   async create(input: CreateRefreshTokenInput): Promise<RefreshTokenRecord> {
-    // `revokedAt` / `replacedById` are left to their SQL NULL defaults.
     const saved = await this.repo.save(
       this.repo.create({
         userId: input.userId,
         tokenHash: input.tokenHash,
         expiresAt: input.expiresAt,
+        sessionId: input.sessionId,
+        userAgent: input.userAgent,
       }),
     );
     return toRefreshRecord(saved);
@@ -104,6 +107,53 @@ export class TypeOrmRefreshTokenStore extends RefreshTokenStore {
 
   async revoke(id: string, replacedById: string | undefined): Promise<void> {
     await this.repo.update(id, { revokedAt: new Date(), replacedById });
+  }
+
+  async updateLastUsed(id: string): Promise<void> {
+    await this.repo.update(id, { lastUsedAt: new Date() });
+  }
+
+  async findActiveSessionsByUser(userId: string): Promise<WebSessionRecord[]> {
+    interface SessionRow {
+      session_id: string;
+      user_agent: string | null;
+      created_at: string;
+      last_used_at: string | null;
+    }
+
+    const rows: SessionRow[] = await this.repo.query(
+      `SELECT
+         rt."session_id",
+         (array_agg(rt."user_agent" ORDER BY rt."created_at" ASC))[1] AS "user_agent",
+         MIN(rt."created_at") AS "created_at",
+         MAX(COALESCE(rt."last_used_at", rt."created_at")) AS "last_used_at"
+       FROM "refresh_tokens" rt
+       WHERE rt."user_id" = $1
+         AND rt."session_id" IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM "refresh_tokens" active
+           WHERE active."session_id" = rt."session_id"
+             AND active."revoked_at" IS NULL
+             AND active."expires_at" > NOW()
+         )
+       GROUP BY rt."session_id"
+       ORDER BY "last_used_at" DESC`,
+      [userId],
+    );
+
+    return rows.map((r) => ({
+      sessionId: r.session_id,
+      userAgent: r.user_agent ?? undefined,
+      createdAt: new Date(r.created_at),
+      lastUsedAt: r.last_used_at ? new Date(r.last_used_at) : undefined,
+    }));
+  }
+
+  async revokeBySessionId(sessionId: string): Promise<void> {
+    await this.repo.update(
+      { sessionId, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
   }
 }
 

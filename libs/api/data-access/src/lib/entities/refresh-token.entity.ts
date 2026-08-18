@@ -11,13 +11,13 @@ import {
  * signed in for months without re-authenticating. Only the SHA-256 `tokenHash`
  * is stored, never the raw value, so a database leak can't be replayed. Tokens
  * rotate on use: refreshing revokes the presented token (`revokedAt`) and
- * records the id that replaced it (`replacedById`), enforcing single-use. The
- * replacement id also records the rotation chain as groundwork; acting on it —
- * reuse detection, revoking a whole chain when a spent token is replayed — is a
- * later slice. Today a spent or revoked token is simply rejected as invalid.
+ * records the id that replaced it (`replacedById`), enforcing single-use.
  *
- * These rows are auth-endpoint credentials, not a resource-server session — the
- * API still validates every call from the bearer JWT alone (ADR-0002).
+ * Issue #98 adds session tracking: `sessionId` groups a rotation chain so the
+ * owner can list and revoke web sessions from the connected-apps page.
+ * `userAgent` captures the browser at login; `lastUsedAt` is touched on each
+ * refresh. Pre-session rows (NULL `sessionId`) are legacy — they expire
+ * naturally.
  */
 @Entity({ name: 'refresh_tokens' })
 export class RefreshTokenEntity {
@@ -40,6 +40,15 @@ export class RefreshTokenEntity {
 
   @Column({ name: 'replaced_by_id', type: 'uuid', nullable: true })
   replacedById!: string | undefined;
+
+  @Column({ name: 'session_id', type: 'uuid', nullable: true })
+  sessionId!: string | undefined;
+
+  @Column({ name: 'user_agent', type: 'text', nullable: true })
+  userAgent!: string | undefined;
+
+  @Column({ name: 'last_used_at', type: 'timestamptz', nullable: true })
+  lastUsedAt!: Date | undefined;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

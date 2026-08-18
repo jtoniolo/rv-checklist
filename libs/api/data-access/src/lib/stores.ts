@@ -46,12 +46,24 @@ export interface RefreshTokenRecord {
   readonly expiresAt: Date;
   /** When the token was revoked, or `undefined` while it is still live. */
   readonly revokedAt: Date | undefined;
+  /** The session this token belongs to, or `undefined` for pre-session legacy tokens. */
+  readonly sessionId: string | undefined;
 }
 
 export interface CreateRefreshTokenInput {
   readonly userId: string;
   readonly tokenHash: string;
   readonly expiresAt: Date;
+  readonly sessionId: string | undefined;
+  readonly userAgent: string | undefined;
+}
+
+/** A web session as shown on the connected-apps page — one row per rotation chain. */
+export interface WebSessionRecord {
+  readonly sessionId: string;
+  readonly userAgent: string | undefined;
+  readonly createdAt: Date;
+  readonly lastUsedAt: Date | undefined;
 }
 
 export abstract class RefreshTokenStore {
@@ -61,6 +73,14 @@ export abstract class RefreshTokenStore {
   ): Promise<RefreshTokenRecord | undefined>;
   /** Revoke a token, recording the token that replaced it (rotation), if any. */
   abstract revoke(id: string, replacedById: string | undefined): Promise<void>;
+  /** Touch `last_used_at` on the token row. */
+  abstract updateLastUsed(id: string): Promise<void>;
+  /** List active sessions for a user, grouped by session_id. */
+  abstract findActiveSessionsByUser(
+    userId: string,
+  ): Promise<WebSessionRecord[]>;
+  /** Revoke every token in the given session. */
+  abstract revokeBySessionId(sessionId: string): Promise<void>;
 }
 
 /** A persisted MCP token (ADR-0022), minus the secret (only its hash is stored). */

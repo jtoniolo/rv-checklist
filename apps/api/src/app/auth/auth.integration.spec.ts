@@ -11,6 +11,7 @@ import {
   type UpsertUserInput,
   type UpsertUserResult,
   type UserRecord,
+  type WebSessionRecord,
 } from '@rv-checklist/api-data-access';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -83,6 +84,9 @@ interface StoredToken {
   tokenHash: string;
   expiresAt: Date;
   revokedAt: Date | undefined;
+  sessionId: string | undefined;
+  userAgent: string | undefined;
+  lastUsedAt: Date | undefined;
 }
 
 class FakeRefreshStore extends RefreshTokenStore {
@@ -96,19 +100,83 @@ class FakeRefreshStore extends RefreshTokenStore {
       tokenHash: input.tokenHash,
       expiresAt: input.expiresAt,
       revokedAt: undefined,
+      sessionId: input.sessionId,
+      userAgent: input.userAgent,
+      lastUsedAt: undefined,
     };
     this.rows.push(record);
-    return Promise.resolve(record);
+    return Promise.resolve({
+      id: record.id,
+      userId: record.userId,
+      expiresAt: record.expiresAt,
+      revokedAt: record.revokedAt,
+      sessionId: record.sessionId,
+    });
   }
 
   findByHash(tokenHash: string): Promise<RefreshTokenRecord | undefined> {
-    return Promise.resolve(this.rows.find((t) => t.tokenHash === tokenHash));
+    const found = this.rows.find((t) => t.tokenHash === tokenHash);
+    if (!found) return Promise.resolve(undefined);
+    return Promise.resolve({
+      id: found.id,
+      userId: found.userId,
+      expiresAt: found.expiresAt,
+      revokedAt: found.revokedAt,
+      sessionId: found.sessionId,
+    });
   }
 
   revoke(id: string, replacedById: string | undefined): Promise<void> {
     void replacedById;
     const found = this.rows.find((t) => t.id === id);
     if (found) found.revokedAt = new Date();
+    return Promise.resolve();
+  }
+
+  updateLastUsed(id: string): Promise<void> {
+    const found = this.rows.find((t) => t.id === id);
+    if (found) found.lastUsedAt = new Date();
+    return Promise.resolve();
+  }
+
+  findActiveSessionsByUser(userId: string): Promise<WebSessionRecord[]> {
+    const bySession = new Map<string, StoredToken[]>();
+    for (const t of this.rows) {
+      if (t.userId !== userId || !t.sessionId) continue;
+      const arr = bySession.get(t.sessionId) ?? [];
+      arr.push(t);
+      bySession.set(t.sessionId, arr);
+    }
+    const sessions: WebSessionRecord[] = [];
+    for (const [sessionId, tokens] of bySession) {
+      const hasActive = tokens.some((t) => t.revokedAt === undefined);
+      if (!hasActive) continue;
+      const first = tokens[0];
+      if (!first) continue;
+      let earliest: StoredToken = first;
+      let latest: StoredToken = first;
+      for (const t of tokens) {
+        if (t.expiresAt < earliest.expiresAt) earliest = t;
+        const tTime = t.lastUsedAt ?? t.expiresAt;
+        const lTime = latest.lastUsedAt ?? latest.expiresAt;
+        if (tTime > lTime) latest = t;
+      }
+      sessions.push({
+        sessionId,
+        userAgent: earliest.userAgent,
+        createdAt: earliest.expiresAt,
+        lastUsedAt: latest.lastUsedAt,
+      });
+    }
+    return Promise.resolve(sessions);
+  }
+
+  revokeBySessionId(sessionId: string): Promise<void> {
+    for (const t of this.rows) {
+      if (t.sessionId === sessionId && t.revokedAt === undefined) {
+        t.revokedAt = new Date();
+      }
+    }
     return Promise.resolve();
   }
 }

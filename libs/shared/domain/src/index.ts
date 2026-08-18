@@ -11,4 +11,5 @@ export * from './lib/log-entry.js';
 export * from './lib/equipment.js';
 export * from './lib/mcp-token.js';
 export * from './lib/oauth-grant.js';
+export * from './lib/web-session.js';
 export * from './lib/ports.js';

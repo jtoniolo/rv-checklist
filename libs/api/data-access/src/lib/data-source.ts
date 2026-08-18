@@ -29,6 +29,7 @@ import { EquipmentItems1721001700000 } from './migrations/1721001700000-equipmen
 import { EquipmentDetail1721001800000 } from './migrations/1721001800000-equipment-detail.js';
 import { McpOAuthTables1721001900000 } from './migrations/1721001900000-mcp-oauth-tables.js';
 import { McpOAuthGrants1721002000000 } from './migrations/1721002000000-mcp-oauth-grants.js';
+import { RefreshTokenSessions1721002100000 } from './migrations/1721002100000-refresh-token-sessions.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -77,6 +78,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       EquipmentDetail1721001800000,
       McpOAuthTables1721001900000,
       McpOAuthGrants1721002000000,
+      RefreshTokenSessions1721002100000,
     ],
     migrationsRun: true,
     synchronize: false,

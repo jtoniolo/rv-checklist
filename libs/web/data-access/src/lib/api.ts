@@ -14,6 +14,7 @@ import {
   McpTokenStatusSchema,
   OAuthGrantSchema,
   OwnerSchema,
+  WebSessionSchema,
   RigSchema,
   RunSchema,
   type Checklist,
@@ -31,6 +32,7 @@ import {
   type McpTokenStatus,
   type OAuthGrant,
   type Owner,
+  type WebSession,
   type Rig,
   type Run,
   type UpdateChecklist,
@@ -52,6 +54,7 @@ const MaintenanceTaskArraySchema = z.array(MaintenanceTaskSchema);
 const LogEntryArraySchema = z.array(LogEntrySchema);
 const EquipmentItemArraySchema = z.array(EquipmentItemSchema);
 const OAuthGrantArraySchema = z.array(OAuthGrantSchema);
+const WebSessionArraySchema = z.array(WebSessionSchema);
 
 /**
  * The raw transport (ADR-0019): sends cookies via `credentials: 'include'`.
@@ -124,6 +127,7 @@ export const api = createApi({
     'Me',
     'McpToken',
     'OAuthGrant',
+    'WebSession',
   ],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
@@ -494,6 +498,32 @@ export const api = createApi({
         { type: 'OAuthGrant', id: 'LIST' },
       ],
     }),
+
+    listWebSessions: builder.query<WebSession[], void>({
+      query: () => '/sessions',
+      transformResponse: (raw: unknown) => WebSessionArraySchema.parse(raw),
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map((s) => ({
+                type: 'WebSession' as const,
+                id: s.sessionId,
+              })),
+              { type: 'WebSession' as const, id: 'LIST' },
+            ]
+          : [{ type: 'WebSession' as const, id: 'LIST' }],
+    }),
+
+    revokeWebSession: builder.mutation<void, Id>({
+      query: (sessionId) => ({
+        url: `/sessions/${sessionId}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: (_result, _error, sessionId) => [
+        { type: 'WebSession', id: sessionId },
+        { type: 'WebSession', id: 'LIST' },
+      ],
+    }),
   }),
 });
 
@@ -533,4 +563,6 @@ export const {
   useRevokeMcpTokenMutation,
   useListOAuthGrantsQuery,
   useRevokeOAuthGrantMutation,
+  useListWebSessionsQuery,
+  useRevokeWebSessionMutation,
 } = api;
