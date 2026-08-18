@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { Controller, type INestApplication, UseGuards } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
@@ -8,6 +9,7 @@ import {
   MCP_STRATEGY,
   StreamableHttpTransport,
 } from '@rekog/mcp-nest';
+import { JwtTokenService } from '@rekog/mcp-nest-auth';
 import {
   ChecklistRepository,
   EquipmentItemRepository,
@@ -39,17 +41,29 @@ import { TokenService } from '../auth/token.service.js';
 import { ChecklistService } from '../checklist/checklist.service.js';
 import { LogEntryService } from '../maintenance/log-entry.service.js';
 import { MaintenanceTaskService } from '../maintenance/maintenance-task.service.js';
+import { OAuthGrantService } from '../mcp-auth/oauth-grant.service.js';
 import { RigService } from '../rig/rig.service.js';
 import { RunService } from '../run/run.service.js';
 import { McpToolsController } from './mcp-tools.controller.js';
 
 // ---------------------------------------------------------------------------
-// Fakes
+// Constants
 // ---------------------------------------------------------------------------
 
 const USER_ID = 'user-mcp-int';
 const USER_EMAIL = 'mcp-int@example.com';
 const OTHER_USER_ID = 'user-other';
+
+const MCP_JWT_SECRET = 'mcp-jwt-secret-for-integration-tests!!';
+const SERVER_URL = 'http://localhost:3000';
+const RESOURCE_URL = `${SERVER_URL}/api/mcp`;
+const PRM_URL = `${SERVER_URL}/.well-known/oauth-protected-resource`;
+const PROFILE_ID = 'oauth-profile-1';
+const GRANT_ID = 'grant-int-1';
+
+// ---------------------------------------------------------------------------
+// Fakes
+// ---------------------------------------------------------------------------
 
 class FakeUserStore extends UserStore {
   private readonly users: UserRecord[] = [
@@ -64,6 +78,10 @@ class FakeUserStore extends UserStore {
 
   findById(id: string): Promise<UserRecord | undefined> {
     return Promise.resolve(this.users.find((u) => u.id === id));
+  }
+
+  findByEmail(email: string): Promise<UserRecord | undefined> {
+    return Promise.resolve(this.users.find((u) => u.email === email));
   }
 
   upsertByGoogleSub(_input: UpsertUserInput): Promise<UpsertUserResult> {
@@ -136,6 +154,71 @@ class FakeClock extends Clock {
   now(): Date {
     return new Date();
   }
+}
+
+class FakeOAuthStore {
+  getUserProfileById(
+    id: string,
+  ): Promise<{ id: string; email?: string } | undefined> {
+    if (id === PROFILE_ID) {
+      return Promise.resolve({ id: PROFILE_ID, email: USER_EMAIL });
+    }
+    return Promise.resolve(undefined);
+  }
+}
+
+class FakeOAuthGrantService extends OAuthGrantService {
+  private readonly grants = new Map<string, boolean>([[GRANT_ID, true]]);
+  readonly touchCalls: string[] = [];
+
+  constructor() {
+    super(undefined as never);
+  }
+
+  override isGrantActive(grantId: string): Promise<boolean> {
+    return Promise.resolve(this.grants.get(grantId) ?? false);
+  }
+
+  override touchLastUsed(grantId: string): Promise<void> {
+    this.touchCalls.push(grantId);
+    return Promise.resolve();
+  }
+
+  revokeTestGrant(grantId: string): void {
+    this.grants.set(grantId, false);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// JWT helpers
+// ---------------------------------------------------------------------------
+
+function mintTestJwt(
+  claims: Record<string, unknown> = {},
+  secret = MCP_JWT_SECRET,
+): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: 'HS256', typ: 'JWT' }),
+  ).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: PROFILE_ID,
+      type: 'access',
+      iss: SERVER_URL,
+      aud: RESOURCE_URL,
+      iat: now,
+      exp: now + 3600,
+      user_profile_id: PROFILE_ID,
+      grant_id: GRANT_ID,
+      scope: 'mcp',
+      ...claims,
+    }),
+  ).toString('base64url');
+  const sig = createHmac('sha256', secret)
+    .update(`${header}.${payload}`)
+    .digest('base64url');
+  return `${header}.${payload}.${sig}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,10 +351,12 @@ async function seedData(repos: {
 // Test suite
 // ---------------------------------------------------------------------------
 
-describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
+describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
   let app: INestApplication;
   let server: App;
   let mcpToken: string;
+  let jwtToken: string;
+  let grantService: FakeOAuthGrantService;
 
   const transport = new StreamableHttpTransport({ responseMode: 'json' });
   const strategy = new McpStrategy({
@@ -291,6 +376,15 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
   const logEntryRepo = new InMemoryLogEntryRepository();
   const equipmentItemRepo = new InMemoryEquipmentItemRepository();
 
+  const OAUTH_OPTIONS = {
+    jwtSecret: MCP_JWT_SECRET,
+    serverUrl: SERVER_URL,
+    resource: RESOURCE_URL,
+    jwtAccessTokenExpiresIn: '1h',
+    jwtRefreshTokenExpiresIn: '7d',
+    enableRefreshTokens: false,
+  };
+
   beforeAll(async () => {
     await seedData({
       rigs: rigRepo,
@@ -300,6 +394,8 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       logEntries: logEntryRepo,
       equipmentItems: equipmentItemRepo,
     });
+
+    grantService = new FakeOAuthGrantService();
 
     const module = await Test.createTestingModule({
       imports: [
@@ -330,6 +426,16 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
         { provide: RunRepository, useValue: runRepo },
         { provide: MaintenanceTaskRepository, useValue: taskRepo },
         { provide: LogEntryRepository, useValue: logEntryRepo },
+        {
+          provide: 'OAUTH_MODULE_OPTIONS',
+          useValue: OAUTH_OPTIONS,
+        },
+        {
+          provide: JwtTokenService,
+          useFactory: () => new JwtTokenService(OAUTH_OPTIONS),
+        },
+        { provide: 'IOAuthStore', useClass: FakeOAuthStore },
+        { provide: OAuthGrantService, useValue: grantService },
       ],
     }).compile();
 
@@ -349,6 +455,8 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
     const hash = tokenService.hash(raw);
     await tokenStore.replaceForUser(USER_ID, hash);
     mcpToken = raw;
+
+    jwtToken = mintTestJwt();
   });
 
   afterAll(async () => {
@@ -364,24 +472,19 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       .send(body);
   }
 
-  // -- Authentication -------------------------------------------------------
+  function mcpPostJwt(body: JsonRpcRequest, token = jwtToken): request.Test {
+    return request(server)
+      .post('/mcp')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Content-Type', 'application/json')
+      .set('Accept', 'application/json, text/event-stream')
+      .send(body);
+  }
 
-  describe('authentication', () => {
-    it('rejects requests with no token (plain 401)', async () => {
-      await request(server)
-        .post('/mcp')
-        .set('Accept', 'application/json, text/event-stream')
-        .send(
-          jsonrpc('initialize', {
-            protocolVersion: '2025-03-26',
-            capabilities: {},
-            clientInfo: { name: 'test', version: '1' },
-          }),
-        )
-        .expect(401);
-    });
+  // -- Static-token authentication ------------------------------------------
 
-    it('rejects requests with an invalid token', async () => {
+  describe('static-token authentication', () => {
+    it('rejects requests with an invalid rvmcp_ token (plain 401)', async () => {
       await request(server)
         .post('/mcp')
         .set('Authorization', 'Bearer rvmcp_bad')
@@ -396,9 +499,10 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
         .expect(401);
     });
 
-    it('does not return WWW-Authenticate header', async () => {
+    it('does not set WWW-Authenticate on invalid rvmcp_ token', async () => {
       const res = await request(server)
         .post('/mcp')
+        .set('Authorization', 'Bearer rvmcp_bad')
         .set('Accept', 'application/json, text/event-stream')
         .send(
           jsonrpc('initialize', {
@@ -412,7 +516,117 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
     });
   });
 
-  // -- MCP protocol ---------------------------------------------------------
+  // -- JWT authentication ---------------------------------------------------
+
+  describe('JWT authentication', () => {
+    it('rejects requests with no token (401 with WWW-Authenticate)', async () => {
+      const res = await request(server)
+        .post('/mcp')
+        .set('Accept', 'application/json, text/event-stream')
+        .send(
+          jsonrpc('initialize', {
+            protocolVersion: '2025-03-26',
+            capabilities: {},
+            clientInfo: { name: 'test', version: '1' },
+          }),
+        )
+        .expect(401);
+      expect(res.headers['www-authenticate']).toBe(
+        `Bearer resource_metadata="${PRM_URL}"`,
+      );
+    });
+
+    it('rejects an invalid JWT with WWW-Authenticate', async () => {
+      const res = await request(server)
+        .post('/mcp')
+        .set('Authorization', 'Bearer not.a.valid-jwt')
+        .set('Accept', 'application/json, text/event-stream')
+        .send(
+          jsonrpc('initialize', {
+            protocolVersion: '2025-03-26',
+            capabilities: {},
+            clientInfo: { name: 'test', version: '1' },
+          }),
+        )
+        .expect(401);
+      expect(res.headers['www-authenticate']).toBe(
+        `Bearer resource_metadata="${PRM_URL}"`,
+      );
+    });
+
+    it('rejects a JWT signed with the wrong secret', async () => {
+      const bad = mintTestJwt({}, 'wrong-secret-aaaaaaaa');
+      const res = await mcpPostJwt(
+        jsonrpc('initialize', {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1' },
+        }),
+        bad,
+      ).expect(401);
+      expect(res.headers['www-authenticate']).toBe(
+        `Bearer resource_metadata="${PRM_URL}"`,
+      );
+    });
+
+    it('rejects a JWT for the wrong audience (RFC 8707)', async () => {
+      const bad = mintTestJwt({ aud: 'https://other-resource.example.com' });
+      await mcpPostJwt(
+        jsonrpc('initialize', {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1' },
+        }),
+        bad,
+      ).expect(401);
+    });
+
+    it('rejects an expired JWT', async () => {
+      const bad = mintTestJwt({
+        exp: Math.floor(Date.now() / 1000) - 60,
+        iat: Math.floor(Date.now() / 1000) - 3660,
+      });
+      await mcpPostJwt(
+        jsonrpc('initialize', {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1' },
+        }),
+        bad,
+      ).expect(401);
+    });
+
+    it('rejects a JWT whose grant has been revoked', async () => {
+      const revokedGrantId = 'grant-revoked';
+      const token = mintTestJwt({ grant_id: revokedGrantId });
+      const res = await mcpPostJwt(
+        jsonrpc('initialize', {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'test', version: '1' },
+        }),
+        token,
+      ).expect(401);
+      expect(res.headers['www-authenticate']).toBe(
+        `Bearer resource_metadata="${PRM_URL}"`,
+      );
+    });
+
+    it('authenticates a valid JWT and resolves the same Owner shape', async () => {
+      const res = await mcpPostJwt(
+        jsonrpc('initialize', {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'test-client', version: '1.0' },
+        }),
+      ).expect(200);
+
+      const body = res.body as JsonRpcResponse;
+      expect(body.result).toBeDefined();
+    });
+  });
+
+  // -- MCP protocol (static token) -----------------------------------------
 
   describe('MCP protocol', () => {
     it('handles initialize', async () => {
@@ -465,9 +679,9 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
     });
   });
 
-  // -- tools/call -----------------------------------------------------------
+  // -- tools/call (static token) --------------------------------------------
 
-  describe('tools/call', () => {
+  describe('tools/call (static token)', () => {
     beforeEach(async () => {
       await mcpPost(
         jsonrpc('initialize', {
@@ -795,6 +1009,41 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       const notFound = (res4.body as JsonRpcResponse).result as ToolCallResult;
       expect(notFound.isError).toBe(true);
       expect(notFound.content[0]?.text).toBe('Maintenance task not found');
+    });
+  });
+
+  // -- tools/call (JWT) ----------------------------------------------------
+
+  describe('tools/call (JWT)', () => {
+    beforeEach(async () => {
+      await mcpPostJwt(
+        jsonrpc('initialize', {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'test-client-jwt', version: '1.0' },
+        }),
+      ).expect(200);
+    });
+
+    it("list_rigs returns the same owner's rigs via JWT", async () => {
+      const res = await mcpPostJwt(
+        jsonrpc('tools/call', { name: 'list_rigs', arguments: {} }, 50),
+      ).expect(200);
+
+      const rigs = parseToolText(res.body as JsonRpcResponse) as {
+        id: string;
+        nickname: string;
+      }[];
+      expect(rigs).toHaveLength(1);
+      expect(rigs[0]).toMatchObject({ nickname: 'Bigfoot' });
+    });
+
+    it('lists all fifteen tools via JWT', async () => {
+      const res = await mcpPostJwt(jsonrpc('tools/list', {}, 51)).expect(200);
+
+      const body = res.body as JsonRpcResponse;
+      const result = body.result as { tools: { name: string }[] };
+      expect(result.tools).toHaveLength(15);
     });
   });
 });

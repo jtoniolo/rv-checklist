@@ -34,6 +34,7 @@ export interface UpsertUserResult {
 
 export abstract class UserStore {
   abstract findById(id: string): Promise<UserRecord | undefined>;
+  abstract findByEmail(email: string): Promise<UserRecord | undefined>;
   /** Create the user, or update their profile if the Google subject already exists. */
   abstract upsertByGoogleSub(input: UpsertUserInput): Promise<UpsertUserResult>;
 }

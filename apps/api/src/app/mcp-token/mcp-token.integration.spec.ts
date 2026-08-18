@@ -61,6 +61,10 @@ class FakeUserStore extends UserStore {
     return Promise.resolve(this.users.find((u) => u.id === id));
   }
 
+  findByEmail(email: string): Promise<UserRecord | undefined> {
+    return Promise.resolve(this.users.find((u) => u.email === email));
+  }
+
   upsertByGoogleSub(_input: UpsertUserInput): Promise<UpsertUserResult> {
     throw new Error('Not used in MCP token tests');
   }
