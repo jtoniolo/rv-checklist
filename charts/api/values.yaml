@@ -22,20 +22,36 @@ fullnameOverride: ""
 # Kubernetes anyway — every pod has its own IP. The app's own default applies.
 config:
   WEB_ORIGIN: "http://localhost:4200"
-  # Required — rendering fails without it. Not a secret: the API only verifies
-  # Google One Tap ID tokens against it as an audience and never performs an
-  # authorization-code exchange, so there is no client secret in the system.
-  # The web app ships this same id to the browser.
+  # Required — rendering fails without it. Not a secret: the web app ships this
+  # same id to the browser. The matching client secret IS in the system since
+  # v0.2.9 (the MCP OAuth server exchanges authorization codes with Google);
+  # it lives in existingSecret as GOOGLE_CLIENT_SECRET.
   GOOGLE_CLIENT_ID: ""
+  # Required — rendering fails without it. The API's public origin with no
+  # path component (example: https://rv.example.com). MCP OAuth discovery
+  # publishes absolute URLs built from it. Left unset, the app falls back to
+  # http://localhost:3000 and MCP OAuth silently breaks. In the single-origin
+  # SSR deployment this is the same value as WEB_ORIGIN.
+  MCP_ISSUER_URL: ""
   JWT_ACCESS_TTL: "900"
   REFRESH_TTL_DAYS: "180"
 
 # Name of a pre-existing Secret. The chart does not create a Secret — the
 # cluster materialises one (e.g. via HashiCorp Vault) and you reference it here.
 #
-# It must supply exactly these two keys:
-#   JWT_SECRET    — signing key for the first-party access JWT (long and random)
-#   DATABASE_URL  — the whole Postgres connection string, not discrete fields
+# It must supply exactly these four keys:
+#   JWT_SECRET           — signing key for the first-party access JWT (long
+#                          and random)
+#   MCP_JWT_SECRET       — signing key for MCP OAuth JWTs (v0.2.9+), at least
+#                          32 characters. Separate from JWT_SECRET so rotating
+#                          one does not invalidate the other's tokens.
+#   GOOGLE_CLIENT_SECRET — client secret of the Google OAuth client (v0.2.9+).
+#                          From Google Cloud Console → Credentials.
+#   DATABASE_URL         — the whole Postgres connection string, not discrete
+#                          fields
+#
+# The Deployment injects the Secret with `envFrom`, so new keys added to the
+# Secret reach the pod without any chart change.
 #
 # Rotating that Secret does not restart the pods, and cannot: a chart can only
 # hash what it renders itself. Rolling on rotation is the consumer's job — with
