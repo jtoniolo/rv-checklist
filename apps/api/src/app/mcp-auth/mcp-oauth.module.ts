@@ -5,12 +5,16 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { McpAuthModule, GoogleOAuthProvider } from '@rekog/mcp-nest-auth';
 import type { Env } from '../config/env.js';
 import {
   MCP_REDIRECT_ALLOWLIST,
   RedirectAllowlistMiddleware,
 } from './redirect-allowlist.middleware.js';
+import { RegisterThrottleGuard } from './register-throttle.guard.js';
+import { StaleClientCleanupService } from './stale-client-cleanup.service.js';
 
 const issuerUrl = process.env['MCP_ISSUER_URL'] ?? 'http://localhost:3000';
 const resourceUrl = process.env['MCP_RESOURCE_URL'] ?? `${issuerUrl}/api/mcp`;
@@ -22,6 +26,9 @@ const resourceUrl = process.env['MCP_RESOURCE_URL'] ?? `${issuerUrl}/api/mcp`;
  * store on the existing Postgres, and the redirect-URI allowlist middleware
  * on the DCR endpoint.
  *
+ * Rate-limits the DCR registration endpoint per IP (issue #95) and runs a
+ * daily cleanup job that removes stale client registrations.
+ *
  * The library's `apiPrefix: 'api'` makes the metadata documents advertise
  * endpoints under `/api` (matching the NestJS global prefix). The well-known
  * discovery paths are served at the root — the global prefix excludes them
@@ -29,6 +36,7 @@ const resourceUrl = process.env['MCP_RESOURCE_URL'] ?? `${issuerUrl}/api/mcp`;
  */
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
     McpAuthModule.forRoot({
       provider: GoogleOAuthProvider,
       clientId: process.env['GOOGLE_CLIENT_ID'] ?? '',
@@ -77,6 +85,8 @@ const resourceUrl = process.env['MCP_RESOURCE_URL'] ?? `${issuerUrl}/api/mcp`;
           .filter(Boolean),
     },
     RedirectAllowlistMiddleware,
+    { provide: APP_GUARD, useClass: RegisterThrottleGuard },
+    StaleClientCleanupService,
   ],
   exports: [MCP_REDIRECT_ALLOWLIST],
 })
