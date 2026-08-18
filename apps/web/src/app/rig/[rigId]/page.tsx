@@ -1,4 +1,5 @@
 import { dueStatusOf, type DueStatus } from '@rv-checklist/domain';
+import Link from 'next/link';
 import type { JSX } from 'react';
 import { formatIsoDate, todayIso } from '../../dates';
 import { CacheSeeder } from '@/lib/cache-seeder';
@@ -73,16 +74,21 @@ export default async function RigHomePage({
             </h2>
             <ul className="flex flex-col divide-y divide-hairline">
               {needsAttention.map(({ task, status }) => (
-                <li
-                  key={task.id}
-                  className="flex items-center justify-between py-3"
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="font-medium text-brand dark:text-ink-inverted">
-                      {task.name}
+                <li key={task.id}>
+                  <Link
+                    href={`/rig/${rigId}/maintenance/${task.id}`}
+                    className="flex w-full items-center gap-3 py-3 text-left hover:bg-hairline/30"
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="truncate font-medium text-brand dark:text-ink-inverted">
+                        {task.name}
+                      </span>
+                      <DueBadge status={status} />
                     </span>
-                    <DueBadge status={status} />
-                  </div>
+                    <span aria-hidden className="shrink-0 text-brand-muted">
+                      ›
+                    </span>
+                  </Link>
                 </li>
               ))}
             </ul>
