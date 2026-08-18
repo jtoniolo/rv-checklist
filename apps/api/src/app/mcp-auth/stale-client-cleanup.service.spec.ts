@@ -30,6 +30,15 @@ describe('StaleClientCleanupService', () => {
     expect(deleted).toBe(3);
   });
 
+  it('excludes clients with active (unrevoked) grants', async () => {
+    query.mockResolvedValue([[], 0]);
+    await service.deleteStaleClients();
+
+    const [sql] = query.mock.calls[0] as [string];
+    expect(sql).toContain('mcp_oauth_grants');
+    expect(sql).toContain('revoked_at IS NULL');
+  });
+
   it('returns 0 when no rows are deleted', async () => {
     query.mockResolvedValue([[], 0]);
     expect(await service.deleteStaleClients()).toBe(0);

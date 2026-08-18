@@ -153,6 +153,31 @@ describe('OAuthGrantService', () => {
     });
   });
 
+  describe('listActiveByUser', () => {
+    it('uses LEFT JOIN so orphaned grants appear with a fallback name', async () => {
+      const { ds, calls } = fakeDataSource({
+        'LEFT JOIN': [
+          [
+            {
+              id: GRANT_ID,
+              clientName: '(unknown app)',
+              createdAt: '2024-01-01T00:00:00Z',
+              lastUsedAt: null,
+            },
+          ],
+        ],
+      });
+      const svc = new OAuthGrantService(ds);
+
+      const rows = await svc.listActiveByUser('user@example.com');
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.clientName).toBe('(unknown app)');
+      expect(calls[0]!.sql).toContain('LEFT JOIN');
+      expect(calls[0]!.sql).toContain('COALESCE');
+    });
+  });
+
   describe('revokeGrant', () => {
     it('sets revoked_at on the grant', async () => {
       const { ds, calls } = fakeDataSource();
