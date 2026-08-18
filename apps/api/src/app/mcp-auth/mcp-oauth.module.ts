@@ -6,7 +6,8 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
 import {
   McpAuthModule,
   GoogleOAuthProvider,
@@ -20,6 +21,8 @@ import {
   MCP_REDIRECT_ALLOWLIST,
   RedirectAllowlistMiddleware,
 } from './redirect-allowlist.middleware.js';
+import { RegisterThrottleGuard } from './register-throttle.guard.js';
+import { StaleClientCleanupService } from './stale-client-cleanup.service.js';
 import { TokenGrantInterceptor } from './token-grant.interceptor.js';
 import { UnknownOAuthUserFilter } from './unknown-user.filter.js';
 
@@ -134,11 +137,11 @@ function buildAuthModule(): DynamicModule {
 }
 
 /**
- * MCP OAuth 2.1 authorization server (ADR-0024, issues #93, #94). Wraps
- * `McpAuthModule.forRoot` with the project-specific configuration: issuer
- * URL, HS256 signing, 30-day access token TTL, Google federation, consent
- * screen, TypeORM store on the existing Postgres, and the redirect-URI
- * allowlist middleware on the DCR endpoint.
+ * MCP OAuth 2.1 authorization server (ADR-0024, issues #93, #94, #95).
+ * Wraps `McpAuthModule.forRoot` with the project-specific configuration:
+ * issuer URL, HS256 signing, 30-day access token TTL, Google federation,
+ * consent screen, TypeORM store on the existing Postgres, and the
+ * redirect-URI allowlist middleware on the DCR endpoint.
  *
  * Token-level security (refresh-token rotation, reuse detection, grant_id
  * claims, and redirect_uri validation) is enforced by the
@@ -147,9 +150,15 @@ function buildAuthModule(): DynamicModule {
  * Unknown Google accounts (no matching row in the app's `users` table) are
  * rejected with `error=access_denied` via {@link GatedOAuthStore} and the
  * {@link UnknownOAuthUserFilter}.
+ *
+ * Rate-limits the DCR registration endpoint per IP (issue #95) and runs a
+ * daily cleanup job that removes stale client registrations.
  */
 @Module({
-  imports: [buildAuthModule()],
+  imports: [
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
+    buildAuthModule(),
+  ],
   providers: [
     {
       provide: APP_FILTER,
@@ -171,6 +180,8 @@ function buildAuthModule(): DynamicModule {
           .filter(Boolean),
     },
     RedirectAllowlistMiddleware,
+    { provide: APP_GUARD, useClass: RegisterThrottleGuard },
+    StaleClientCleanupService,
   ],
   exports: [MCP_REDIRECT_ALLOWLIST],
 })
