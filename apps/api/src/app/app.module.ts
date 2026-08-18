@@ -13,6 +13,7 @@ import { validateEnv, type Env } from './config/env.js';
 import { EquipmentModule } from './equipment/equipment.module.js';
 import { MaintenanceModule } from './maintenance/maintenance.module.js';
 import { McpModule } from './mcp/mcp.module.js';
+import { McpOAuthModule } from './mcp-auth/mcp-oauth.module.js';
 import { McpTokenModule } from './mcp-token/mcp-token.module.js';
 import { RigModule } from './rig/rig.module.js';
 import { RunModule } from './run/run.module.js';
@@ -45,6 +46,7 @@ import { RunModule } from './run/run.module.js';
     EquipmentModule,
     RunModule,
     MaintenanceModule,
+    McpOAuthModule,
     McpModule,
     McpTokenModule,
   ],
