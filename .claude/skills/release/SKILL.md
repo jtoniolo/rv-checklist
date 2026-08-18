@@ -49,7 +49,7 @@ Then, with `$V` as the target version, every check below — **all of them, befo
 | Working tree clean | `git status --porcelain` prints nothing |
 | In sync with the remote | `git rev-parse HEAD` equals `git rev-parse origin/main` |
 | Chart lints | `helm lint charts/api` exits `0` |
-| CI green on `HEAD` | `gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)" --json status,conclusion,createdAt --limit 10` — the newest run is `completed` / `success`. No run at all is an abort: nothing has proven this commit. |
+| CI green on `HEAD` | `gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)" --json status,conclusion,createdAt --limit 10` — the newest run is `completed` / `success`. No run at all is an abort: nothing has proven this commit. Exception: `ci.yml` skips commits whose message starts with `Release v`, so when `HEAD` is such a commit (the recovery case), check its parent — same command with `git rev-parse HEAD^` — and hold it to the same bar. |
 | Tag free locally | `git rev-parse -q --verify "refs/tags/v$V"` fails |
 | Tag free on the remote | `git ls-remote --tags origin "refs/tags/v$V"` prints nothing |
 

@@ -24,6 +24,9 @@ concurrency:
 
 jobs:
   ci:
+    # Release commits only bump five version strings; the parent commit was
+    # already gated green by the release skill's preflight before tagging.
+    if: "!startsWith(github.event.head_commit.message, 'Release v')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
