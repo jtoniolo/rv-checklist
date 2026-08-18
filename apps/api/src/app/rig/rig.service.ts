@@ -1,7 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ownedOrUndefined, RigRepository } from '@rv-checklist/api-data-access';
-import type { CreateRig, Id, Rig, UpdateRig } from '@rv-checklist/domain';
+import {
+  EquipmentItemRepository,
+  ownedOrUndefined,
+  RigRepository,
+} from '@rv-checklist/api-data-access';
+import type {
+  CreateRig,
+  EquipmentItem,
+  Id,
+  Rig,
+  UpdateRig,
+} from '@rv-checklist/domain';
 
 /**
  * Apply the *present* fields of a partial edit onto a complete aggregate. A key
@@ -33,7 +43,18 @@ function applyDefined<T extends object>(
  */
 @Injectable()
 export class RigService {
-  constructor(private readonly rigs: RigRepository) {}
+  constructor(
+    private readonly rigs: RigRepository,
+    private readonly equipmentItems: EquipmentItemRepository,
+  ) {}
+
+  private async findOwned(ownerId: Id, id: Id): Promise<Rig> {
+    const rig = ownedOrUndefined(await this.rigs.findById(id), ownerId);
+    if (!rig) {
+      throw new NotFoundException('Rig not found');
+    }
+    return rig;
+  }
 
   /** Add a rig for the owner — the server assigns the id and the ownership. */
   create(ownerId: Id, input: CreateRig): Promise<Rig> {
@@ -45,13 +66,17 @@ export class RigService {
     return this.rigs.listByOwner(ownerId);
   }
 
-  /** One of the owner's rigs, or `NotFound` if it is missing or another's. */
-  async get(ownerId: Id, id: Id): Promise<Rig> {
-    const rig = ownedOrUndefined(await this.rigs.findById(id), ownerId);
-    if (!rig) {
-      throw new NotFoundException('Rig not found');
-    }
-    return rig;
+  /**
+   * One of the owner's rigs with its equipment items (issue #81, ADR-0006), or
+   * `NotFound` if it is missing or another's.
+   */
+  async get(
+    ownerId: Id,
+    id: Id,
+  ): Promise<Rig & { equipment: EquipmentItem[] }> {
+    const rig = await this.findOwned(ownerId, id);
+    const equipment = await this.equipmentItems.listByRig(id);
+    return { ...rig, equipment };
   }
 
   /**
@@ -60,7 +85,7 @@ export class RigService {
    * rig's current Distance (issue #32), an omitted key leaves it unchanged.
    */
   async update(ownerId: Id, id: Id, changes: UpdateRig): Promise<Rig> {
-    const rig = await this.get(ownerId, id);
+    const rig = await this.findOwned(ownerId, id);
     const { distanceKm, ...rest } = changes;
     const next = applyDefined(rig, rest);
     if (distanceKm === null) {
@@ -73,7 +98,7 @@ export class RigService {
 
   /** Delete one of the owner's rigs. */
   async remove(ownerId: Id, id: Id): Promise<void> {
-    const rig = await this.get(ownerId, id);
+    const rig = await this.findOwned(ownerId, id);
     await this.rigs.delete(rig.id);
   }
 }

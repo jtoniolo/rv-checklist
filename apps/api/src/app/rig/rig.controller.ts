@@ -10,11 +10,11 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import type { Owner, Rig } from '@rv-checklist/domain';
+import type { EquipmentItem, Owner, Rig } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
-import { CreateRigDto, RigDto, UpdateRigDto } from './rig.dto.js';
+import { CreateRigDto, RigDetailDto, RigDto, UpdateRigDto } from './rig.dto.js';
 import { RigService } from './rig.service.js';
 
 /**
@@ -49,13 +49,13 @@ export class RigController {
     return this.rigs.list(owner.id);
   }
 
-  /** Read one of the owner's rigs. */
+  /** Read one of the owner's rigs, including its equipment items (issue #81). */
   @Get(':id')
-  @ZodSerializerDto(RigDto)
+  @ZodSerializerDto(RigDetailDto)
   get(
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<Rig> {
+  ): Promise<Rig & { equipment: EquipmentItem[] }> {
     return this.rigs.get(owner.id, id);
   }
 
