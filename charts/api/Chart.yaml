@@ -5,5 +5,5 @@ type: application
 # A release is a git tag. Bump both of these in the same commit, then tag
 # `vX.Y.Z` on it — CD refuses to publish when the tag and these disagree.
 # `appVersion` is what the Deployment resolves its image tag from.
-version: 0.2.8
-appVersion: "0.2.8"
+version: 0.2.9
+appVersion: "0.2.9"
