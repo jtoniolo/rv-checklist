@@ -30,15 +30,20 @@ materialises (e.g. via HashiCorp Vault). It must supply exactly these keys:
 | `GOOGLE_CLIENT_SECRET` | Client secret of the Google OAuth client (v0.2.9+). The MCP OAuth server exchanges authorization codes with Google. From Google Cloud Console → Credentials. |
 | `DATABASE_URL`         | The whole Postgres connection string, not discrete host/user/pass. |
 
-The Deployment injects the Secret with `envFrom`, so keys added to the Secret
-reach the pod without a chart change. Missing `MCP_JWT_SECRET` or
-`GOOGLE_CLIENT_SECRET` makes the API CrashLoop at startup (v0.2.9+).
+The Deployment injects the Secret with `envFrom`, so extra keys reach the pod
+without a chart change. The keys above are also listed in `secretKeys` in
+values.yaml and rendered as explicit `secretKeyRef` env entries — a Secret
+missing one of them fails pod creation with an event naming the key, instead
+of an app crash-loop mid-startup. A contract test in the api
+(`env-chart-contract.spec.ts`) fails CI when the app grows a required env var
+the chart does not declare in `config` or `secretKeys`.
 
 `GOOGLE_CLIENT_ID` is **not** secret — the web app ships the same id to the
 browser. It lives in the ConfigMap, and rendering fails if you leave it empty.
-So does `MCP_ISSUER_URL`: the API's public origin, no path component, usually
-the same value as `WEB_ORIGIN`. Rendering fails if you leave it empty, because
-the app's own fallback (`http://localhost:3000`) silently breaks MCP OAuth.
+So does `MCP_ISSUER_URL`: the API's own public origin (the API serves the
+OAuth discovery routes, so this is the API's host, not the web app's), no
+path component. Rendering fails if you leave it empty, because the app's own
+fallback (`http://localhost:3000`) silently breaks MCP OAuth.
 
 ### Rotating the secret is the consumer's job
 

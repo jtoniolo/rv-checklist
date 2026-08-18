@@ -38,6 +38,20 @@ spec:
             - secretRef:
                 name: {{ .Values.existingSecret }}
             {{- end }}
+          {{- if and .Values.existingSecret .Values.secretKeys }}
+          # Explicit entries for the keys the chart requires. `env` wins over
+          # `envFrom`, so the values are identical — the point is that a key
+          # missing from the Secret fails pod creation with an event naming
+          # it, rather than an app crash-loop deep in startup.
+          env:
+            {{- range .Values.secretKeys }}
+            - name: {{ . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.existingSecret }}
+                  key: {{ . }}
+            {{- end }}
+          {{- end }}
           {{- with .Values.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
