@@ -8,6 +8,7 @@ import {
   useAppSelector,
   useLogoutMutation,
 } from '@rv-checklist/web-data-access';
+import { useRouter } from 'next/navigation';
 import { useState, type JSX } from 'react';
 import { disableGoogleAutoSelect } from './google-one-tap';
 import { McpTokenDialog } from './mcp-token-dialog';
@@ -37,6 +38,7 @@ function initialsOf(owner: Owner): string {
 export function AvatarMenu({ owner }: { readonly owner: Owner }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const themeKey = useAppSelector(selectThemeKey);
   const [logout] = useLogoutMutation();
@@ -115,6 +117,16 @@ export function AvatarMenu({ owner }: { readonly owner: Owner }): JSX.Element {
                 className="mt-3 w-full rounded-md border border-hairline px-3 py-1.5 text-left text-sm font-medium text-brand hover:border-brand dark:text-ink-inverted"
               >
                 MCP Token
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  router.push('/connected-apps');
+                }}
+                className="mt-1.5 w-full rounded-md border border-hairline px-3 py-1.5 text-left text-sm font-medium text-brand hover:border-brand dark:text-ink-inverted"
+              >
+                Connected apps
               </button>
               <button
                 type="button"

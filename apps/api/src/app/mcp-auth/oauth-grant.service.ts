@@ -143,4 +143,47 @@ export class OAuthGrantService {
       [grantId],
     );
   }
+
+  async listActiveByUser(email: string): Promise<ActiveGrantRow[]> {
+    const rows: ActiveGrantRow[] = await this.dataSource.query(
+      `SELECT g."id", c."client_name" AS "clientName",
+              g."created_at" AS "createdAt", g."last_used_at" AS "lastUsedAt"
+       FROM "mcp_oauth_grants" g
+       JOIN "rekog_mcp_auth_user_profiles" p ON p."profile_id" = g."user_id"
+       JOIN "rekog_mcp_auth_clients" c ON c."client_id" = g."client_id"
+       WHERE p."email" = $1 AND g."revoked_at" IS NULL
+       ORDER BY g."created_at" DESC`,
+      [email],
+    );
+    return rows;
+  }
+
+  async revokeGrantForUser(grantId: string, email: string): Promise<boolean> {
+    const rows: { id: string }[] = await this.dataSource.query(
+      `SELECT g."id"
+       FROM "mcp_oauth_grants" g
+       JOIN "rekog_mcp_auth_user_profiles" p ON p."profile_id" = g."user_id"
+       WHERE g."id" = $1 AND p."email" = $2 AND g."revoked_at" IS NULL`,
+      [grantId, email],
+    );
+
+    if (rows.length === 0) {
+      return false;
+    }
+
+    await this.dataSource.query(
+      `DELETE FROM "mcp_oauth_refresh_tokens" WHERE "grant_id" = $1`,
+      [grantId],
+    );
+
+    await this.revokeGrant(grantId);
+    return true;
+  }
+}
+
+export interface ActiveGrantRow {
+  id: string;
+  clientName: string;
+  createdAt: string;
+  lastUsedAt: string | null;
 }

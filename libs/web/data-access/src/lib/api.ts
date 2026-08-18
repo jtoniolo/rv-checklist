@@ -12,6 +12,7 @@ import {
   MaintenanceTaskSchema,
   McpTokenCreatedSchema,
   McpTokenStatusSchema,
+  OAuthGrantSchema,
   OwnerSchema,
   RigSchema,
   RunSchema,
@@ -28,6 +29,7 @@ import {
   type MaintenanceTask,
   type McpTokenCreated,
   type McpTokenStatus,
+  type OAuthGrant,
   type Owner,
   type Rig,
   type Run,
@@ -49,6 +51,7 @@ const RunArraySchema = z.array(RunSchema);
 const MaintenanceTaskArraySchema = z.array(MaintenanceTaskSchema);
 const LogEntryArraySchema = z.array(LogEntrySchema);
 const EquipmentItemArraySchema = z.array(EquipmentItemSchema);
+const OAuthGrantArraySchema = z.array(OAuthGrantSchema);
 
 /**
  * The raw transport (ADR-0019): sends cookies via `credentials: 'include'`.
@@ -120,6 +123,7 @@ export const api = createApi({
     'Equipment',
     'Me',
     'McpToken',
+    'OAuthGrant',
   ],
   endpoints: (builder) => ({
     me: builder.query<Owner, void>({
@@ -467,6 +471,29 @@ export const api = createApi({
       query: () => ({ url: '/mcp-token', method: 'DELETE' }),
       invalidatesTags: ['McpToken'],
     }),
+
+    listOAuthGrants: builder.query<OAuthGrant[], void>({
+      query: () => '/oauth-grants',
+      transformResponse: (raw: unknown) => OAuthGrantArraySchema.parse(raw),
+      providesTags: (result) =>
+        result
+          ? [
+              ...result.map((g) => ({
+                type: 'OAuthGrant' as const,
+                id: g.id,
+              })),
+              { type: 'OAuthGrant' as const, id: 'LIST' },
+            ]
+          : [{ type: 'OAuthGrant' as const, id: 'LIST' }],
+    }),
+
+    revokeOAuthGrant: builder.mutation<void, Id>({
+      query: (id) => ({ url: `/oauth-grants/${id}`, method: 'DELETE' }),
+      invalidatesTags: (_result, _error, id) => [
+        { type: 'OAuthGrant', id },
+        { type: 'OAuthGrant', id: 'LIST' },
+      ],
+    }),
   }),
 });
 
@@ -504,4 +531,6 @@ export const {
   useMcpTokenStatusQuery,
   useGenerateMcpTokenMutation,
   useRevokeMcpTokenMutation,
+  useListOAuthGrantsQuery,
+  useRevokeOAuthGrantMutation,
 } = api;

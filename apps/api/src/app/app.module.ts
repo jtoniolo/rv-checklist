@@ -16,6 +16,7 @@ import { MaintenanceModule } from './maintenance/maintenance.module.js';
 import { McpModule } from './mcp/mcp.module.js';
 import { McpOAuthModule } from './mcp-auth/mcp-oauth.module.js';
 import { McpTokenModule } from './mcp-token/mcp-token.module.js';
+import { OAuthGrantModule } from './oauth-grant/oauth-grant.module.js';
 import { RigModule } from './rig/rig.module.js';
 import { RunModule } from './run/run.module.js';
 
@@ -51,6 +52,7 @@ import { RunModule } from './run/run.module.js';
     McpOAuthModule,
     McpModule,
     McpTokenModule,
+    OAuthGrantModule,
   ],
   controllers: [AppController],
   providers: [
