@@ -29,6 +29,23 @@ function toolError(text: string) {
   };
 }
 
+/**
+ * Surface a service `NotFoundException` as a tool error ("Rig not found")
+ * instead of letting it escape as an opaque "Internal server error".
+ */
+async function notFoundAsToolError<T>(
+  fn: () => Promise<T>,
+): Promise<T | ReturnType<typeof toolError>> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof NotFoundException) {
+      return toolError(error.message);
+    }
+    throw error;
+  }
+}
+
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -68,8 +85,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    const rig = await this.rigService.get(owner.id, id);
-    return JSON.stringify(rig);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.rigService.get(owner.id, id)),
+    );
   }
 
   @Tool({
@@ -84,8 +102,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    const checklists = await this.checklistService.list(owner.id, rigId);
-    return JSON.stringify(checklists);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.checklistService.list(owner.id, rigId)),
+    );
   }
 
   @Tool({
@@ -99,8 +118,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    const checklist = await this.checklistService.get(owner.id, id);
-    return JSON.stringify(checklist);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.checklistService.get(owner.id, id)),
+    );
   }
 
   @Tool({
@@ -122,12 +142,16 @@ export class McpToolsController {
       if (rigId !== undefined) {
         return toolError('Provide checklistId or rigId, not both.');
       }
-      return JSON.stringify(
-        await this.runService.listByChecklist(owner.id, checklistId),
+      return notFoundAsToolError(async () =>
+        JSON.stringify(
+          await this.runService.listByChecklist(owner.id, checklistId),
+        ),
       );
     }
     if (rigId !== undefined) {
-      return JSON.stringify(await this.runService.listByRig(owner.id, rigId));
+      return notFoundAsToolError(async () =>
+        JSON.stringify(await this.runService.listByRig(owner.id, rigId)),
+      );
     }
     return toolError('Provide one of checklistId or rigId.');
   }
@@ -144,8 +168,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    const run = await this.runService.get(owner.id, id);
-    return JSON.stringify(run);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.runService.get(owner.id, id)),
+    );
   }
 
   @Tool({
@@ -160,32 +185,34 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    const [tasks, entries, rig] = await Promise.all([
-      this.taskService.listByRig(owner.id, rigId),
-      this.logEntryService.listByRig(owner.id, rigId),
-      this.rigService.get(owner.id, rigId),
-    ]);
+    return notFoundAsToolError(async () => {
+      const [tasks, entries, rig] = await Promise.all([
+        this.taskService.listByRig(owner.id, rigId),
+        this.logEntryService.listByRig(owner.id, rigId),
+        this.rigService.get(owner.id, rigId),
+      ]);
 
-    const entriesByTask = new Map<string, typeof entries>();
-    for (const entry of entries) {
-      if (entry.taskId === null) {
-        continue;
+      const entriesByTask = new Map<string, typeof entries>();
+      for (const entry of entries) {
+        if (entry.taskId === null) {
+          continue;
+        }
+        const list = entriesByTask.get(entry.taskId) ?? [];
+        list.push(entry);
+        entriesByTask.set(entry.taskId, list);
       }
-      const list = entriesByTask.get(entry.taskId) ?? [];
-      list.push(entry);
-      entriesByTask.set(entry.taskId, list);
-    }
 
-    const enriched = tasks.map((task) => ({
-      ...task,
-      dueStatus: dueStatusOf(
-        task,
-        entriesByTask.get(task.id) ?? [],
-        rig.distanceKm,
-        today(),
-      ),
-    }));
-    return JSON.stringify(enriched);
+      const enriched = tasks.map((task) => ({
+        ...task,
+        dueStatus: dueStatusOf(
+          task,
+          entriesByTask.get(task.id) ?? [],
+          rig.distanceKm,
+          today(),
+        ),
+      }));
+      return JSON.stringify(enriched);
+    });
   }
 
   @Tool({
@@ -200,16 +227,18 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    const task = await this.taskService.get(owner.id, id);
-    const [entries, rig] = await Promise.all([
-      this.logEntryService.listByTask(owner.id, id),
-      this.rigService.get(owner.id, task.rigId),
-    ]);
-    const enriched = {
-      ...task,
-      dueStatus: dueStatusOf(task, entries, rig.distanceKm, today()),
-    };
-    return JSON.stringify(enriched);
+    return notFoundAsToolError(async () => {
+      const task = await this.taskService.get(owner.id, id);
+      const [entries, rig] = await Promise.all([
+        this.logEntryService.listByTask(owner.id, id),
+        this.rigService.get(owner.id, task.rigId),
+      ]);
+      const enriched = {
+        ...task,
+        dueStatus: dueStatusOf(task, entries, rig.distanceKm, today()),
+      };
+      return JSON.stringify(enriched);
+    });
   }
 
   @Tool({
@@ -231,13 +260,13 @@ export class McpToolsController {
       if (rigId !== undefined) {
         return toolError('Provide taskId or rigId, not both.');
       }
-      return JSON.stringify(
-        await this.logEntryService.listByTask(owner.id, taskId),
+      return notFoundAsToolError(async () =>
+        JSON.stringify(await this.logEntryService.listByTask(owner.id, taskId)),
       );
     }
     if (rigId !== undefined) {
-      return JSON.stringify(
-        await this.logEntryService.listByRig(owner.id, rigId),
+      return notFoundAsToolError(async () =>
+        JSON.stringify(await this.logEntryService.listByRig(owner.id, rigId)),
       );
     }
     return toolError('Provide one of taskId or rigId.');
@@ -257,16 +286,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    try {
-      return JSON.stringify(
-        await this.checklistService.create(owner.id, input),
-      );
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return toolError(error.message);
-      }
-      throw error;
-    }
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.checklistService.create(owner.id, input)),
+    );
   }
 
   @Tool({
@@ -282,16 +304,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    try {
-      return JSON.stringify(
-        await this.checklistService.update(owner.id, id, changes),
-      );
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return toolError(error.message);
-      }
-      throw error;
-    }
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.checklistService.update(owner.id, id, changes)),
+    );
   }
 
   @Tool({
@@ -305,15 +320,10 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    try {
+    return notFoundAsToolError(async () => {
       await this.checklistService.remove(owner.id, id);
       return 'Checklist deleted.';
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return toolError(error.message);
-      }
-      throw error;
-    }
+    });
   }
 
   // -- Maintenance task writes ----------------------------------------------
@@ -330,14 +340,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    try {
-      return JSON.stringify(await this.taskService.create(owner.id, input));
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return toolError(error.message);
-      }
-      throw error;
-    }
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.taskService.create(owner.id, input)),
+    );
   }
 
   @Tool({
@@ -358,16 +363,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    try {
-      return JSON.stringify(
-        await this.taskService.update(owner.id, id, changes),
-      );
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return toolError(error.message);
-      }
-      throw error;
-    }
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.taskService.update(owner.id, id, changes)),
+    );
   }
 
   @Tool({
@@ -381,14 +379,9 @@ export class McpToolsController {
     @McpRawRequest() req?: Request,
   ) {
     const owner = ownerFrom(req);
-    try {
+    return notFoundAsToolError(async () => {
       await this.taskService.remove(owner.id, id);
       return 'Maintenance task deleted.';
-    } catch (error) {
-      if (error instanceof NotFoundException) {
-        return toolError(error.message);
-      }
-      throw error;
-    }
+    });
   }
 }
