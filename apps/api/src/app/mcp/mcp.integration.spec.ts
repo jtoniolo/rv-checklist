@@ -577,6 +577,66 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
       const body = res.body as JsonRpcResponse;
       const result = body.result as ToolCallResult;
       expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toBe('Rig not found');
+    });
+
+    it('reads on missing records report not found, not a server error', async () => {
+      const cases = [
+        {
+          name: 'get_rig',
+          arguments: { id: OTHER_RIG_ID },
+          text: 'Rig not found',
+        },
+        {
+          name: 'get_checklist',
+          arguments: { id: OTHER_RIG_ID },
+          text: 'Checklist not found',
+        },
+        {
+          name: 'get_run',
+          arguments: { id: OTHER_RIG_ID },
+          text: 'Run not found',
+        },
+        {
+          name: 'get_maintenance_task',
+          arguments: { id: OTHER_RIG_ID },
+          text: 'Maintenance task not found',
+        },
+        {
+          name: 'list_checklists',
+          arguments: { rigId: OTHER_RIG_ID },
+          text: 'Rig not found',
+        },
+        {
+          name: 'list_runs',
+          arguments: { rigId: OTHER_RIG_ID },
+          text: 'Rig not found',
+        },
+        {
+          name: 'list_maintenance_tasks',
+          arguments: { rigId: OTHER_RIG_ID },
+          text: 'Rig not found',
+        },
+        {
+          name: 'list_log_entries',
+          arguments: { rigId: OTHER_RIG_ID },
+          text: 'Rig not found',
+        },
+      ];
+
+      for (const [i, c] of cases.entries()) {
+        const res = await mcpPost(
+          jsonrpc(
+            'tools/call',
+            { name: c.name, arguments: c.arguments },
+            40 + i,
+          ),
+        ).expect(200);
+
+        const result = (res.body as JsonRpcResponse).result as ToolCallResult;
+        expect(result.isError).toBe(true);
+        expect(result.content[0]?.text).toBe(c.text);
+      }
     });
 
     it('checklist create / update / delete round-trip', async () => {
@@ -654,6 +714,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
 
       const notFound = (res4.body as JsonRpcResponse).result as ToolCallResult;
       expect(notFound.isError).toBe(true);
+      expect(notFound.content[0]?.text).toBe('Checklist not found');
     });
 
     it('maintenance task create / update / delete round-trip', async () => {
@@ -733,6 +794,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023)', () => {
 
       const notFound = (res4.body as JsonRpcResponse).result as ToolCallResult;
       expect(notFound.isError).toBe(true);
+      expect(notFound.content[0]?.text).toBe('Maintenance task not found');
     });
   });
 });
