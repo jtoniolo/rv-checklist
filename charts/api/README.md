@@ -11,6 +11,7 @@ no value overrides beyond your own environment:
 helm upgrade --install rv-checklist-api \
   oci://ghcr.io/jtoniolo/charts/rv-checklist-api --version X.Y.Z \
   --set config.GOOGLE_CLIENT_ID=<your-google-oauth-client-id> \
+  --set config.MCP_ISSUER_URL=<public-origin-of-the-api> \
   --set existingSecret=rv-checklist-api
 ```
 
@@ -22,16 +23,22 @@ The two can never disagree, and both trace back to the git tag `vX.Y.Z`.
 The chart does not create a Secret. Point `existingSecret` at one the cluster
 materialises (e.g. via HashiCorp Vault). It must supply exactly these keys:
 
-| Key            | What it is                                                        |
-| -------------- | ----------------------------------------------------------------- |
-| `JWT_SECRET`   | Signing key for the first-party access JWT. Long and random.       |
-| `DATABASE_URL` | The whole Postgres connection string, not discrete host/user/pass. |
+| Key                    | What it is                                                        |
+| ---------------------- | ----------------------------------------------------------------- |
+| `JWT_SECRET`           | Signing key for the first-party access JWT. Long and random.       |
+| `MCP_JWT_SECRET`       | Signing key for MCP OAuth JWTs (v0.2.9+). At least 32 characters. Separate from `JWT_SECRET` so rotating one does not invalidate the other's tokens. |
+| `GOOGLE_CLIENT_SECRET` | Client secret of the Google OAuth client (v0.2.9+). The MCP OAuth server exchanges authorization codes with Google. From Google Cloud Console → Credentials. |
+| `DATABASE_URL`         | The whole Postgres connection string, not discrete host/user/pass. |
 
-Nothing else is secret. In particular `GOOGLE_CLIENT_ID` is **not** — the API
-only verifies Google One Tap ID tokens against it as an audience and never runs
-an authorization-code exchange, so no client secret exists anywhere in the
-system, and the web app ships the same id to the browser. It lives in the
-ConfigMap, and rendering fails if you leave it empty.
+The Deployment injects the Secret with `envFrom`, so keys added to the Secret
+reach the pod without a chart change. Missing `MCP_JWT_SECRET` or
+`GOOGLE_CLIENT_SECRET` makes the API CrashLoop at startup (v0.2.9+).
+
+`GOOGLE_CLIENT_ID` is **not** secret — the web app ships the same id to the
+browser. It lives in the ConfigMap, and rendering fails if you leave it empty.
+So does `MCP_ISSUER_URL`: the API's public origin, no path component, usually
+the same value as `WEB_ORIGIN`. Rendering fails if you leave it empty, because
+the app's own fallback (`http://localhost:3000`) silently breaks MCP OAuth.
 
 ### Rotating the secret is the consumer's job
 
