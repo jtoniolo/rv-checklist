@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import {
   RefreshTokenStore,
   UserStore,
   type UserRecord,
+  type WebSessionRecord,
 } from '@rv-checklist/api-data-access';
 import { StarterContentSeeder } from '../seed/seed.service.js';
 import { Clock } from './clock.js';
@@ -22,6 +24,12 @@ export interface IssuedTokens {
  * and revokes on logout. It holds no HTTP or persistence detail — it depends
  * only on the store ports and the token/clock helpers, so the whole flow is
  * exercised in unit tests with no database and no Nest container.
+ *
+ * Issue #98 adds session tracking: login creates a new session_id; refresh
+ * propagates the session_id from the rotated token. The owner can list and
+ * revoke sessions from the connected-apps page. The short-lived access JWT
+ * survives until expiry (ADR-0002 accepted gap) — revoking a session only
+ * prevents new refreshes.
  */
 @Injectable()
 export class AuthService {
@@ -38,6 +46,10 @@ export class AuthService {
   /** Mint an access JWT and a persisted refresh token for the user. */
   private async issue(
     user: UserRecord,
+    opts: {
+      sessionId: string | undefined;
+      userAgent: string | undefined;
+    },
   ): Promise<{ pair: IssuedTokens; refreshId: string }> {
     const { token: accessToken, expiresIn } = this.tokens.signAccessToken(user);
     const rawRefresh = this.tokens.generateRefreshValue();
@@ -46,6 +58,8 @@ export class AuthService {
       userId: user.id,
       tokenHash: this.tokens.hash(rawRefresh),
       expiresAt: this.tokens.refreshExpiry(now),
+      sessionId: opts.sessionId,
+      userAgent: opts.userAgent,
     });
     return {
       pair: { accessToken, refreshToken: rawRefresh, expiresIn },
@@ -56,10 +70,11 @@ export class AuthService {
   /**
    * Sign in with a verified Google profile: upsert the owner, issue tokens.
    * A brand-new owner also gets the starter rig seeded (issue #19), so day
-   * one is never an empty app.
+   * one is never an empty app. Each login starts a new session (issue #98).
    */
   async loginWithGoogle(
     profile: GoogleProfile,
+    userAgent?: string,
   ): Promise<{ pair: IssuedTokens }> {
     if (!profile.emailVerified) {
       throw new UnauthorizedException('Google email is not verified');
@@ -80,12 +95,20 @@ export class AuthService {
         );
       }
     }
-    const { pair } = await this.issue(user);
+    const sessionId = randomUUID();
+    const { pair } = await this.issue(user, { sessionId, userAgent });
     return { pair };
   }
 
-  /** Exchange a valid refresh token for a fresh pair, rotating the old one out. */
-  async refresh(rawToken: string): Promise<{ pair: IssuedTokens }> {
+  /**
+   * Exchange a valid refresh token for a fresh pair, rotating the old one out.
+   * The session_id propagates from the old token so the rotation chain stays
+   * grouped (issue #98).
+   */
+  async refresh(
+    rawToken: string,
+    userAgent?: string,
+  ): Promise<{ pair: IssuedTokens }> {
     const stored = await this.refreshTokens.findByHash(
       this.tokens.hash(rawToken),
     );
@@ -100,8 +123,14 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Invalid refresh token');
     }
-    const { pair, refreshId } = await this.issue(user);
+    const { pair, refreshId } = await this.issue(user, {
+      sessionId: stored.sessionId,
+      userAgent,
+    });
     await this.refreshTokens.revoke(stored.id, refreshId);
+    if (stored.sessionId) {
+      await this.refreshTokens.updateLastUsed(refreshId);
+    }
     return { pair };
   }
 
@@ -114,5 +143,25 @@ export class AuthService {
       return;
     }
     await this.refreshTokens.revoke(stored.id, undefined);
+  }
+
+  /** List the owner's active web sessions (issue #98). */
+  async listSessions(userId: string): Promise<WebSessionRecord[]> {
+    return this.refreshTokens.findActiveSessionsByUser(userId);
+  }
+
+  /**
+   * Revoke a web session (issue #98). Revokes every refresh token in the
+   * chain so the session dies at its next refresh. Ownership is enforced:
+   * the caller must own the session.
+   */
+  async revokeSession(sessionId: string, userId: string): Promise<boolean> {
+    const sessions = await this.refreshTokens.findActiveSessionsByUser(userId);
+    const isOwned = sessions.some((s) => s.sessionId === sessionId);
+    if (!isOwned) {
+      return false;
+    }
+    await this.refreshTokens.revokeBySessionId(sessionId);
+    return true;
   }
 }

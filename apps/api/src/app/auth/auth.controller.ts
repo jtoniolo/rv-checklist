@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Controller,
+  Headers,
   HttpCode,
   Post,
   Res,
@@ -37,8 +38,9 @@ export class AuthController {
   async loginWithGoogle(
     @CurrentGoogleProfile() profile: GoogleProfile,
     @Res({ passthrough: true }) res: Response,
+    @Headers('user-agent') userAgent?: string,
   ): Promise<void> {
-    const { pair } = await this.auth.loginWithGoogle(profile);
+    const { pair } = await this.auth.loginWithGoogle(profile, userAgent);
     res.cookie(
       ACCESS_COOKIE,
       pair.accessToken,
@@ -54,13 +56,16 @@ export class AuthController {
   /** Rotate cookies: read the refresh token from the cookie, issue fresh pair. */
   @HttpCode(200)
   @Post('refresh')
-  async refresh(@Res({ passthrough: true }) res: Response): Promise<void> {
+  async refresh(
+    @Res({ passthrough: true }) res: Response,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<void> {
     const cookies = (res.req as { cookies?: Record<string, string> }).cookies;
     const refreshToken = cookies?.[REFRESH_COOKIE];
     if (!refreshToken) {
       throw new BadRequestException('Refresh cookie is required');
     }
-    const { pair } = await this.auth.refresh(refreshToken);
+    const { pair } = await this.auth.refresh(refreshToken, userAgent);
     res.cookie(
       ACCESS_COOKIE,
       pair.accessToken,

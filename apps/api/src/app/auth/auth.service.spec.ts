@@ -7,6 +7,7 @@ import {
   type UpsertUserInput,
   type UpsertUserResult,
   type UserRecord,
+  type WebSessionRecord,
 } from '@rv-checklist/api-data-access';
 import { StarterContentSeeder } from '../seed/seed.service.js';
 import { AuthService } from './auth.service.js';
@@ -67,6 +68,9 @@ interface StoredToken {
   tokenHash: string;
   expiresAt: Date;
   revokedAt: Date | undefined;
+  sessionId: string | undefined;
+  userAgent: string | undefined;
+  lastUsedAt: Date | undefined;
 }
 
 /** In-memory refresh-token store, array-backed. */
@@ -81,13 +85,30 @@ class FakeRefreshStore extends RefreshTokenStore {
       tokenHash: input.tokenHash,
       expiresAt: input.expiresAt,
       revokedAt: undefined,
+      sessionId: input.sessionId,
+      userAgent: input.userAgent,
+      lastUsedAt: undefined,
     };
     this.rows.push(record);
-    return Promise.resolve(record);
+    return Promise.resolve({
+      id: record.id,
+      userId: record.userId,
+      expiresAt: record.expiresAt,
+      revokedAt: record.revokedAt,
+      sessionId: record.sessionId,
+    });
   }
 
   findByHash(tokenHash: string): Promise<RefreshTokenRecord | undefined> {
-    return Promise.resolve(this.rows.find((t) => t.tokenHash === tokenHash));
+    const found = this.rows.find((t) => t.tokenHash === tokenHash);
+    if (!found) return Promise.resolve(undefined);
+    return Promise.resolve({
+      id: found.id,
+      userId: found.userId,
+      expiresAt: found.expiresAt,
+      revokedAt: found.revokedAt,
+      sessionId: found.sessionId,
+    });
   }
 
   revoke(id: string, replacedById: string | undefined): Promise<void> {
@@ -97,8 +118,59 @@ class FakeRefreshStore extends RefreshTokenStore {
     return Promise.resolve();
   }
 
+  updateLastUsed(id: string): Promise<void> {
+    const found = this.rows.find((t) => t.id === id);
+    if (found) found.lastUsedAt = new Date();
+    return Promise.resolve();
+  }
+
+  findActiveSessionsByUser(userId: string): Promise<WebSessionRecord[]> {
+    const bySession = new Map<string, StoredToken[]>();
+    for (const t of this.rows) {
+      if (t.userId !== userId || !t.sessionId) continue;
+      const arr = bySession.get(t.sessionId) ?? [];
+      arr.push(t);
+      bySession.set(t.sessionId, arr);
+    }
+    const sessions: WebSessionRecord[] = [];
+    for (const [sessionId, tokens] of bySession) {
+      const hasActive = tokens.some((t) => t.revokedAt === undefined);
+      if (!hasActive) continue;
+      const first = tokens[0];
+      if (!first) continue;
+      let earliest: StoredToken = first;
+      let latest: StoredToken = first;
+      for (const t of tokens) {
+        if (t.expiresAt < earliest.expiresAt) earliest = t;
+        const tTime = t.lastUsedAt ?? t.expiresAt;
+        const lTime = latest.lastUsedAt ?? latest.expiresAt;
+        if (tTime > lTime) latest = t;
+      }
+      sessions.push({
+        sessionId,
+        userAgent: earliest.userAgent,
+        createdAt: earliest.expiresAt,
+        lastUsedAt: latest.lastUsedAt,
+      });
+    }
+    return Promise.resolve(sessions);
+  }
+
+  revokeBySessionId(sessionId: string): Promise<void> {
+    for (const t of this.rows) {
+      if (t.sessionId === sessionId && t.revokedAt === undefined) {
+        t.revokedAt = new Date();
+      }
+    }
+    return Promise.resolve();
+  }
+
   get count(): number {
     return this.rows.length;
+  }
+
+  sessionIdOf(tokenId: string): string | undefined {
+    return this.rows.find((t) => t.id === tokenId)?.sessionId;
   }
 }
 
@@ -244,6 +316,18 @@ describe('AuthService.refresh', () => {
       UnauthorizedException,
     );
   });
+
+  it('propagates session_id from the old token to the new one (#98)', async () => {
+    const { service, refresh } = build();
+    const { pair: first } = await service.loginWithGoogle(profile);
+    const firstSessionId = refresh.sessionIdOf('rt-1');
+
+    await service.refresh(first.refreshToken);
+    const secondSessionId = refresh.sessionIdOf('rt-2');
+
+    expect(firstSessionId).toBeDefined();
+    expect(secondSessionId).toBe(firstSessionId);
+  });
 });
 
 describe('AuthService.logout', () => {
@@ -259,5 +343,56 @@ describe('AuthService.logout', () => {
   it('is a no-op for an unknown token', async () => {
     const { service } = build();
     await expect(service.logout('nope')).resolves.toBeUndefined();
+  });
+});
+
+describe('AuthService session management (#98)', () => {
+  it('loginWithGoogle creates a session_id on the refresh token', async () => {
+    const { service, refresh } = build();
+    await service.loginWithGoogle(profile);
+    expect(refresh.sessionIdOf('rt-1')).toBeDefined();
+  });
+
+  it('listSessions returns active sessions', async () => {
+    const { service } = build();
+    await service.loginWithGoogle(profile, 'Firefox/100');
+    const sessions = await service.listSessions('user-1');
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]?.userAgent).toBe('Firefox/100');
+  });
+
+  it('revokeSession revokes every token in the chain', async () => {
+    const { service } = build();
+    const { pair: first } = await service.loginWithGoogle(profile);
+    await service.refresh(first.refreshToken);
+    const sessions = await service.listSessions('user-1');
+    expect(sessions).toHaveLength(1);
+
+    const wasRevoked = await service.revokeSession(
+      sessions[0]?.sessionId ?? '',
+      'user-1',
+    );
+    expect(wasRevoked).toBe(true);
+
+    const after = await service.listSessions('user-1');
+    expect(after).toHaveLength(0);
+  });
+
+  it('revokeSession returns false for a non-owned session', async () => {
+    const { service } = build();
+    await service.loginWithGoogle(profile);
+    const wasRevoked = await service.revokeSession(
+      '00000000-0000-0000-0000-000000000000',
+      'user-1',
+    );
+    expect(wasRevoked).toBe(false);
+  });
+
+  it('two logins create two distinct sessions', async () => {
+    const { service } = build();
+    await service.loginWithGoogle(profile, 'Chrome/120');
+    await service.loginWithGoogle(profile, 'Safari/17');
+    const sessions = await service.listSessions('user-1');
+    expect(sessions).toHaveLength(2);
   });
 });

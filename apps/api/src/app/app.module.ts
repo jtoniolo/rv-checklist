@@ -19,6 +19,7 @@ import { McpTokenModule } from './mcp-token/mcp-token.module.js';
 import { OAuthGrantModule } from './oauth-grant/oauth-grant.module.js';
 import { RigModule } from './rig/rig.module.js';
 import { RunModule } from './run/run.module.js';
+import { SessionModule } from './session/session.module.js';
 
 /**
  * Root module (issue #13). Loads and validates the environment globally, opens
@@ -53,6 +54,7 @@ import { RunModule } from './run/run.module.js';
     McpModule,
     McpTokenModule,
     OAuthGrantModule,
+    SessionModule,
   ],
   controllers: [AppController],
   providers: [

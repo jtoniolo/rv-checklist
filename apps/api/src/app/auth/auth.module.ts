@@ -59,6 +59,6 @@ import { TokenService } from './token.service.js';
     { provide: RefreshTokenStore, useClass: TypeOrmRefreshTokenStore },
     { provide: McpTokenStore, useClass: TypeOrmMcpTokenStore },
   ],
-  exports: [TokenService, McpTokenStore, UserStore],
+  exports: [AuthService, TokenService, McpTokenStore, UserStore],
 })
 export class AuthModule {}
