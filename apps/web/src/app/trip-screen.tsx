@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type JSX, type ReactNode } from 'react';
 import { formatIsoDate } from './dates';
+import { CampgroundMapLink, StopAttachments } from './stop-attachments';
 
 // ── Derivations ─────────────────────────────────────────────────────────────
 
@@ -165,6 +166,8 @@ export function TripScreen({
       ) : (
         <NextStopHero
           stop={nextStop}
+          rigId={rigId}
+          tripId={tripId}
           arriving={isArriving}
           lastArrived={lastArrived}
           onArrive={() => {
@@ -201,6 +204,8 @@ export function TripScreen({
  */
 function NextStopHero({
   stop,
+  rigId,
+  tripId,
   arriving,
   lastArrived,
   onArrive,
@@ -208,6 +213,8 @@ function NextStopHero({
   children,
 }: {
   readonly stop: StopRead;
+  readonly rigId: Id;
+  readonly tripId: Id;
   readonly arriving: boolean;
   readonly lastArrived: StopRead | undefined;
   readonly onArrive: () => void;
@@ -215,6 +222,9 @@ function NextStopHero({
   readonly children: ReactNode;
 }): JSX.Element {
   const nav = navigationUrl(stop);
+  // The flagged attachment, if any — the map for wayfinding *within* the
+  // grounds, distinct from the navigation link that drives *to* the stop.
+  const campgroundMap = stop.attachments.find((a) => a.isCampgroundMap);
   return (
     <section
       aria-label="Next stop"
@@ -258,15 +268,22 @@ function NextStopHero({
         />
       </div>
 
-      {nav === undefined ? undefined : (
-        <a
-          href={nav}
-          target="_blank"
-          rel="noreferrer"
-          className="self-start rounded-md border border-hairline px-3 py-1.5 text-sm font-medium text-brand hover:border-brand dark:text-ink-inverted"
-        >
-          Navigate to this stop
-        </a>
+      {nav === undefined && campgroundMap === undefined ? undefined : (
+        <div className="flex flex-wrap gap-2">
+          {nav === undefined ? undefined : (
+            <a
+              href={nav}
+              target="_blank"
+              rel="noreferrer"
+              className="self-start rounded-md border border-hairline px-3 py-1.5 text-sm font-medium text-brand hover:border-brand dark:text-ink-inverted"
+            >
+              Navigate to this stop
+            </a>
+          )}
+          {campgroundMap === undefined ? undefined : (
+            <CampgroundMapLink attachment={campgroundMap} />
+          )}
+        </div>
       )}
 
       {stop.address === undefined ? undefined : (
@@ -309,6 +326,8 @@ function NextStopHero({
           Undo arrival at {lastArrived.campground ?? 'the previous stop'}
         </button>
       )}
+
+      <StopAttachments stop={stop} tripId={tripId} rigId={rigId} />
 
       {children}
     </section>

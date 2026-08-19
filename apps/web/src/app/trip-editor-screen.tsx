@@ -25,6 +25,7 @@ import { useRouter } from 'next/navigation';
 import { useState, type JSX } from 'react';
 import { formatIsoDate } from './dates';
 import { PlaceAutocomplete } from './place-autocomplete';
+import { StopAttachments } from './stop-attachments';
 
 const labelClass =
   'flex-col items-start gap-1 font-normal text-muted-foreground';
@@ -373,6 +374,10 @@ function StopsSection({
                 </Button>
               </div>
             </div>
+            {/* Paperwork arrives while planning, not only at the next stop —
+                every persisted stop card carries the manager. (A brand-new
+                stop has no id yet, so it can't take attachments; save first.) */}
+            <StopAttachments stop={stop} tripId={trip.id} rigId={rigId} />
             {editing === stop.id ? (
               <StopForm
                 initial={stop}
