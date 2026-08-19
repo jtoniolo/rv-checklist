@@ -35,13 +35,14 @@ materialises (e.g. via HashiCorp Vault). It must supply exactly these keys:
 | `S3_ACCESS_KEY_ID`     | Garage key id for the attachment bucket (ADR-0026, provisioned by ticket #110). |
 | `S3_SECRET_ACCESS_KEY` | Garage secret key paired with `S3_ACCESS_KEY_ID`.                   |
 
-**Vault mapping (deploy note):** the Vault keys at `<private-kv-path>`
-are lowercase, and one of them is *not* a plain lowercase→uppercase rename:
+**Vault mapping (deploy note):** the Vault keys (the KV path is in the
+operator's private home lab config, per ADR-0020) are lowercase, and one of
+them is *not* a plain lowercase→uppercase rename:
 
-| Vault key (`<private-kv-path>`) | Secret / env var key   |
-| ---------------------------------------- | ---------------------- |
-| `s3_access_key_id`                       | `S3_ACCESS_KEY_ID`     |
-| `s3_access_key`                          | `S3_SECRET_ACCESS_KEY` |
+| Vault key          | Secret / env var key   |
+| ------------------ | ---------------------- |
+| `s3_access_key_id` | `S3_ACCESS_KEY_ID`     |
+| `s3_access_key`    | `S3_SECRET_ACCESS_KEY` |
 
 The Deployment injects the Secret with `envFrom`, so extra keys reach the pod
 without a chart change. The keys above are also listed in `secretKeys` in
@@ -59,8 +60,8 @@ path component. Rendering fails if you leave it empty, because the app's own
 fallback (`http://localhost:3000`) silently breaks MCP OAuth.
 
 `S3_ENDPOINT` and `S3_BUCKET` are ConfigMap values too (ADR-0026): the Garage
-S3 endpoint for attachment storage (`http://your-garage-host:3900` on the home lab —
-Garage runs on the host, outside the cluster) and the app's single attachment
+S3 endpoint for attachment storage (`http://<garage-host>:3900` — Garage runs
+on the home-lab host, outside the cluster) and the app's single attachment
 bucket (`rv-checklist` in production). Neither is secret — the endpoint is
 unreachable without the key pair in the Secret. Rendering fails if either is
 left empty.
