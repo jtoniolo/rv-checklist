@@ -23,6 +23,7 @@ const NAV_ITEMS: readonly {
 }[] = [
   { label: 'Home', icon: '⌂', path: (id) => `/rig/${id}` },
   { label: 'Checklists', icon: '☑', path: (id) => `/rig/${id}/checklists` },
+  { label: 'Trips', icon: '🧭', path: (id) => `/rig/${id}/trips` },
   { label: 'Maintenance', icon: '🔧', path: (id) => `/rig/${id}/maintenance` },
   { label: 'Rig', icon: '🚐', path: (id) => `/rig/${id}/settings` },
 ];

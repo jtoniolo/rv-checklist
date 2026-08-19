@@ -5,6 +5,7 @@ import {
   OwnerSchema,
   RigSchema,
   RunSchema,
+  TripReadSchema,
   type Checklist,
   type Id,
   type LogEntry,
@@ -12,6 +13,7 @@ import {
   type Owner,
   type Rig,
   type Run,
+  type TripRead,
 } from '@rv-checklist/domain';
 import { cookies } from 'next/headers';
 
@@ -94,4 +96,8 @@ export function fetchRun(runId: Id): Promise<Run> {
 
 export function fetchRunsByRig(rigId: Id): Promise<Run[]> {
   return serverFetch(`/runs?rigId=${rigId}`, arrayOf(RunSchema));
+}
+
+export function fetchTripsByRig(rigId: Id): Promise<TripRead[]> {
+  return serverFetch(`/trips?rigId=${rigId}`, arrayOf(TripReadSchema));
 }

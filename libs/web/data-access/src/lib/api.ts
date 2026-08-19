@@ -17,6 +17,7 @@ import {
   WebSessionSchema,
   RigSchema,
   RunSchema,
+  TripReadSchema,
   type Checklist,
   type CreateChecklist,
   type CreateEquipmentItem,
@@ -24,6 +25,7 @@ import {
   type CreateMaintenanceTask,
   type CreateRig,
   type CreateRun,
+  type CreateTrip,
   type EquipmentItem,
   type Id,
   type LogEntry,
@@ -35,6 +37,7 @@ import {
   type WebSession,
   type Rig,
   type Run,
+  type TripRead,
   type UpdateChecklist,
   type UpdateEquipmentItem,
   type UpdateLogEntry,
@@ -54,6 +57,7 @@ const MaintenanceTaskArraySchema = z.array(MaintenanceTaskSchema);
 const LogEntryArraySchema = z.array(LogEntrySchema);
 const EquipmentItemArraySchema = z.array(EquipmentItemSchema);
 const OAuthGrantArraySchema = z.array(OAuthGrantSchema);
+const TripReadArraySchema = z.array(TripReadSchema);
 const WebSessionArraySchema = z.array(WebSessionSchema);
 
 /**
@@ -122,6 +126,7 @@ export const api = createApi({
     'Checklist',
     'Run',
     'Task',
+    'Trip',
     'LogEntry',
     'Equipment',
     'Me',
@@ -305,6 +310,26 @@ export const api = createApi({
     deleteRun: builder.mutation<void, Id>({
       query: (id) => ({ url: `/runs/${id}`, method: 'DELETE' }),
       invalidatesTags: (_result, _error, id) => [{ type: 'Run', id }],
+    }),
+
+    listTripsByRig: builder.query<TripRead[], Id>({
+      query: (rigId) => `/trips?rigId=${rigId}`,
+      transformResponse: (raw: unknown) => TripReadArraySchema.parse(raw),
+      providesTags: (result, _error, rigId) =>
+        result
+          ? [
+              ...result.map((t) => ({ type: 'Trip' as const, id: t.id })),
+              { type: 'Trip' as const, id: `LIST:${rigId}` },
+            ]
+          : [{ type: 'Trip' as const, id: `LIST:${rigId}` }],
+    }),
+
+    createTrip: builder.mutation<TripRead, CreateTrip>({
+      query: (body) => ({ url: '/trips', method: 'POST', body }),
+      transformResponse: (raw: unknown) => TripReadSchema.parse(raw),
+      invalidatesTags: (_result, _error, { rigId }) => [
+        { type: 'Trip', id: `LIST:${rigId}` },
+      ],
     }),
 
     listTasks: builder.query<MaintenanceTask[], Id>({
@@ -545,6 +570,8 @@ export const {
   useCreateRunMutation,
   useUpdateRunMutation,
   useDeleteRunMutation,
+  useListTripsByRigQuery,
+  useCreateTripMutation,
   useListTasksQuery,
   useCreateTaskMutation,
   useUpdateTaskMutation,

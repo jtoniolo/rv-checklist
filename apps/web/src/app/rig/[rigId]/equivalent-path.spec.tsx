@@ -21,4 +21,21 @@ describe('equivalentPath', () => {
       '/rig/xyz/checklists',
     );
   });
+
+  it('maps the trips list to the new rig trips list (issue #114)', () => {
+    expect(equivalentPath('/rig/abc/trips', 'xyz')).toBe('/rig/xyz/trips');
+  });
+
+  it('maps a trip detail to the trips list (issue #114)', () => {
+    expect(equivalentPath('/rig/abc/trips/trip123', 'xyz')).toBe(
+      '/rig/xyz/trips',
+    );
+  });
+
+  it('maps deeper trip sub-routes (new, edit) to the trips list (issue #114)', () => {
+    expect(equivalentPath('/rig/abc/trips/new', 'xyz')).toBe('/rig/xyz/trips');
+    expect(equivalentPath('/rig/abc/trips/trip123/edit', 'xyz')).toBe(
+      '/rig/xyz/trips',
+    );
+  });
 });
