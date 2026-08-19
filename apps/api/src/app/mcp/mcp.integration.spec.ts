@@ -11,6 +11,7 @@ import {
 } from '@rekog/mcp-nest';
 import { JwtTokenService } from '@rekog/mcp-nest-auth';
 import {
+  AttachmentRepository,
   ChecklistRepository,
   EquipmentItemRepository,
   LogEntryRepository,
@@ -18,6 +19,7 @@ import {
   McpTokenStore,
   RigRepository,
   RunRepository,
+  StopRepository,
   TripRepository,
   UserStore,
   type McpTokenRecord,
@@ -26,12 +28,14 @@ import {
   type UserRecord,
 } from '@rv-checklist/api-data-access';
 import {
+  InMemoryAttachmentRepository,
   InMemoryChecklistRepository,
   InMemoryEquipmentItemRepository,
   InMemoryLogEntryRepository,
   InMemoryMaintenanceTaskRepository,
   InMemoryRigRepository,
   InMemoryRunRepository,
+  InMemoryStopRepository,
   InMemoryTripRepository,
 } from '@rv-checklist/domain/testing';
 import cookieParser from 'cookie-parser';
@@ -46,6 +50,10 @@ import { MaintenanceTaskService } from '../maintenance/maintenance-task.service.
 import { OAuthGrantService } from '../mcp-auth/oauth-grant.service.js';
 import { RigService } from '../rig/rig.service.js';
 import { RunService } from '../run/run.service.js';
+import { InMemoryObjectStorage } from '../storage/in-memory-object-storage.js';
+import { ObjectStorage } from '../storage/object-storage.js';
+import { StopService } from '../trips/stop.service.js';
+import { TripService } from '../trips/trip.service.js';
 import { McpToolsController } from './mcp-tools.controller.js';
 
 // ---------------------------------------------------------------------------
@@ -276,6 +284,10 @@ const RUN_ID = 'cccccccc-0000-4000-8000-000000000001';
 const TASK_ID = 'dddddddd-0000-4000-8000-000000000001';
 const LOG_ENTRY_ID = 'eeeeeeee-0000-4000-8000-000000000001';
 const EQUIPMENT_ID = 'ffffffff-0000-4000-8000-000000000001';
+const TRIP_ID = 'abababab-0000-4000-8000-000000000001';
+const STOP_ID = 'abababab-0000-4000-8000-000000000002';
+const SECOND_STOP_ID = 'abababab-0000-4000-8000-000000000003';
+const ATTACHMENT_ID = 'abababab-0000-4000-8000-000000000004';
 
 void RUN_ID;
 void CHECKLIST_ID;
@@ -287,6 +299,9 @@ async function seedData(repos: {
   tasks: InMemoryMaintenanceTaskRepository;
   logEntries: InMemoryLogEntryRepository;
   equipmentItems: InMemoryEquipmentItemRepository;
+  trips: InMemoryTripRepository;
+  stops: InMemoryStopRepository;
+  attachments: InMemoryAttachmentRepository;
 }): Promise<void> {
   await repos.rigs.save({
     id: RIG_ID,
@@ -343,6 +358,41 @@ async function seedData(repos: {
     purchaseDate: '2025-03-15',
     costCents: 8999,
   });
+
+  await repos.trips.save({
+    id: TRIP_ID,
+    rigId: RIG_ID,
+    name: 'Fall colours loop',
+    startLocation: 'Home',
+    checklistIds: [CHECKLIST_ID],
+  });
+
+  await repos.stops.save({
+    id: STOP_ID,
+    tripId: TRIP_ID,
+    position: 0,
+    arrived: false,
+    campground: 'Algonquin — Mew Lake',
+    legKm: 120,
+  });
+
+  await repos.stops.save({
+    id: SECOND_STOP_ID,
+    tripId: TRIP_ID,
+    position: 1,
+    arrived: false,
+    campground: 'Driftwood',
+    legKm: 85,
+  });
+
+  await repos.attachments.save({
+    id: ATTACHMENT_ID,
+    stopId: STOP_ID,
+    filename: 'mew-lake-map.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 123_456,
+    isCampgroundMap: true,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -374,6 +424,8 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
   const logEntryRepo = new InMemoryLogEntryRepository();
   const equipmentItemRepo = new InMemoryEquipmentItemRepository();
   const tripRepo = new InMemoryTripRepository();
+  const stopRepo = new InMemoryStopRepository();
+  const attachmentRepo = new InMemoryAttachmentRepository();
 
   const OAUTH_OPTIONS = {
     jwtSecret: MCP_JWT_SECRET,
@@ -392,6 +444,9 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
       tasks: taskRepo,
       logEntries: logEntryRepo,
       equipmentItems: equipmentItemRepo,
+      trips: tripRepo,
+      stops: stopRepo,
+      attachments: attachmentRepo,
     });
 
     grantService = new FakeOAuthGrantService();
@@ -419,11 +474,16 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
         RunService,
         MaintenanceTaskService,
         LogEntryService,
+        TripService,
+        StopService,
         { provide: RigRepository, useValue: rigRepo },
         { provide: EquipmentItemRepository, useValue: equipmentItemRepo },
         { provide: ChecklistRepository, useValue: checklistRepo },
         { provide: RunRepository, useValue: runRepo },
         { provide: TripRepository, useValue: tripRepo },
+        { provide: StopRepository, useValue: stopRepo },
+        { provide: AttachmentRepository, useValue: attachmentRepo },
+        { provide: ObjectStorage, useValue: new InMemoryObjectStorage() },
         { provide: MaintenanceTaskRepository, useValue: taskRepo },
         { provide: LogEntryRepository, useValue: logEntryRepo },
         {
@@ -649,7 +709,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
       expect(result.serverInfo.name).toBe('rv-checklist-test');
     });
 
-    it('lists all fifteen tools', async () => {
+    it('lists all twenty-three tools', async () => {
       await mcpPost(
         jsonrpc('initialize', {
           protocolVersion: '2025-03-26',
@@ -665,10 +725,14 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
       const names: string[] = result.tools.map((t) => t.name);
       names.sort((a, b) => a.localeCompare(b));
       expect(names).toEqual([
+        'add_stop',
         'create_checklist',
         'create_maintenance_task',
+        'create_trip',
         'delete_checklist',
         'delete_maintenance_task',
+        'delete_stop',
+        'delete_trip',
         'get_checklist',
         'get_maintenance_task',
         'get_rig',
@@ -678,8 +742,12 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
         'list_maintenance_tasks',
         'list_rigs',
         'list_runs',
+        'list_trips',
+        'mark_stop_arrived',
         'update_checklist',
         'update_maintenance_task',
+        'update_stop',
+        'update_trip',
       ]);
     });
   });
@@ -838,6 +906,11 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
         },
         {
           name: 'list_log_entries',
+          arguments: { rigId: OTHER_RIG_ID },
+          text: 'Rig not found',
+        },
+        {
+          name: 'list_trips',
           arguments: { rigId: OTHER_RIG_ID },
           text: 'Rig not found',
         },
@@ -1015,6 +1088,198 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
       expect(notFound.isError).toBe(true);
       expect(notFound.content[0]?.text).toBe('Maintenance task not found');
     });
+
+    it('list_trips embeds ordered stops with attachment metadata only and the derived status', async () => {
+      const res = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          { name: 'list_trips', arguments: { rigId: RIG_ID } },
+          60,
+        ),
+      ).expect(200);
+
+      const trips = parseToolText(res.body as JsonRpcResponse) as {
+        id: string;
+        status: string;
+        stops: { id: string; attachments: unknown[] }[];
+      }[];
+      expect(trips).toHaveLength(1);
+      expect(trips[0]?.id).toBe(TRIP_ID);
+      expect(trips[0]?.status).toBe('planned');
+      expect(trips[0]?.stops.map((s) => s.id)).toEqual([
+        STOP_ID,
+        SECOND_STOP_ID,
+      ]);
+      // Exact-match keeps ADR-0026 honest: metadata only, no URL or bytes.
+      expect(trips[0]?.stops[0]?.attachments).toEqual([
+        {
+          id: ATTACHMENT_ID,
+          stopId: STOP_ID,
+          filename: 'mew-lake-map.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 123_456,
+          isCampgroundMap: true,
+        },
+      ]);
+    });
+
+    it("mark_stop_arrived moves the rig's Distance by the leg, both directions", async () => {
+      async function rigDistance(id: number): Promise<number> {
+        const res = await mcpPost(
+          jsonrpc(
+            'tools/call',
+            { name: 'get_rig', arguments: { id: RIG_ID } },
+            id,
+          ),
+        ).expect(200);
+        const rig = parseToolText(res.body as JsonRpcResponse) as {
+          distanceKm: number;
+        };
+        return rig.distanceKm;
+      }
+
+      // Arrive: the stop's leg lands on the rig's Distance
+      const res1 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'mark_stop_arrived',
+            arguments: { id: STOP_ID, arrived: true },
+          },
+          61,
+        ),
+      ).expect(200);
+      const arrived = parseToolText(res1.body as JsonRpcResponse) as {
+        arrived: boolean;
+      };
+      expect(arrived.arrived).toBe(true);
+      expect(await rigDistance(62)).toBe(45_120);
+
+      // Un-arrive (the undo direction): the leg is backed out again
+      const res2 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'mark_stop_arrived',
+            arguments: { id: STOP_ID, arrived: false },
+          },
+          63,
+        ),
+      ).expect(200);
+      const unArrived = parseToolText(res2.body as JsonRpcResponse) as {
+        arrived: boolean;
+      };
+      expect(unArrived.arrived).toBe(false);
+      expect(await rigDistance(64)).toBe(45_000);
+    });
+
+    it('trip and stop create / update / delete round-trip', async () => {
+      const res1 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'create_trip',
+            arguments: { rigId: RIG_ID, name: 'Maritimes run' },
+          },
+          70,
+        ),
+      ).expect(200);
+      const trip = parseToolText(res1.body as JsonRpcResponse) as {
+        id: string;
+        name: string;
+        status: string;
+        stops: unknown[];
+      };
+      expect(trip.name).toBe('Maritimes run');
+      expect(trip.status).toBe('planned');
+      expect(trip.stops).toEqual([]);
+
+      // Stop appends at the end, not yet arrived
+      const res2 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'add_stop',
+            arguments: { tripId: trip.id, campground: 'Fundy', legKm: 300 },
+          },
+          71,
+        ),
+      ).expect(200);
+      const stop = parseToolText(res2.body as JsonRpcResponse) as {
+        id: string;
+        position: number;
+        arrived: boolean;
+      };
+      expect(stop.position).toBe(0);
+      expect(stop.arrived).toBe(false);
+
+      const res3 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'update_stop',
+            arguments: { id: stop.id, nights: 3, legKm: 250 },
+          },
+          72,
+        ),
+      ).expect(200);
+      const editedStop = parseToolText(res3.body as JsonRpcResponse) as {
+        nights: number;
+        legKm: number;
+      };
+      expect(editedStop.nights).toBe(3);
+      expect(editedStop.legKm).toBe(250);
+
+      const res4 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          {
+            name: 'update_trip',
+            arguments: { id: trip.id, name: 'Maritimes run v2' },
+          },
+          73,
+        ),
+      ).expect(200);
+      const editedTrip = parseToolText(res4.body as JsonRpcResponse) as {
+        name: string;
+      };
+      expect(editedTrip.name).toBe('Maritimes run v2');
+
+      const res5 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          { name: 'delete_stop', arguments: { id: stop.id } },
+          74,
+        ),
+      ).expect(200);
+      expect(
+        ((res5.body as JsonRpcResponse).result as ToolCallResult).isError,
+      ).toBeUndefined();
+
+      const res6 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          { name: 'delete_trip', arguments: { id: trip.id } },
+          75,
+        ),
+      ).expect(200);
+      expect(
+        ((res6.body as JsonRpcResponse).result as ToolCallResult).isError,
+      ).toBeUndefined();
+
+      // Only the seeded trip remains
+      const res7 = await mcpPost(
+        jsonrpc(
+          'tools/call',
+          { name: 'list_trips', arguments: { rigId: RIG_ID } },
+          76,
+        ),
+      ).expect(200);
+      const trips = parseToolText(res7.body as JsonRpcResponse) as {
+        id: string;
+      }[];
+      expect(trips.map((t) => t.id)).toEqual([TRIP_ID]);
+    });
   });
 
   // -- tools/call (JWT) ----------------------------------------------------
@@ -1043,12 +1308,12 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
       expect(rigs[0]).toMatchObject({ nickname: 'Bigfoot' });
     });
 
-    it('lists all fifteen tools via JWT', async () => {
+    it('lists all twenty-three tools via JWT', async () => {
       const res = await mcpPostJwt(jsonrpc('tools/list', {}, 51)).expect(200);
 
       const body = res.body as JsonRpcResponse;
       const result = body.result as { tools: { name: string }[] };
-      expect(result.tools).toHaveLength(15);
+      expect(result.tools).toHaveLength(23);
     });
   });
 });
