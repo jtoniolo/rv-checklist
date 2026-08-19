@@ -6,6 +6,10 @@ Date: 2026-08-17
 
 Accepted
 
+Amended by ADR-0027 (trips and stops tools: the roster grows to 23, and
+`mark_stop_arrived` writes the rig's Distance as a service-owned side
+effect).
+
 ## Decision drivers
 
 The MCP server (ADR-0021) needed its tool surface defined: which tools,
