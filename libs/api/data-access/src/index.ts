@@ -21,3 +21,5 @@ export * from './lib/trip.repository.js';
 export * from './lib/stop.repository.js';
 export * from './lib/entities/trip.entity.js';
 export * from './lib/entities/stop.entity.js';
+export * from './lib/attachment.repository.js';
+export * from './lib/entities/attachment.entity.js';

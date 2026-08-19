@@ -1,9 +1,11 @@
+import type { Attachment } from '../lib/attachment.js';
 import type { Checklist } from '../lib/checklist.js';
 import type { Id } from '../lib/common.js';
 import type { EquipmentItem } from '../lib/equipment.js';
 import type { LogEntry } from '../lib/log-entry.js';
 import type { MaintenanceTask } from '../lib/maintenance-task.js';
 import type {
+  AttachmentRepository,
   ChecklistRepository,
   EquipmentItemRepository,
   LogEntryRepository,
@@ -145,6 +147,15 @@ export class InMemoryStopRepository
   }
 }
 
+export class InMemoryAttachmentRepository
+  extends InMemoryRepository<Attachment>
+  implements AttachmentRepository
+{
+  listByStop(stopId: Id): Promise<Attachment[]> {
+    return this.where((a) => a.stopId === stopId);
+  }
+}
+
 /** The full set of in-memory repositories, one per aggregate. */
 export interface InMemoryRepositories {
   readonly rigs: InMemoryRigRepository;
@@ -155,6 +166,7 @@ export interface InMemoryRepositories {
   readonly equipmentItems: InMemoryEquipmentItemRepository;
   readonly trips: InMemoryTripRepository;
   readonly stops: InMemoryStopRepository;
+  readonly attachments: InMemoryAttachmentRepository;
 }
 
 /** Fresh, empty in-memory repositories — the usual starting point for a use-case test. */
@@ -168,5 +180,6 @@ export function createInMemoryRepositories(): InMemoryRepositories {
     equipmentItems: new InMemoryEquipmentItemRepository(),
     trips: new InMemoryTripRepository(),
     stops: new InMemoryStopRepository(),
+    attachments: new InMemoryAttachmentRepository(),
   };
 }

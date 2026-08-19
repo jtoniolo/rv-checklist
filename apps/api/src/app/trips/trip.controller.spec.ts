@@ -2,6 +2,7 @@ import { type ExecutionContext, type INestApplication } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import {
+  AttachmentRepository,
   ChecklistRepository,
   RigRepository,
   StopRepository,
@@ -9,6 +10,7 @@ import {
 } from '@rv-checklist/api-data-access';
 import type { Owner, Rig } from '@rv-checklist/domain';
 import {
+  InMemoryAttachmentRepository,
   InMemoryChecklistRepository,
   InMemoryRigRepository,
   InMemoryStopRepository,
@@ -16,6 +18,8 @@ import {
 } from '@rv-checklist/domain/testing';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { InMemoryObjectStorage } from '../storage/in-memory-object-storage.js';
+import { ObjectStorage } from '../storage/object-storage.js';
 import { StopController } from './stop.controller.js';
 import { StopService } from './stop.service.js';
 import { TripController } from './trip.controller.js';
@@ -59,6 +63,11 @@ describe('TripController over HTTP (through the Zod serializer)', () => {
           useValue: new InMemoryChecklistRepository(),
         },
         { provide: RigRepository, useValue: rigs },
+        {
+          provide: AttachmentRepository,
+          useValue: new InMemoryAttachmentRepository(),
+        },
+        { provide: ObjectStorage, useValue: new InMemoryObjectStorage() },
         { provide: APP_PIPE, useClass: ZodValidationPipe },
         { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
       ],

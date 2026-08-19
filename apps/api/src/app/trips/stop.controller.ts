@@ -9,7 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import type { Owner, Stop } from '@rv-checklist/domain';
+import type { Owner, StopRead } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
@@ -40,7 +40,7 @@ export class StopController {
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateStopDto,
-  ): Promise<Stop> {
+  ): Promise<StopRead> {
     return this.stops.create(owner.id, body);
   }
 
@@ -51,7 +51,7 @@ export class StopController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateStopDto,
-  ): Promise<Stop> {
+  ): Promise<StopRead> {
     return this.stops.update(owner.id, id, body);
   }
 
@@ -63,7 +63,7 @@ export class StopController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: SetStopArrivedDto,
-  ): Promise<Stop> {
+  ): Promise<StopRead> {
     return this.stops.setArrived(owner.id, id, body.arrived);
   }
 
@@ -76,7 +76,7 @@ export class StopController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReorderStopDto,
-  ): Promise<Stop[]> {
+  ): Promise<StopRead[]> {
     return this.stops.reorder(owner.id, id, body);
   }
 

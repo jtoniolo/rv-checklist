@@ -1,3 +1,4 @@
+import type { Attachment } from './attachment.js';
 import type { Checklist } from './checklist.js';
 import type { Id } from './common.js';
 import type { EquipmentItem } from './equipment.js';
@@ -65,4 +66,9 @@ export interface TripRepository extends Repository<Trip> {
 /** Stops — ordered overnight halts on a trip; the list comes back position-ordered. */
 export interface StopRepository extends Repository<Stop> {
   listByTrip(tripId: Id): Promise<Stop[]>;
+}
+
+/** Attachments — files kept on a stop (ADR-0026); rows are metadata only, the bytes live in object storage. */
+export interface AttachmentRepository extends Repository<Attachment> {
+  listByStop(stopId: Id): Promise<Attachment[]>;
 }

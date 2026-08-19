@@ -1,0 +1,45 @@
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+
+/**
+ * An attachment row — the metadata of one file kept on a stop (ADR-0026,
+ * issue #113). The bytes live in the Garage bucket under
+ * `stops/<stopId>/<attachmentId>`; nothing but ids ever lands in the object
+ * key, so filename, MIME type, and size are authoritative here. `stop_id`
+ * references `stops` with CASCADE delete — the stop-scoped key prefix makes
+ * the matching object cleanup a one-prefix listing — and is indexed because
+ * stop reads embed the attachment list (`listByStop`).
+ */
+@Entity({ name: 'attachments' })
+export class AttachmentEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Index()
+  @Column({ name: 'stop_id', type: 'uuid' })
+  stopId!: string;
+
+  @Column({ type: 'text' })
+  filename!: string;
+
+  @Column({ name: 'mime_type', type: 'text' })
+  mimeType!: string;
+
+  @Column({ name: 'size_bytes', type: 'int' })
+  sizeBytes!: number;
+
+  @Column({ name: 'is_campground_map', type: 'boolean', default: false })
+  isCampgroundMap!: boolean;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+}
