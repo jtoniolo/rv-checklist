@@ -17,6 +17,7 @@ import {
   WebSessionSchema,
   RigSchema,
   RunSchema,
+  StopReadSchema,
   TripReadSchema,
   type Checklist,
   type CreateChecklist,
@@ -37,6 +38,7 @@ import {
   type WebSession,
   type Rig,
   type Run,
+  type StopRead,
   type TripRead,
   type UpdateChecklist,
   type UpdateEquipmentItem,
@@ -44,6 +46,7 @@ import {
   type UpdateMaintenanceTask,
   type UpdateRig,
   type UpdateRun,
+  type UpdateTrip,
 } from '@rv-checklist/domain';
 import { Mutex } from 'async-mutex';
 import { z } from 'zod';
@@ -275,6 +278,18 @@ export const api = createApi({
           : [{ type: 'Run' as const, id: `RIG:${rigId}` }],
     }),
 
+    listRunsByTrip: builder.query<Run[], Id>({
+      query: (tripId) => `/runs?tripId=${tripId}`,
+      transformResponse: (raw: unknown) => RunArraySchema.parse(raw),
+      providesTags: (result, _error, tripId) =>
+        result
+          ? [
+              ...result.map((r) => ({ type: 'Run' as const, id: r.id })),
+              { type: 'Run' as const, id: `TRIP:${tripId}` },
+            ]
+          : [{ type: 'Run' as const, id: `TRIP:${tripId}` }],
+    }),
+
     getRun: builder.query<Run, Id>({
       query: (id) => `/runs/${id}`,
       transformResponse: (raw: unknown) => RunSchema.parse(raw),
@@ -289,6 +304,9 @@ export const api = createApi({
         ...(result
           ? [{ type: 'Run' as const, id: `RIG:${result.rigId}` }]
           : []),
+        ...(result?.tripId === undefined
+          ? []
+          : [{ type: 'Run' as const, id: `TRIP:${result.tripId}` }]),
       ],
     }),
 
@@ -329,6 +347,41 @@ export const api = createApi({
       transformResponse: (raw: unknown) => TripReadSchema.parse(raw),
       invalidatesTags: (_result, _error, { rigId }) => [
         { type: 'Trip', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    updateTrip: builder.mutation<
+      TripRead,
+      { id: Id; rigId: Id; changes: UpdateTrip }
+    >({
+      query: ({ id, changes }) => ({
+        url: `/trips/${id}`,
+        method: 'PATCH',
+        body: changes,
+      }),
+      transformResponse: (raw: unknown) => TripReadSchema.parse(raw),
+      invalidatesTags: (_result, _error, { id, rigId }) => [
+        { type: 'Trip', id },
+        { type: 'Trip', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    setStopArrived: builder.mutation<
+      StopRead,
+      { id: Id; arrived: boolean; rigId: Id; tripId: Id }
+    >({
+      query: ({ id, arrived }) => ({
+        url: `/stops/${id}/arrival`,
+        method: 'POST',
+        body: { arrived },
+      }),
+      transformResponse: (raw: unknown) => StopReadSchema.parse(raw),
+      // Arrival logs the leg onto the rig's Distance, so the rig is stale too.
+      invalidatesTags: (_result, _error, { rigId, tripId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'Trip', id: `LIST:${rigId}` },
+        { type: 'Rig', id: rigId },
+        { type: 'Rig', id: 'LIST' },
       ],
     }),
 
@@ -566,12 +619,15 @@ export const {
   useDeleteChecklistMutation,
   useListRunsQuery,
   useListRunsByRigQuery,
+  useListRunsByTripQuery,
   useGetRunQuery,
   useCreateRunMutation,
   useUpdateRunMutation,
   useDeleteRunMutation,
   useListTripsByRigQuery,
   useCreateTripMutation,
+  useUpdateTripMutation,
+  useSetStopArrivedMutation,
   useListTasksQuery,
   useCreateTaskMutation,
   useUpdateTaskMutation,
