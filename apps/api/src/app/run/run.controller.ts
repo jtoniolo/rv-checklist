@@ -45,9 +45,10 @@ export class RunController {
   }
 
   /**
-   * List runs — one checklist's history (`?checklistId=`) or a whole rig's
-   * (`?rigId=`, the home summary read, issue #22). Exactly one scope is
-   * required; an unscoped list of "all runs" has no screen.
+   * List runs — one checklist's history (`?checklistId=`), a whole rig's
+   * (`?rigId=`, the home summary read, issue #22), or one trip's
+   * (`?tripId=`, the trip screen, issue #111). Exactly one scope is required;
+   * an unscoped list of "all runs" has no screen.
    */
   @Get()
   // Array response: the DTO must be wrapped as `[Dto]` so the serializer
@@ -58,15 +59,19 @@ export class RunController {
     @Query('checklistId', new ParseUUIDPipe({ optional: true }))
     checklistId?: string,
     @Query('rigId', new ParseUUIDPipe({ optional: true })) rigId?: string,
+    @Query('tripId', new ParseUUIDPipe({ optional: true })) tripId?: string,
   ): Promise<Run[]> {
-    if (checklistId && !rigId) {
+    if (checklistId && !rigId && !tripId) {
       return this.runs.listByChecklist(owner.id, checklistId);
     }
-    if (rigId && !checklistId) {
+    if (rigId && !checklistId && !tripId) {
       return this.runs.listByRig(owner.id, rigId);
     }
+    if (tripId && !checklistId && !rigId) {
+      return this.runs.listByTrip(owner.id, tripId);
+    }
     throw new BadRequestException(
-      'exactly one of checklistId or rigId is required',
+      'exactly one of checklistId, rigId, or tripId is required',
     );
   }
 

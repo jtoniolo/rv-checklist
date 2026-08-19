@@ -11,6 +11,7 @@ import {
   ownedOrUndefined,
   RigRepository,
   RunRepository,
+  TripRepository,
 } from '@rv-checklist/api-data-access';
 import {
   toLoggedFields,
@@ -22,6 +23,7 @@ import {
   type Run,
   type RunStep,
   type Step,
+  type Trip,
   type UpdateRun,
 } from '@rv-checklist/domain';
 import { Clock } from '../auth/clock.js';
@@ -67,6 +69,7 @@ export class RunService {
     private readonly rigs: RigRepository,
     private readonly tasks: MaintenanceTaskRepository,
     private readonly logEntries: LogEntryRepository,
+    private readonly trips: TripRepository,
     private readonly clock: Clock,
   ) {}
 
@@ -91,6 +94,19 @@ export class RunService {
       throw new NotFoundException('Checklist not found');
     }
     return checklist;
+  }
+
+  /**
+   * The trip if the owner owns it (via its rig, ADR-0006), else reject — the
+   * gate for linking a run to a trip and for listing a trip's runs (issue
+   * #111). A foreign or missing trip is indistinguishable: both "not found".
+   */
+  private async ownedTrip(ownerId: Id, tripId: Id): Promise<Trip> {
+    const trip = await this.trips.findById(tripId);
+    if (!trip || !(await this.ownsRig(ownerId, trip.rigId))) {
+      throw new NotFoundException('Trip not found');
+    }
+    return trip;
   }
 
   /** Today as an IsoDate (`YYYY-MM-DD`), read from the injected clock. */
@@ -183,13 +199,27 @@ export class RunService {
     return entry.id;
   }
 
-  /** Start a run over one of the owner's checklists — the server copies its steps. */
+  /**
+   * Start a run over one of the owner's checklists — the server copies its
+   * steps. A `tripId` links the run to a trip from the start (issue #111); the
+   * trip must be the owner's and live on the same rig as the checklist (a run
+   * belongs to its checklist's rig, so a cross-rig trip link is nonsense).
+   */
   async create(ownerId: Id, input: CreateRun): Promise<Run> {
     const checklist = await this.ownedChecklist(ownerId, input.checklistId);
+    if (input.tripId !== undefined) {
+      const trip = await this.ownedTrip(ownerId, input.tripId);
+      if (trip.rigId !== checklist.rigId) {
+        throw new BadRequestException(
+          'trip and checklist belong to different rigs',
+        );
+      }
+    }
     return this.runs.save({
       id: randomUUID(),
       checklistId: checklist.id,
       rigId: checklist.rigId,
+      ...(input.tripId !== undefined && { tripId: input.tripId }),
       startedOn: input.startedOn ?? this.today(),
       steps: checklist.steps.map((step) => toRunStep(step)),
     });
@@ -220,6 +250,12 @@ export class RunService {
       throw new NotFoundException('Rig not found');
     }
     return this.runs.listByRig(rigId);
+  }
+
+  /** The runs linked to one of the owner's trips — the trip screen's run list (issue #111). */
+  async listByTrip(ownerId: Id, tripId: Id): Promise<Run[]> {
+    await this.ownedTrip(ownerId, tripId);
+    return this.runs.listByTrip(tripId);
   }
 
   /** Apply a partial edit to one of the owner's runs (checklist/rig never change). */

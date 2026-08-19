@@ -12,6 +12,7 @@ import {
   InMemoryMaintenanceTaskRepository,
   InMemoryRigRepository,
   InMemoryRunRepository,
+  InMemoryTripRepository,
 } from '@rv-checklist/domain/testing';
 import { Clock } from '../auth/clock.js';
 import { RunService } from './run.service.js';
@@ -116,6 +117,14 @@ class FrozenClock extends Clock {
   }
 }
 
+// The trip fixtures (issue #111): a run may link to one of the rig's trips.
+// Alice's second rig carries a trip of its own, to prove a trip link cannot
+// cross rigs even within one owner.
+const aliceTripId = '550e8400-e29b-41d4-a716-446655440050';
+const bobTripId = '550e8400-e29b-41d4-a716-446655440051';
+const aliceOtherRigId = '550e8400-e29b-41d4-a716-446655440012';
+const aliceOtherTripId = '550e8400-e29b-41d4-a716-446655440052';
+
 async function makeService(): Promise<{
   service: RunService;
   runs: InMemoryRunRepository;
@@ -128,6 +137,7 @@ async function makeService(): Promise<{
   const rigs = new InMemoryRigRepository();
   const tasks = new InMemoryMaintenanceTaskRepository();
   const logEntries = new InMemoryLogEntryRepository();
+  const trips = new InMemoryTripRepository();
   await rigs.save(aliceRig);
   await rigs.save(bobRig);
   await checklists.save(aliceChecklist);
@@ -135,6 +145,29 @@ async function makeService(): Promise<{
   await checklists.save(sealsChecklist);
   await tasks.save(sealsTask);
   await tasks.save(bobTask);
+  await trips.save({
+    id: aliceTripId,
+    rigId: aliceRigId,
+    name: 'Fall colours loop',
+    checklistIds: [],
+  });
+  await trips.save({
+    id: bobTripId,
+    rigId: bobRigId,
+    name: 'Bob’s trip',
+    checklistIds: [],
+  });
+  await rigs.save({
+    id: aliceOtherRigId,
+    ownerId: alice,
+    nickname: 'Backup Rig',
+  });
+  await trips.save({
+    id: aliceOtherTripId,
+    rigId: aliceOtherRigId,
+    name: 'Other rig’s trip',
+    checklistIds: [],
+  });
   return {
     service: new RunService(
       runs,
@@ -142,6 +175,7 @@ async function makeService(): Promise<{
       rigs,
       tasks,
       logEntries,
+      trips,
       new FrozenClock(),
     ),
     runs,
@@ -709,5 +743,61 @@ describe('RunService', () => {
       // Alice's run is untouched by Bob's attempts.
       await expect(service.get(alice, aliceRun.id)).resolves.toEqual(aliceRun);
     });
+  });
+});
+
+describe('RunService — trip link (issue #111)', () => {
+  it('creates a run linked to one of the rig’s trips', async () => {
+    const { service } = await makeService();
+
+    const run = await service.create(alice, {
+      checklistId: aliceChecklistId,
+      tripId: aliceTripId,
+    });
+
+    expect(run.tripId).toBe(aliceTripId);
+  });
+
+  it('rejects a trip the owner does not own as NotFound', async () => {
+    const { service } = await makeService();
+
+    await expect(
+      service.create(alice, {
+        checklistId: aliceChecklistId,
+        tripId: bobTripId,
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects a same-owner trip on a different rig than the checklist as BadRequest', async () => {
+    const { service } = await makeService();
+
+    await expect(
+      service.create(alice, {
+        checklistId: aliceChecklistId,
+        tripId: aliceOtherTripId,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('lists the runs of one of the owner’s trips', async () => {
+    const { service } = await makeService();
+    const linked = await service.create(alice, {
+      checklistId: aliceChecklistId,
+      tripId: aliceTripId,
+    });
+    await service.create(alice, { checklistId: aliceChecklistId });
+
+    const runs = await service.listByTrip(alice, aliceTripId);
+
+    expect(runs.map((r) => r.id)).toEqual([linked.id]);
+  });
+
+  it('refuses to list the runs of a trip the owner does not own', async () => {
+    const { service } = await makeService();
+
+    await expect(service.listByTrip(alice, bobTripId)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });
