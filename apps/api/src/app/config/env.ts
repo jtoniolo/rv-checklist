@@ -72,6 +72,15 @@ export const EnvSchema = z.object({
   MCP_RESOURCE_URL: z.url().optional(),
 
   /**
+   * Google Maps Platform API key for leg-distance fetches (ADR-0025),
+   * scoped to the Routes API and Places API (New) and IP-restricted to the
+   * server's egress IP. Distinct from the OAuth client above — this is a
+   * plain API key, not an OAuth credential. Required at boot; the fetch
+   * flow that actually uses it ships with the Trip Planner build.
+   */
+  GOOGLE_MAPS_API_KEY: z.string().min(1),
+
+  /**
    * Comma-separated allowlist of redirect URIs accepted during dynamic
    * client registration (ADR-0024). Loopback URIs (`http://localhost` and
    * `http://127.0.0.1`, any port, any path) are always accepted regardless
