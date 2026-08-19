@@ -14,10 +14,13 @@ import {
   McpTokenStatusSchema,
   OAuthGrantSchema,
   OwnerSchema,
+  PlaceDetailsSchema,
+  PlaceSuggestionSchema,
+  RouteDistanceSchema,
+  StopReadSchema,
   WebSessionSchema,
   RigSchema,
   RunSchema,
-  StopReadSchema,
   TripReadSchema,
   type Checklist,
   type CreateChecklist,
@@ -26,6 +29,7 @@ import {
   type CreateMaintenanceTask,
   type CreateRig,
   type CreateRun,
+  type CreateStop,
   type CreateTrip,
   type EquipmentItem,
   type Id,
@@ -35,10 +39,14 @@ import {
   type McpTokenStatus,
   type OAuthGrant,
   type Owner,
+  type PlaceDetails,
+  type PlaceSuggestion,
+  type RouteDistance,
+  type RouteDistanceRequest,
+  type StopRead,
   type WebSession,
   type Rig,
   type Run,
-  type StopRead,
   type TripRead,
   type UpdateChecklist,
   type UpdateEquipmentItem,
@@ -46,6 +54,7 @@ import {
   type UpdateMaintenanceTask,
   type UpdateRig,
   type UpdateRun,
+  type UpdateStop,
   type UpdateTrip,
 } from '@rv-checklist/domain';
 import { Mutex } from 'async-mutex';
@@ -61,6 +70,8 @@ const LogEntryArraySchema = z.array(LogEntrySchema);
 const EquipmentItemArraySchema = z.array(EquipmentItemSchema);
 const OAuthGrantArraySchema = z.array(OAuthGrantSchema);
 const TripReadArraySchema = z.array(TripReadSchema);
+const StopReadArraySchema = z.array(StopReadSchema);
+const PlaceSuggestionArraySchema = z.array(PlaceSuggestionSchema);
 const WebSessionArraySchema = z.array(WebSessionSchema);
 
 /**
@@ -385,6 +396,96 @@ export const api = createApi({
       ],
     }),
 
+    deleteTrip: builder.mutation<void, { id: Id; rigId: Id }>({
+      query: ({ id }) => ({ url: `/trips/${id}`, method: 'DELETE' }),
+      invalidatesTags: (_result, _error, { rigId }) => [
+        { type: 'Trip', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    createStop: builder.mutation<StopRead, CreateStop>({
+      query: (body) => ({ url: '/stops', method: 'POST', body }),
+      transformResponse: (raw: unknown) => StopReadSchema.parse(raw),
+      invalidatesTags: (_result, _error, { tripId }) => [
+        { type: 'Trip', id: tripId },
+      ],
+    }),
+
+    updateStop: builder.mutation<
+      StopRead,
+      { id: Id; tripId: Id; rigId: Id; changes: UpdateStop }
+    >({
+      query: ({ id, changes }) => ({
+        url: `/stops/${id}`,
+        method: 'PATCH',
+        body: changes,
+      }),
+      transformResponse: (raw: unknown) => StopReadSchema.parse(raw),
+      // Editing an arrived stop's leg moves the rig's Distance by the
+      // difference (issue #111), so the Rig caches refetch too.
+      invalidatesTags: (result, _error, { tripId, rigId, changes }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'Trip', id: `LIST:${rigId}` },
+        ...(result?.arrived === true && 'legKm' in changes
+          ? [
+              { type: 'Rig' as const, id: rigId },
+              { type: 'Rig' as const, id: 'LIST' },
+            ]
+          : []),
+      ],
+    }),
+
+    deleteStop: builder.mutation<void, { id: Id; tripId: Id; rigId: Id }>({
+      query: ({ id }) => ({ url: `/stops/${id}`, method: 'DELETE' }),
+      // Deleting an arrived stop backs its leg out of the rig's Distance.
+      invalidatesTags: (_result, _error, { tripId, rigId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'Trip', id: `LIST:${rigId}` },
+        { type: 'Rig', id: rigId },
+        { type: 'Rig', id: 'LIST' },
+      ],
+    }),
+
+    reorderStop: builder.mutation<
+      StopRead[],
+      { id: Id; tripId: Id; rigId: Id; position: number }
+    >({
+      query: ({ id, position }) => ({
+        url: `/stops/${id}/reorder`,
+        method: 'POST',
+        body: { position },
+      }),
+      transformResponse: (raw: unknown) => StopReadArraySchema.parse(raw),
+      invalidatesTags: (_result, _error, { tripId, rigId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'Trip', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    // Maps proxy endpoints (issue #112, ADR-0025): responses only pre-fill
+    // editable fields and are never persisted, so nothing here carries tags.
+    // The queries are used lazily — the component debounces autocomplete and
+    // fires place details on pick.
+    mapsAutocomplete: builder.query<PlaceSuggestion[], string>({
+      query: (input) => `/maps/autocomplete?input=${encodeURIComponent(input)}`,
+      transformResponse: (raw: unknown) =>
+        PlaceSuggestionArraySchema.parse(raw),
+    }),
+
+    placeDetails: builder.query<PlaceDetails, string>({
+      query: (placeId) => `/maps/places/${placeId}`,
+      transformResponse: (raw: unknown) => PlaceDetailsSchema.parse(raw),
+    }),
+
+    routeDistance: builder.mutation<RouteDistance, RouteDistanceRequest>({
+      query: (body) => ({
+        url: '/maps/route-distance',
+        method: 'POST',
+        body,
+      }),
+      transformResponse: (raw: unknown) => RouteDistanceSchema.parse(raw),
+    }),
+
     listTasks: builder.query<MaintenanceTask[], Id>({
       query: (rigId) => `/tasks?rigId=${rigId}`,
       transformResponse: (raw: unknown) =>
@@ -628,6 +729,14 @@ export const {
   useCreateTripMutation,
   useUpdateTripMutation,
   useSetStopArrivedMutation,
+  useDeleteTripMutation,
+  useCreateStopMutation,
+  useUpdateStopMutation,
+  useDeleteStopMutation,
+  useReorderStopMutation,
+  useLazyMapsAutocompleteQuery,
+  useLazyPlaceDetailsQuery,
+  useRouteDistanceMutation,
   useListTasksQuery,
   useCreateTaskMutation,
   useUpdateTaskMutation,
