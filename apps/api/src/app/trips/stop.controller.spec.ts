@@ -2,18 +2,22 @@ import { type ExecutionContext, type INestApplication } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import {
+  AttachmentRepository,
   RigRepository,
   StopRepository,
   TripRepository,
 } from '@rv-checklist/api-data-access';
 import type { Owner, Rig, Trip } from '@rv-checklist/domain';
 import {
+  InMemoryAttachmentRepository,
   InMemoryRigRepository,
   InMemoryStopRepository,
   InMemoryTripRepository,
 } from '@rv-checklist/domain/testing';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { InMemoryObjectStorage } from '../storage/in-memory-object-storage.js';
+import { ObjectStorage } from '../storage/object-storage.js';
 import { StopController } from './stop.controller.js';
 import { StopService } from './stop.service.js';
 
@@ -64,6 +68,11 @@ describe('StopController over HTTP (through the Zod serializer)', () => {
         { provide: StopRepository, useValue: new InMemoryStopRepository() },
         { provide: TripRepository, useValue: trips },
         { provide: RigRepository, useValue: rigs },
+        {
+          provide: AttachmentRepository,
+          useValue: new InMemoryAttachmentRepository(),
+        },
+        { provide: ObjectStorage, useValue: new InMemoryObjectStorage() },
         { provide: APP_PIPE, useClass: ZodValidationPipe },
         { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
       ],

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AttachmentRepository,
   ownedOrUndefined,
   RigRepository,
   StopRepository,
@@ -11,9 +12,12 @@ import type {
   Id,
   ReorderStop,
   Stop,
+  StopRead,
   Trip,
   UpdateStop,
 } from '@rv-checklist/domain';
+import { ObjectStorage } from '../storage/object-storage.js';
+import { stopAttachmentPrefix } from './attachment-keys.js';
 
 /**
  * Stop authoring and the arrival operation, owner-scoped (issue #111). A stop
@@ -32,6 +36,11 @@ import type {
  * `position` is server-owned: creating appends at the end, deleting renumbers
  * the survivors contiguously (so a later append can never collide), and
  * {@link reorder} is the only way to move a stop.
+ *
+ * Every read comes back as a {@link StopRead}: the stored stop plus its
+ * attachments' metadata (ADR-0026). Deleting a stop hard-deletes its
+ * attachments — the database cascades the rows, and this service clears the
+ * stop's one-prefix slice of the bucket.
  */
 @Injectable()
 export class StopService {
@@ -39,7 +48,14 @@ export class StopService {
     private readonly stops: StopRepository,
     private readonly trips: TripRepository,
     private readonly rigs: RigRepository,
+    private readonly attachments: AttachmentRepository,
+    private readonly storage: ObjectStorage,
   ) {}
+
+  /** A stored stop widened to the read shape: its attachments' metadata embedded. */
+  private async toRead(stop: Stop): Promise<StopRead> {
+    return { ...stop, attachments: await this.attachments.listByStop(stop.id) };
+  }
 
   /** Whether the rig exists and belongs to the owner — the single ownership gate. */
   private async ownsRig(ownerId: Id, rigId: Id): Promise<boolean> {
@@ -105,15 +121,16 @@ export class StopService {
   }
 
   /** Append a stop at the end of one of the owner's trips — not yet arrived. */
-  async create(ownerId: Id, input: CreateStop): Promise<Stop> {
+  async create(ownerId: Id, input: CreateStop): Promise<StopRead> {
     const trip = await this.ownedTrip(ownerId, input.tripId);
     const siblings = await this.stops.listByTrip(trip.id);
-    return this.stops.save({
+    const saved = await this.stops.save({
       id: randomUUID(),
       position: siblings.length,
       arrived: false,
       ...input,
     });
+    return this.toRead(saved);
   }
 
   /**
@@ -123,7 +140,7 @@ export class StopService {
    * rig's Distance by the difference — the recorded travel changed, so the
    * running total follows; clearing it backs the whole leg out.
    */
-  async update(ownerId: Id, id: Id, changes: UpdateStop): Promise<Stop> {
+  async update(ownerId: Id, id: Id, changes: UpdateStop): Promise<StopRead> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     const next: Stop = { ...stop };
     if (changes.campground === null) delete next.campground;
@@ -165,7 +182,7 @@ export class StopService {
         (next.legKm ?? 0) - (stop.legKm ?? 0),
       );
     }
-    return this.stops.save(next);
+    return this.toRead(await this.stops.save(next));
   }
 
   /**
@@ -174,10 +191,10 @@ export class StopService {
    * the leg out. Idempotent — re-asserting the current state changes nothing,
    * so a leg can never be counted twice.
    */
-  async setArrived(ownerId: Id, id: Id, isArrived: boolean): Promise<Stop> {
+  async setArrived(ownerId: Id, id: Id, isArrived: boolean): Promise<StopRead> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     if (stop.arrived === isArrived) {
-      return stop;
+      return this.toRead(stop);
     }
     if (stop.legKm !== undefined) {
       await this.adjustDistance(
@@ -185,7 +202,7 @@ export class StopService {
         isArrived ? stop.legKm : -stop.legKm,
       );
     }
-    return this.stops.save({ ...stop, arrived: isArrived });
+    return this.toRead(await this.stops.save({ ...stop, arrived: isArrived }));
   }
 
   /**
@@ -194,7 +211,7 @@ export class StopService {
    * contiguously. Returns the trip's stops in their new order. Legs ride with
    * their stops, so reordering never touches the rig's Distance.
    */
-  async reorder(ownerId: Id, id: Id, body: ReorderStop): Promise<Stop[]> {
+  async reorder(ownerId: Id, id: Id, body: ReorderStop): Promise<StopRead[]> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     const siblings = await this.stops.listByTrip(trip.id);
     const others = siblings.filter((s) => s.id !== stop.id);
@@ -206,19 +223,23 @@ export class StopService {
           : this.stops.save({ ...s, position: index }),
       ),
     );
-    return this.stops.listByTrip(trip.id);
+    const reordered = await this.stops.listByTrip(trip.id);
+    return Promise.all(reordered.map((s) => this.toRead(s)));
   }
 
   /**
    * Delete one of the owner's stops. An arrived stop's leg is backed out of
    * the rig's Distance first (the stop no longer counts among the arrived
-   * legs); the survivors are then renumbered contiguously.
+   * legs); the stop's slice of the bucket is cleared (ADR-0026 — the database
+   * cascade only reaches the rows); the survivors are then renumbered
+   * contiguously.
    */
   async remove(ownerId: Id, id: Id): Promise<void> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     if (stop.arrived && stop.legKm !== undefined) {
       await this.adjustDistance(trip.rigId, -stop.legKm);
     }
+    await this.storage.deletePrefix(stopAttachmentPrefix(stop.id));
     await this.stops.delete(stop.id);
     await this.renumber(trip.id);
   }

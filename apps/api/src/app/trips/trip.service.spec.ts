@@ -1,11 +1,13 @@
 import { NotFoundException } from '@nestjs/common';
 import type { Rig } from '@rv-checklist/domain';
 import {
+  InMemoryAttachmentRepository,
   InMemoryChecklistRepository,
   InMemoryRigRepository,
   InMemoryStopRepository,
   InMemoryTripRepository,
 } from '@rv-checklist/domain/testing';
+import { InMemoryObjectStorage } from '../storage/in-memory-object-storage.js';
 import { TripService } from './trip.service.js';
 
 const alice = '550e8400-e29b-41d4-a716-446655440001';
@@ -42,7 +44,14 @@ async function makeService(): Promise<{
     steps: [],
   });
   return {
-    service: new TripService(trips, stops, checklists, rigs),
+    service: new TripService(
+      trips,
+      stops,
+      checklists,
+      rigs,
+      new InMemoryAttachmentRepository(),
+      new InMemoryObjectStorage(),
+    ),
     trips,
     stops,
     checklists,
