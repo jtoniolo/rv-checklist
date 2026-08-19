@@ -57,6 +57,44 @@ function navigationUrl(stop: StopRead): string | undefined {
   return `https://www.google.com/maps/dir/?api=1&destination=${destination}&destination_place_id=${stop.placeId}`;
 }
 
+/**
+ * The trip's **start point link** (issue #122) — the Google Maps place-search
+ * URL built from its place reference. The start is a *place* the trip departs
+ * from, not a directions destination, hence the search form rather than the
+ * directions form {@link navigationUrl} uses. Only a trip with a start place
+ * ID gets one; legacy text-only start points stay plain text.
+ */
+function startPointUrl(trip: TripRead): string | undefined {
+  if (trip.startPlaceId === undefined) {
+    return undefined;
+  }
+  const query = encodeURIComponent(trip.startLocation ?? '');
+  return `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${trip.startPlaceId}`;
+}
+
+/**
+ * The start point's name — a link to its Google place when the trip carries
+ * one (the same external-anchor treatment as a stop's navigation link),
+ * otherwise plain text. Shared by the "From …" header line and the route
+ * list's Start row.
+ */
+function StartPoint({ trip }: { readonly trip: TripRead }): JSX.Element {
+  const url = startPointUrl(trip);
+  if (url === undefined) {
+    return <>{trip.startLocation}</>;
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="underline hover:text-brand dark:hover:text-ink-inverted"
+    >
+      {trip.startLocation}
+    </a>
+  );
+}
+
 // ── Screen ──────────────────────────────────────────────────────────────────
 
 /**
@@ -140,7 +178,7 @@ export function TripScreen({
           </div>
           {trip.startLocation === undefined ? undefined : (
             <p className="text-sm text-brand-muted">
-              From {trip.startLocation}
+              From <StartPoint trip={trip} />
             </p>
           )}
         </div>
@@ -576,7 +614,7 @@ function RouteList({
               ○
             </span>
             <span className="flex-1 text-brand-muted">
-              {trip.startLocation}
+              <StartPoint trip={trip} />
             </span>
             <span className="text-xs text-brand-muted">Start</span>
           </li>
