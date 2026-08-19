@@ -136,6 +136,18 @@ describe('AttachmentService', () => {
       expect(storage.keys()).toEqual([]);
     });
 
+    it('rejects a blank filename', async () => {
+      const { service, aliceStopId } = await makeServices();
+
+      await expect(
+        service.upload(alice, aliceStopId, {
+          filename: '',
+          mimeType: 'image/png',
+          content: Buffer.from('bytes'),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('rejects an empty file', async () => {
       const { service, aliceStopId } = await makeServices();
 

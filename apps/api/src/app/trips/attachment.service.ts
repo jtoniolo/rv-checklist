@@ -112,6 +112,9 @@ export class AttachmentService {
         `Unsupported attachment type '${file.mimeType}' — accepted: ${attachmentMimeTypes.join(', ')}`,
       );
     }
+    if (file.filename.length === 0) {
+      throw new BadRequestException('Attachment needs a filename');
+    }
     if (file.content.byteLength === 0) {
       throw new BadRequestException('Attachment is empty');
     }
