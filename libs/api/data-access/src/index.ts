@@ -17,3 +17,7 @@ export * from './lib/entities/run.entity.js';
 export * from './lib/entities/maintenance-task.entity.js';
 export * from './lib/entities/log-entry.entity.js';
 export * from './lib/entities/equipment-item.entity.js';
+export * from './lib/trip.repository.js';
+export * from './lib/stop.repository.js';
+export * from './lib/entities/trip.entity.js';
+export * from './lib/entities/stop.entity.js';

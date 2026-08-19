@@ -22,6 +22,7 @@ export abstract class RunRepository implements RunRepositoryPort {
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<Run[]>;
   abstract listByChecklist(checklistId: Id): Promise<Run[]>;
+  abstract listByTrip(tripId: Id): Promise<Run[]>;
 }
 
 /** The persisted row (with its timestamps) narrowed to the {@link Run} wire model. */
@@ -30,8 +31,21 @@ function toRun(entity: RunEntity): Run {
     id: entity.id,
     checklistId: entity.checklistId,
     rigId: entity.rigId,
+    tripId: entity.tripId ?? undefined,
     startedOn: entity.startedOn,
     steps: entity.steps,
+  };
+}
+
+/**
+ * The wire model widened to the row shape: an absent `tripId` writes SQL NULL
+ * (never "leave unchanged" — `save` is a whole-aggregate upsert).
+ */
+function toRow(run: Run): Partial<RunEntity> {
+  return {
+    ...run,
+    // eslint-disable-next-line unicorn/no-null
+    tripId: run.tripId ?? null,
   };
 }
 
@@ -57,7 +71,7 @@ export class TypeOrmRunRepository extends RunRepository {
   }
 
   async save(run: Run): Promise<Run> {
-    const saved = await this.repo.save(this.repo.create(run));
+    const saved = await this.repo.save(this.repo.create(toRow(run)));
     return toRun(saved);
   }
 
@@ -75,6 +89,16 @@ export class TypeOrmRunRepository extends RunRepository {
     // reads most-recent-first — the in-progress one is usually the latest.
     const rows = await this.repo.find({
       where: { checklistId },
+      order: { startedOn: 'DESC', createdAt: 'DESC' },
+    });
+    return rows.map((row) => toRun(row));
+  }
+
+  async listByTrip(tripId: Id): Promise<Run[]> {
+    // Same most-recent-first reading as a checklist's history — the trip
+    // screen lists its runs newest occasion first (issue #111).
+    const rows = await this.repo.find({
+      where: { tripId },
       order: { startedOn: 'DESC', createdAt: 'DESC' },
     });
     return rows.map((row) => toRun(row));
