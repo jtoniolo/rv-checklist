@@ -11,6 +11,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { StopAttachments } from './stop-attachments';
 import { StoreProvider } from './store-provider';
 import { TripScreen } from './trip-screen';
 
@@ -45,6 +46,7 @@ function uuid(n: number): string {
 }
 
 const STOP_ID = uuid(102); // the next un-arrived stop — the hero
+const STOP_B = uuid(103); // a second stop, for the paste-target test
 const OLD_MAP = uuid(501); // flagged as the campground map initially
 const OTHER_FILE = uuid(502); // unflagged sibling
 const NEW_ATTACHMENT = uuid(503); // whatever the fake API mints on upload
@@ -125,18 +127,25 @@ describe('Stop attachments (issue #117)', () => {
     if (route === 'GET /runs') {
       return jsonResponse([]);
     }
-    if (route === `POST /stops/${STOP_ID}/attachments`) {
+    const uploadMatch = /^POST \/stops\/(?<stopId>[^/]+)\/attachments$/.exec(
+      route,
+    );
+    if (uploadMatch?.groups) {
+      const stopId = uploadMatch.groups['stopId'] ?? '';
       const form = await request.clone().formData();
       const file = form.get('file') as File;
       const created: Attachment = {
         id: NEW_ATTACHMENT,
-        stopId: STOP_ID,
+        stopId,
         filename: file.name,
         mimeType: file.type as Attachment['mimeType'],
         sizeBytes: file.size,
         isCampgroundMap: false,
       };
-      trip = makeTrip([...(trip.stops[0]?.attachments ?? []), created]);
+      // Only the hero's stop is refetched by the single-stop screen tests.
+      if (stopId === STOP_ID) {
+        trip = makeTrip([...(trip.stops[0]?.attachments ?? []), created]);
+      }
       return jsonResponse(created, 201);
     }
     const flagMatch = /^POST \/attachments\/(?<id>[^/]+)\/campground-map$/.exec(
@@ -286,5 +295,95 @@ describe('Stop attachments (issue #117)', () => {
     });
     expect(sentRequests('GET', `/attachments/${OTHER_FILE}`)).toHaveLength(1);
     expect(sentRequests('GET', `/attachments/${OLD_MAP}`)).toHaveLength(0);
+  });
+
+  it('routes a paste to exactly one stop — the section opened last', async () => {
+    // The trip editor mounts a manager per stop with independent
+    // disclosures; with two sections open, one Ctrl+V must reach exactly
+    // one stop (the paste-target stack — the regression from review).
+    const stops = [
+      {
+        id: STOP_ID,
+        tripId: TRIP_ID,
+        position: 0,
+        arrived: false,
+        campground: 'Killbear PP',
+        attachments: [],
+      },
+      {
+        id: STOP_B,
+        tripId: TRIP_ID,
+        position: 1,
+        arrived: false,
+        campground: 'Bon Echo PP',
+        attachments: [],
+      },
+    ];
+    const twoStops = TripReadSchema.parse({
+      id: TRIP_ID,
+      rigId: RIG_ID,
+      name: 'Fall Colours Loop',
+      checklistIds: [],
+      stops,
+      status: tripStatus(stops),
+    }).stops;
+    const [first, second] = twoStops;
+    if (first === undefined || second === undefined) {
+      throw new Error('expected two stops');
+    }
+    render(
+      <StoreProvider>
+        <StopAttachments stop={first} tripId={TRIP_ID} rigId={RIG_ID} />
+        <StopAttachments stop={second} tripId={TRIP_ID} rigId={RIG_ID} />
+      </StoreProvider>,
+    );
+
+    // Open both sections, the first stop's then the second's.
+    for (const summary of screen.getAllByText(/^Attachments/)) {
+      fireEvent.click(summary);
+    }
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole('button', { name: 'Choose file' }),
+      ).toHaveLength(2);
+    });
+
+    const file = new File(['png-bytes'], 'site-map.png', {
+      type: 'image/png',
+    });
+    fireEvent.paste(document, { clipboardData: { files: [file] } });
+
+    // Exactly one upload — to the last-opened section's stop.
+    await waitFor(() => {
+      expect(sentRequests('POST', `/stops/${STOP_B}/attachments`)).toHaveLength(
+        1,
+      );
+    });
+    expect(sentRequests('POST', `/stops/${STOP_ID}/attachments`)).toHaveLength(
+      0,
+    );
+
+    // Closing the last-opened section hands the paste target back to the
+    // still-open one. The details toggle event is asynchronous, so wait for
+    // the closed section's body to unmount before pasting again.
+    const [, secondSummary] = screen.getAllByText(/^Attachments/);
+    if (secondSummary === undefined) {
+      throw new Error('expected two summaries');
+    }
+    fireEvent.click(secondSummary);
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole('button', { name: 'Choose file' }),
+      ).toHaveLength(1);
+    });
+    fireEvent.paste(document, { clipboardData: { files: [file] } });
+    await waitFor(() => {
+      expect(
+        sentRequests('POST', `/stops/${STOP_ID}/attachments`),
+      ).toHaveLength(1);
+    });
+    expect(sentRequests('POST', `/stops/${STOP_B}/attachments`)).toHaveLength(
+      1,
+    );
   });
 });
