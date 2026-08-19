@@ -4,9 +4,14 @@ import { McpController, McpRawRequest, Tool } from '@rekog/mcp-nest';
 import {
   CreateChecklistSchema,
   CreateMaintenanceTaskSchema,
+  CreateStopSchema,
+  CreateTripSchema,
   IdSchema,
+  SetStopArrivedSchema,
   UpdateChecklistSchema,
   UpdateMaintenanceTaskSchema,
+  UpdateStopSchema,
+  UpdateTripSchema,
   type Owner,
   dueStatusOf,
 } from '@rv-checklist/domain';
@@ -17,6 +22,8 @@ import { LogEntryService } from '../maintenance/log-entry.service.js';
 import { MaintenanceTaskService } from '../maintenance/maintenance-task.service.js';
 import { RigService } from '../rig/rig.service.js';
 import { RunService } from '../run/run.service.js';
+import { StopService } from '../trips/stop.service.js';
+import { TripService } from '../trips/trip.service.js';
 
 function ownerFrom(req: Request | undefined): Owner {
   return (req as unknown as { user: Owner }).user;
@@ -59,6 +66,8 @@ export class McpToolsController {
     private readonly runService: RunService,
     private readonly taskService: MaintenanceTaskService,
     private readonly logEntryService: LogEntryService,
+    private readonly tripService: TripService,
+    private readonly stopService: StopService,
   ) {}
 
   @Tool({
@@ -272,6 +281,23 @@ export class McpToolsController {
     return toolError('Provide one of taskId or rigId.');
   }
 
+  @Tool({
+    name: 'list_trips',
+    description:
+      "List all trips on a rig. A trip is a named one-way journey from a starting point through an ordered sequence of stops. Each trip embeds its stops in order and its status (planned, underway, completed) — status is derived from which stops are arrived and is never set directly. Distances (legKm) are kilometres. Each stop carries its attachments' metadata only (filename, type, size, campground-map flag); the campground map is for finding the way inside the grounds, not the navigation link that drives to the stop.",
+    parameters: z.object({ rigId: IdSchema }),
+    annotations: { readOnlyHint: true },
+  })
+  async listTrips(
+    @Payload() { rigId }: { rigId: string },
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.tripService.list(owner.id, rigId)),
+    );
+  }
+
   // -- Checklist writes -----------------------------------------------------
 
   @Tool({
@@ -383,5 +409,132 @@ export class McpToolsController {
       await this.taskService.remove(owner.id, id);
       return 'Maintenance task deleted.';
     });
+  }
+
+  // -- Trip writes ----------------------------------------------------------
+
+  @Tool({
+    name: 'create_trip',
+    description:
+      'Create a trip on a rig — a named one-way journey; it ends wherever its last stop is. Status is derived from stop arrivals and is never set directly. checklistIds links checklists of convenience to the trip.',
+    parameters: CreateTripSchema,
+    annotations: { readOnlyHint: false },
+  })
+  async createTrip(
+    @Payload() input: z.infer<typeof CreateTripSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.tripService.create(owner.id, input)),
+    );
+  }
+
+  @Tool({
+    name: 'update_trip',
+    description:
+      'Update a trip by id (rig membership never changes). An explicit null clears a start-point field; checklistIds replaces the whole set. Status is derived from stop arrivals and cannot be set here.',
+    parameters: z.object({ id: IdSchema }).extend(UpdateTripSchema.shape),
+    annotations: { readOnlyHint: false },
+  })
+  async updateTrip(
+    @Payload()
+    { id, ...changes }: { id: string } & z.infer<typeof UpdateTripSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.tripService.update(owner.id, id, changes)),
+    );
+  }
+
+  @Tool({
+    name: 'delete_trip',
+    description:
+      "Delete a trip by id. Its stops (and their attachments) go with it; its runs are unlinked, never deleted. The rig's Distance is untouched — the kilometres were really driven.",
+    parameters: z.object({ id: IdSchema }),
+    annotations: { readOnlyHint: false },
+  })
+  async deleteTrip(
+    @Payload() { id }: { id: string },
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () => {
+      await this.tripService.remove(owner.id, id);
+      return 'Trip deleted.';
+    });
+  }
+
+  // -- Stop writes ----------------------------------------------------------
+
+  @Tool({
+    name: 'add_stop',
+    description:
+      "Add a stop to a trip — appends at the end; position and arrived are server-owned. legKm is the distance in whole kilometres driven into this stop from the previous stop or the trip's starting point.",
+    parameters: CreateStopSchema,
+    annotations: { readOnlyHint: false },
+  })
+  async addStop(
+    @Payload() input: z.infer<typeof CreateStopSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.stopService.create(owner.id, input)),
+    );
+  }
+
+  @Tool({
+    name: 'update_stop',
+    description:
+      "Update a stop by id (trip membership never changes). An explicit null clears a field. Distances are kilometres; editing an arrived stop's legKm adjusts the rig's Distance by the difference. Arrival and position have their own operations and cannot be set here.",
+    parameters: z.object({ id: IdSchema }).extend(UpdateStopSchema.shape),
+    annotations: { readOnlyHint: false },
+  })
+  async updateStop(
+    @Payload()
+    { id, ...changes }: { id: string } & z.infer<typeof UpdateStopSchema>,
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.stopService.update(owner.id, id, changes)),
+    );
+  }
+
+  @Tool({
+    name: 'delete_stop',
+    description:
+      "Delete a stop by id. An arrived stop's leg is backed out of the rig's Distance; the trip's remaining stops are renumbered contiguously.",
+    parameters: z.object({ id: IdSchema }),
+    annotations: { readOnlyHint: false },
+  })
+  async deleteStop(
+    @Payload() { id }: { id: string },
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () => {
+      await this.stopService.remove(owner.id, id);
+      return 'Stop deleted.';
+    });
+  }
+
+  @Tool({
+    name: 'mark_stop_arrived',
+    description:
+      "Mark a stop arrived (true) or un-arrive it (false, the undo). Arriving writes the stop's leg (km) onto the rig's Distance; un-arriving backs it out. Idempotent — re-asserting the current state changes nothing, so a leg is never counted twice. Trip status is derived from these arrivals and is never set directly.",
+    parameters: z.object({ id: IdSchema }).extend(SetStopArrivedSchema.shape),
+    annotations: { readOnlyHint: false },
+  })
+  async markStopArrived(
+    @Payload() { id, arrived }: { id: string; arrived: boolean },
+    @McpRawRequest() req?: Request,
+  ) {
+    const owner = ownerFrom(req);
+    return notFoundAsToolError(async () =>
+      JSON.stringify(await this.stopService.setArrived(owner.id, id, arrived)),
+    );
   }
 }
