@@ -34,6 +34,7 @@ function build(): {
     repos.rigs,
     repos.tasks,
     repos.logEntries,
+    repos.trips,
     new FakeClock(),
   );
   const seed = new SeedService(
