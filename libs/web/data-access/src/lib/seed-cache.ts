@@ -71,6 +71,10 @@ export function seedRunsByRig(store: AppStore, rigId: Id, data: Run[]): void {
   void store.dispatch(api.util.upsertQueryData('listRunsByRig', rigId, data));
 }
 
+export function seedRunsByTrip(store: AppStore, tripId: Id, data: Run[]): void {
+  void store.dispatch(api.util.upsertQueryData('listRunsByTrip', tripId, data));
+}
+
 export function seedTrips(store: AppStore, rigId: Id, data: TripRead[]): void {
   void store.dispatch(api.util.upsertQueryData('listTripsByRig', rigId, data));
 }
