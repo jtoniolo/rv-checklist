@@ -279,6 +279,34 @@ describe('TripScreen (issue #116)', () => {
     expect(screen.queryByRole('link', { name: /Navigate/ })).toBeNull();
   });
 
+  it('links the start point to its Google place when the trip has a start place (issue #122)', async () => {
+    trip = { ...trip, startPlaceId: 'ChIJhome' };
+    renderScreen();
+    await screen.findByRole('heading', { name: 'Killbear PP' });
+
+    // Both the "From …" header line and the route list's Start row link.
+    const links = screen.getAllByRole('link', {
+      name: 'Home — Newmarket, ON',
+    });
+    expect(links).toHaveLength(2);
+    for (const link of links) {
+      expect(link.getAttribute('href')).toBe(
+        'https://www.google.com/maps/search/?api=1&query=Home%20%E2%80%94%20Newmarket%2C%20ON&query_place_id=ChIJhome',
+      );
+      expect(link.getAttribute('target')).toBe('_blank');
+    }
+  });
+
+  it('renders the start point as plain text when the trip has no start place (issue #122)', async () => {
+    renderScreen(); // the default fixture is a legacy text-only start point
+    await screen.findByRole('heading', { name: 'Killbear PP' });
+
+    expect(screen.getByText('From Home — Newmarket, ON')).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Home — Newmarket, ON' }),
+    ).toBeNull();
+  });
+
   it('marks the hero stop arrived and advances the hero', async () => {
     renderScreen();
     await screen.findByRole('heading', { name: 'Killbear PP' });
