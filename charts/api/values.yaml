@@ -39,7 +39,7 @@ config:
 # Name of a pre-existing Secret. The chart does not create a Secret — the
 # cluster materialises one (e.g. via HashiCorp Vault) and you reference it here.
 #
-# It must supply exactly these four keys:
+# It must supply exactly these five keys:
 #   JWT_SECRET           — signing key for the first-party access JWT (long
 #                          and random)
 #   MCP_JWT_SECRET       — signing key for MCP OAuth JWTs (v0.2.9+), at least
@@ -49,6 +49,9 @@ config:
 #                          From Google Cloud Console → Credentials.
 #   DATABASE_URL         — the whole Postgres connection string, not discrete
 #                          fields
+#   GOOGLE_MAPS_API_KEY  — Google Maps Platform API key for leg-distance
+#                          fetches (ADR-0025). Scoped to Routes API + Places
+#                          API (New), IP-restricted to the egress IP.
 #
 # The Deployment injects the Secret with `envFrom`, so new keys added to the
 # Secret reach the pod without any chart change.
@@ -70,6 +73,7 @@ secretKeys:
   - MCP_JWT_SECRET
   - GOOGLE_CLIENT_SECRET
   - DATABASE_URL
+  - GOOGLE_MAPS_API_KEY
 
 service:
   type: ClusterIP
