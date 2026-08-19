@@ -9,7 +9,7 @@ An RV owned by a user, identified by VIN, make, model, year, and a nickname. Eve
 _Avoid_: RV, vehicle, camper
 
 **Distance**:
-How far a rig has travelled — driven or towed — as a running total in **kilometres**, kept current by the owner (a future trip logger may maintain it automatically). It is the yardstick for an **Interval**'s distance limit: a task due "every 20,000 km" compares the rig's current Distance against the Distance recorded when the task was last performed. Trailers have no odometer, so this is an owner-maintained figure, not an instrument reading.
+How far a rig has travelled — driven or towed — as a running total in **kilometres**, kept current by the owner (marking a **Trip**'s stops arrived maintains it automatically; manual entry remains for corrections). It is the yardstick for an **Interval**'s distance limit: a task due "every 20,000 km" compares the rig's current Distance against the Distance recorded when the task was last performed. Trailers have no odometer, so this is an owner-maintained figure, not an instrument reading.
 _Avoid_: mileage, odometer (a towable rig has no odometer), miles (kilometres only)
 
 **Equipment**:
@@ -29,8 +29,16 @@ Within a run, each step is **incomplete**, **complete**, or **skipped** — not 
 _Avoid_: checked/unchecked, ticked
 
 **Run**:
-A dated copy of a checklist's steps, created when the user starts working through it for a real occasion, holding per-step state (incomplete / complete / skipped). It is a copy only because the checklist can change over time — later checklist edits don't alter past runs. Nothing is locked: runs and their answers stay editable so the user can always go back and correct things.
+A dated copy of a checklist's steps, created when the user starts working through it for a real occasion, holding per-step state (incomplete / complete / skipped). It is a copy only because the checklist can change over time — later checklist edits don't alter past runs. Nothing is locked: runs and their answers stay editable so the user can always go back and correct things. A run may be linked to a **Trip** as a grouping of convenience; the same checklist may be run any number of times on one trip.
 _Avoid_: instance, session, execution, snapshot-as-frozen (a run is a copy, not an immutable record)
+
+**Trip**:
+A journey of a rig from an explicitly set starting point through an ordered sequence of **Stops** — planned first, then logged as it happens, one editable record throughout (no separate plan and log, no planned-vs-actual). A trip is one-way: it ends wherever its last stop is. No home base exists; a return journey is its own trip, and leaving the rig somewhere for a season is simply the gap between two trips. A trip belongs to one rig. Checklists associate with trips many-to-many as a grouping of convenience; runs are started on demand and link to the trip, never to a stop. Trip status (planned / underway / completed) is derived from which stops are arrived, never stored.
+_Avoid_: journey/voyage, round trip (each direction is its own trip), itinerary, trip type (short vs long is emergent from the linked checklists)
+
+**Stop**:
+One ordered overnight halt on a trip — a rest stop en route or the destination itself; the last stop is where the trip ends. It is the one-stop shop for arrival, holding what would otherwise be dug out of emails — all optional: campground, campsite, arrival date, nights, check-in and check-out times, booking number, **Cost**, address, phone, free-text notes (gate codes, wifi). It also carries the **leg**: the distance in km driven into this stop from the previous stop or the trip's starting point. Marking a stop **arrived** logs its leg onto the rig's **Distance**; editing an arrived stop's leg adjusts the rig by the difference.
+_Avoid_: waypoint, destination (as an entity — the destination is just the last stop), leg (as a synonym for stop — a leg is the drive into a stop)
 
 **Maintenance Task**:
 An upkeep job on a rig (e.g. "condition slide seals"), with an optional free-text description (why it needs doing and how to perform it — absent means absent) and user-defined custom fields. It may be referenced by steps on any number of checklists, or performed standalone. A task is tracked for due-status one of two mutually exclusive ways — by an interval (recurring) or as one-time — or not at all. No interval and no one-time marker means it is simply not tracked.
