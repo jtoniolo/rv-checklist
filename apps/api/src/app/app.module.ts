@@ -13,6 +13,7 @@ import { HttpExceptionFilter } from './common/http-exception.filter.js';
 import { validateEnv, type Env } from './config/env.js';
 import { EquipmentModule } from './equipment/equipment.module.js';
 import { MaintenanceModule } from './maintenance/maintenance.module.js';
+import { MapsModule } from './maps/maps.module.js';
 import { McpModule } from './mcp/mcp.module.js';
 import { McpOAuthModule } from './mcp-auth/mcp-oauth.module.js';
 import { McpTokenModule } from './mcp-token/mcp-token.module.js';
@@ -55,6 +56,7 @@ import { SessionModule } from './session/session.module.js';
     McpTokenModule,
     OAuthGrantModule,
     SessionModule,
+    MapsModule,
   ],
   controllers: [AppController],
   providers: [
