@@ -7,6 +7,8 @@ import { McpTokenEntity } from './entities/mcp-token.entity.js';
 import { RefreshTokenEntity } from './entities/refresh-token.entity.js';
 import { RigEntity } from './entities/rig.entity.js';
 import { RunEntity } from './entities/run.entity.js';
+import { StopEntity } from './entities/stop.entity.js';
+import { TripEntity } from './entities/trip.entity.js';
 import { UserEntity } from './entities/user.entity.js';
 import { Baseline1721000000000 } from './migrations/1721000000000-baseline.js';
 import { Rigs1721000100000 } from './migrations/1721000100000-rigs.js';
@@ -31,6 +33,9 @@ import { McpOAuthTables1721001900000 } from './migrations/1721001900000-mcp-oaut
 import { McpOAuthGrants1721002000000 } from './migrations/1721002000000-mcp-oauth-grants.js';
 import { RefreshTokenSessions1721002100000 } from './migrations/1721002100000-refresh-token-sessions.js';
 import { LogEntryComment1721002200000 } from './migrations/1721002200000-log-entry-comment.js';
+import { Trips1721002300000 } from './migrations/1721002300000-trips.js';
+import { Stops1721002400000 } from './migrations/1721002400000-stops.js';
+import { RunTripLink1721002500000 } from './migrations/1721002500000-run-trip-link.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -56,6 +61,8 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       MaintenanceTaskEntity,
       LogEntryEntity,
       EquipmentItemEntity,
+      TripEntity,
+      StopEntity,
     ],
     migrations: [
       Baseline1721000000000,
@@ -81,6 +88,9 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       McpOAuthGrants1721002000000,
       RefreshTokenSessions1721002100000,
       LogEntryComment1721002200000,
+      Trips1721002300000,
+      Stops1721002400000,
+      RunTripLink1721002500000,
     ],
     migrationsRun: true,
     synchronize: false,

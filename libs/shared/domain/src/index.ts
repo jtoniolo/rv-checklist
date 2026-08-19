@@ -14,3 +14,4 @@ export * from './lib/oauth-grant.js';
 export * from './lib/web-session.js';
 export * from './lib/ports.js';
 export * from './lib/maps.js';
+export * from './lib/trip.js';

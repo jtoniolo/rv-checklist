@@ -1,0 +1,367 @@
+import { NotFoundException } from '@nestjs/common';
+import type { Rig, Trip } from '@rv-checklist/domain';
+import {
+  InMemoryRigRepository,
+  InMemoryStopRepository,
+  InMemoryTripRepository,
+} from '@rv-checklist/domain/testing';
+import { StopService } from './stop.service.js';
+
+const alice = '550e8400-e29b-41d4-a716-446655440001';
+const bob = '550e8400-e29b-41d4-a716-446655440002';
+const aliceRigId = '550e8400-e29b-41d4-a716-446655440010';
+const bobRigId = '550e8400-e29b-41d4-a716-446655440011';
+const aliceTripId = '550e8400-e29b-41d4-a716-446655440030';
+const bobTripId = '550e8400-e29b-41d4-a716-446655440031';
+
+const aliceTrip: Trip = {
+  id: aliceTripId,
+  rigId: aliceRigId,
+  name: 'Fall colours loop',
+  checklistIds: [],
+};
+const bobTrip: Trip = {
+  id: bobTripId,
+  rigId: bobRigId,
+  name: "Bob's trip",
+  checklistIds: [],
+};
+
+async function makeService(aliceRig: Partial<Rig> = {}): Promise<{
+  service: StopService;
+  stops: InMemoryStopRepository;
+  rigs: InMemoryRigRepository;
+}> {
+  const stops = new InMemoryStopRepository();
+  const trips = new InMemoryTripRepository();
+  const rigs = new InMemoryRigRepository();
+  await rigs.save({
+    id: aliceRigId,
+    ownerId: alice,
+    nickname: 'Silver Bullet',
+    ...aliceRig,
+  });
+  await rigs.save({ id: bobRigId, ownerId: bob, nickname: "Bob's Rig" });
+  await trips.save(aliceTrip);
+  await trips.save(bobTrip);
+  return { service: new StopService(stops, trips, rigs), stops, rigs };
+}
+
+const aliceDistance = async (rigs: InMemoryRigRepository) => {
+  const rig = await rigs.findById(aliceRigId);
+  return rig?.distanceKm;
+};
+
+describe('StopService', () => {
+  describe('create', () => {
+    it('appends at the end: fresh id, next position, not arrived', async () => {
+      const { service } = await makeService();
+
+      const first = await service.create(alice, { tripId: aliceTripId });
+      const second = await service.create(alice, {
+        tripId: aliceTripId,
+        campground: 'KOA Kingston',
+        legKm: 165,
+      });
+
+      expect(first).toMatchObject({ position: 0, arrived: false });
+      expect(second).toMatchObject({
+        position: 1,
+        arrived: false,
+        campground: 'KOA Kingston',
+        legKm: 165,
+      });
+      expect(second.id).not.toBe(first.id);
+    });
+
+    it('refuses to create a stop on a trip the owner does not own', async () => {
+      const { service } = await makeService();
+
+      await expect(
+        service.create(alice, { tripId: bobTripId }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('update', () => {
+    it('sets, keeps, and clears detail fields (clear-vs-omit)', async () => {
+      const { service } = await makeService();
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        campground: 'Algonquin',
+        campsite: 'B-42',
+        nights: 3,
+      });
+
+      const updated = await service.update(alice, stop.id, {
+        // eslint-disable-next-line unicorn/no-null
+        campsite: null,
+        nights: 4,
+      });
+
+      expect(updated.campsite).toBeUndefined();
+      expect(updated.nights).toBe(4);
+      expect(updated.campground).toBe('Algonquin');
+    });
+
+    it('does not touch the rig’s Distance when the stop is not arrived', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 100,
+      });
+
+      await service.update(alice, stop.id, { legKm: 250 });
+
+      expect(await aliceDistance(rigs)).toBe(1000);
+    });
+  });
+
+  describe('arrival — the Distance side effects (issue #111)', () => {
+    it('arriving adds the stop’s legKm to the rig’s Distance', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 245,
+      });
+
+      const arrived = await service.setArrived(alice, stop.id, true);
+
+      expect(arrived.arrived).toBe(true);
+      expect(await aliceDistance(rigs)).toBe(1245);
+    });
+
+    it('treats an unset rig Distance as 0 when the first leg lands', async () => {
+      const { service, rigs } = await makeService();
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 120,
+      });
+
+      await service.setArrived(alice, stop.id, true);
+
+      expect(await aliceDistance(rigs)).toBe(120);
+    });
+
+    it('arriving a stop with no legKm changes nothing', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, { tripId: aliceTripId });
+
+      await service.setArrived(alice, stop.id, true);
+
+      expect(await aliceDistance(rigs)).toBe(1000);
+    });
+
+    it('is idempotent — arriving an already-arrived stop adds nothing', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 245,
+      });
+
+      await service.setArrived(alice, stop.id, true);
+      await service.setArrived(alice, stop.id, true);
+
+      expect(await aliceDistance(rigs)).toBe(1245);
+    });
+
+    it('un-arriving subtracts the leg again', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 245,
+      });
+
+      await service.setArrived(alice, stop.id, true);
+      const back = await service.setArrived(alice, stop.id, false);
+
+      expect(back.arrived).toBe(false);
+      expect(await aliceDistance(rigs)).toBe(1000);
+    });
+
+    it('editing an arrived stop’s legKm adjusts the rig by the difference', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 200,
+      });
+      await service.setArrived(alice, stop.id, true);
+
+      await service.update(alice, stop.id, { legKm: 250 });
+
+      // 1000 base + 200 on arrival + 50 difference = exactly the new leg on top.
+      expect(await aliceDistance(rigs)).toBe(1250);
+    });
+
+    it('clearing an arrived stop’s legKm backs the whole leg out', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 200,
+      });
+      await service.setArrived(alice, stop.id, true);
+
+      // eslint-disable-next-line unicorn/no-null
+      await service.update(alice, stop.id, { legKm: null });
+
+      expect(await aliceDistance(rigs)).toBe(1000);
+    });
+
+    it('setting a legKm on an already-arrived stop that had none adds it', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, { tripId: aliceTripId });
+      await service.setArrived(alice, stop.id, true);
+
+      await service.update(alice, stop.id, { legKm: 85 });
+
+      expect(await aliceDistance(rigs)).toBe(1085);
+    });
+
+    it('deleting an arrived stop subtracts its legKm', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 245,
+      });
+      await service.setArrived(alice, stop.id, true);
+
+      await service.remove(alice, stop.id);
+
+      expect(await aliceDistance(rigs)).toBe(1000);
+    });
+
+    it('deleting a planned (not arrived) stop leaves the Distance alone', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 245,
+      });
+
+      await service.remove(alice, stop.id);
+
+      expect(await aliceDistance(rigs)).toBe(1000);
+    });
+
+    it('never drives the Distance below zero', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 100 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 245,
+      });
+      await service.setArrived(alice, stop.id, true);
+      // The owner manually corrects the rig downwards in the meantime.
+      const rig = await rigs.findById(aliceRigId);
+      if (!rig) throw new Error('rig fixture missing');
+      await rigs.save({ ...rig, distanceKm: 50 });
+
+      await service.setArrived(alice, stop.id, false);
+
+      expect(await aliceDistance(rigs)).toBe(0);
+    });
+
+    it('holds the invariant: manual base plus exactly the arrived legs', async () => {
+      // On top of manual adjustments, the rig's Distance includes exactly the
+      // legs of currently-arrived stops — worked through a whole trip's life.
+      const { service, rigs } = await makeService({ distanceKm: 10_000 });
+      const a = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 100,
+      });
+      const b = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 200,
+      });
+      const c = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 300,
+      });
+
+      await service.setArrived(alice, a.id, true); // +100 → arrived legs: 100
+      await service.setArrived(alice, b.id, true); // +200 → arrived legs: 300
+      await service.update(alice, b.id, { legKm: 250 }); // ±50 → arrived legs: 350
+      await service.setArrived(alice, a.id, false); // -100 → arrived legs: 250
+      await service.setArrived(alice, c.id, true); // +300 → arrived legs: 550
+      await service.remove(alice, c.id); // -300 → arrived legs: 250
+
+      expect(await aliceDistance(rigs)).toBe(10_000 + 250);
+    });
+  });
+
+  describe('reorder', () => {
+    it('moves a stop to a new position and renumbers the trip contiguously', async () => {
+      const { service } = await makeService();
+      const a = await service.create(alice, {
+        tripId: aliceTripId,
+        campground: 'A',
+      });
+      await service.create(alice, { tripId: aliceTripId, campground: 'B' });
+      await service.create(alice, { tripId: aliceTripId, campground: 'C' });
+
+      const ordered = await service.reorder(alice, a.id, { position: 2 });
+
+      expect(ordered.map((s) => s.campground)).toEqual(['B', 'C', 'A']);
+      expect(ordered.map((s) => s.position)).toEqual([0, 1, 2]);
+    });
+
+    it('clamps a past-the-end position to the last slot', async () => {
+      const { service } = await makeService();
+      const a = await service.create(alice, {
+        tripId: aliceTripId,
+        campground: 'A',
+      });
+      await service.create(alice, { tripId: aliceTripId, campground: 'B' });
+
+      const ordered = await service.reorder(alice, a.id, { position: 99 });
+
+      expect(ordered.map((s) => s.campground)).toEqual(['B', 'A']);
+    });
+  });
+
+  describe('delete keeps positions contiguous', () => {
+    it('renumbers the remaining stops so a later create cannot collide', async () => {
+      const { service, stops } = await makeService();
+      await service.create(alice, { tripId: aliceTripId, campground: 'A' });
+      const b = await service.create(alice, {
+        tripId: aliceTripId,
+        campground: 'B',
+      });
+      await service.create(alice, { tripId: aliceTripId, campground: 'C' });
+
+      await service.remove(alice, b.id);
+      const d = await service.create(alice, {
+        tripId: aliceTripId,
+        campground: 'D',
+      });
+
+      const ordered = await stops.listByTrip(aliceTripId);
+      expect(ordered.map((s) => s.campground)).toEqual(['A', 'C', 'D']);
+      expect(ordered.map((s) => s.position)).toEqual([0, 1, 2]);
+      expect(d.position).toBe(2);
+    });
+  });
+
+  describe('owner isolation', () => {
+    it('never lets another owner touch a stop, arrival included', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 245,
+      });
+
+      await expect(
+        service.update(bob, stop.id, { campground: 'Hijacked' }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.setArrived(bob, stop.id, true),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.reorder(bob, stop.id, { position: 0 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.remove(bob, stop.id)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+
+      expect(await aliceDistance(rigs)).toBe(1000);
+    });
+  });
+});
