@@ -46,14 +46,23 @@ function formatSize(bytes: number): string {
 }
 
 /**
+ * The paste-target stack, shared by every mounted manager: each section
+ * pushes a token while open, and only the top of the stack — the most
+ * recently opened section — consumes a document paste. The editor mounts a
+ * manager per stop with independent disclosures, so without this guard one
+ * Ctrl+V would upload to every open stop at once.
+ */
+const pasteTargets: symbol[] = [];
+
+/**
  * The attachments manager for one stop (issue #117, ADR-0026) — a collapsible
  * section, collapsed by default so a pile of paperwork never makes the page
  * busy. Shared by the next-stop hero and the trip editor's stop cards.
  * Capture comes from three sources: clipboard paste (the primary flow — e.g.
  * the Ontario Parks reservation page), a file picker, and the phone camera.
- * The paste listener is bound only while the section is open, so a paste
- * always lands on the one stop the owner has open (the editor mounts a
- * manager per stop).
+ * The paste listener is bound only while the section is open, and the
+ * paste-target stack ensures a paste lands on exactly one stop — the section
+ * the owner opened last.
  */
 export function StopAttachments({
   stop,
@@ -94,7 +103,10 @@ export function StopAttachments({
 
   useEffect(() => {
     if (!isOpen) return;
+    const token = Symbol('paste target');
+    pasteTargets.push(token);
     const onPaste = (event: ClipboardEvent): void => {
+      if (pasteTargets.at(-1) !== token) return;
       const files = [...(event.clipboardData?.files ?? [])];
       if (files.length === 0) return;
       event.preventDefault();
@@ -103,6 +115,8 @@ export function StopAttachments({
     document.addEventListener('paste', onPaste);
     return () => {
       document.removeEventListener('paste', onPaste);
+      const index = pasteTargets.indexOf(token);
+      if (index !== -1) pasteTargets.splice(index, 1);
     };
   }, [isOpen, uploadFiles]);
 
@@ -315,9 +329,10 @@ export function CampgroundMapLink({
 /**
  * The inline viewer: fetches the bytes with credentials and renders a blob
  * URL — an expanded image or an embedded PDF. A fetch (unlike a bare
- * `<img src>`) goes through cookie auth deliberately and surfaces failures;
- * on error the same-site link still works as a plain download (as it does
- * for HEIC, which most browsers won't render).
+ * `<img src>`) goes through cookie auth deliberately and surfaces failures.
+ * A download that succeeds can still fail to render (HEIC in most browsers),
+ * so the image's own error also flips to the fallback — a same-site link
+ * that works as a plain download.
  */
 function CampgroundMapViewer({
   attachment,
@@ -387,6 +402,9 @@ function CampgroundMapViewer({
       <img
         src={url}
         alt={attachment.filename}
+        onError={() => {
+          setFailed(true);
+        }}
         className="w-full rounded-md border border-hairline"
       />
     );
