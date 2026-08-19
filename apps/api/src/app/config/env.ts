@@ -73,10 +73,11 @@ export const EnvSchema = z.object({
 
   /**
    * Google Maps Platform API key for leg-distance fetches (ADR-0025),
-   * scoped to the Routes API and Places API (New) and IP-restricted to the
-   * server's egress IP. Distinct from the OAuth client above — this is a
-   * plain API key, not an OAuth credential. Required at boot; the fetch
-   * flow that actually uses it ships with the Trip Planner build.
+   * scoped to the Routes API and Places API (New), no IP restriction (the
+   * home egress IP is dynamic), daily quotas capped inside the free tier.
+   * Distinct from the OAuth client above — this is a plain API key, not an
+   * OAuth credential. Required at boot; the fetch flow that actually uses
+   * it ships with the Trip Planner build.
    */
   GOOGLE_MAPS_API_KEY: z.string().min(1),
 
