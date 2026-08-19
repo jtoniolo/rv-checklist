@@ -7,6 +7,7 @@ import {
   MaintenanceTaskRepository,
   RigRepository,
   RunRepository,
+  TripRepository,
 } from '@rv-checklist/api-data-access';
 import type { Checklist, Owner, Rig } from '@rv-checklist/domain';
 import {
@@ -15,6 +16,7 @@ import {
   InMemoryMaintenanceTaskRepository,
   InMemoryRigRepository,
   InMemoryRunRepository,
+  InMemoryTripRepository,
 } from '@rv-checklist/domain/testing';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { Clock, SystemClock } from '../auth/clock.js';
@@ -32,6 +34,7 @@ const owner: Owner = {
 const rigId = '550e8400-e29b-41d4-a716-446655440010';
 const checklistId = '550e8400-e29b-41d4-a716-446655440020';
 const stepId = '550e8400-e29b-41d4-a716-446655440030';
+const tripId = '550e8400-e29b-41d4-a716-446655440050';
 
 const rig: Rig = { id: rigId, ownerId: owner.id, nickname: 'Silver Bullet' };
 const checklist: Checklist = {
@@ -68,6 +71,13 @@ describe('RunController over HTTP (through the Zod serializer)', () => {
     await rigs.save(rig);
     const checklists = new InMemoryChecklistRepository();
     await checklists.save(checklist);
+    const trips = new InMemoryTripRepository();
+    await trips.save({
+      id: tripId,
+      rigId,
+      name: 'Fall colours loop',
+      checklistIds: [],
+    });
 
     const moduleRef = await Test.createTestingModule({
       controllers: [RunController],
@@ -84,6 +94,7 @@ describe('RunController over HTTP (through the Zod serializer)', () => {
           provide: LogEntryRepository,
           useValue: new InMemoryLogEntryRepository(),
         },
+        { provide: TripRepository, useValue: trips },
         { provide: Clock, useClass: SystemClock },
         { provide: APP_PIPE, useClass: ZodValidationPipe },
         { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
@@ -146,6 +157,23 @@ describe('RunController over HTTP (through the Zod serializer)', () => {
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBeGreaterThan(0);
     expect(body.every((run) => run.rigId === rigId)).toBe(true);
+  });
+
+  it('starts a run on a trip and lists it via ?tripId= (issue #111)', async () => {
+    const started = await fetch(`${baseUrl}/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checklistId, tripId }),
+    });
+    expect(started.status).toBe(201);
+    const run = (await started.json()) as { id: string; tripId?: string };
+    expect(run.tripId).toBe(tripId);
+
+    const listed = await fetch(`${baseUrl}/runs?tripId=${tripId}`);
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as { id: string; tripId?: string }[];
+    expect(body.map((r) => r.id)).toContain(run.id);
+    expect(body.every((r) => r.tripId === tripId)).toBe(true);
   });
 
   it('rejects a list request with neither checklistId nor rigId', async () => {

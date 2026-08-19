@@ -10,9 +10,12 @@ import type {
   MaintenanceTaskRepository,
   RigRepository,
   RunRepository,
+  StopRepository,
+  TripRepository,
 } from '../lib/ports.js';
 import type { Rig } from '../lib/rig.js';
 import type { Run } from '../lib/run.js';
+import type { Stop, Trip } from '../lib/trip.js';
 
 /**
  * In-memory repository double — the test-support binding for the repository ports
@@ -83,6 +86,10 @@ export class InMemoryRunRepository
   listByChecklist(checklistId: Id): Promise<Run[]> {
     return this.where((r) => r.checklistId === checklistId);
   }
+
+  listByTrip(tripId: Id): Promise<Run[]> {
+    return this.where((r) => r.tripId === tripId);
+  }
 }
 
 export class InMemoryMaintenanceTaskRepository
@@ -116,6 +123,28 @@ export class InMemoryEquipmentItemRepository
   }
 }
 
+export class InMemoryTripRepository
+  extends InMemoryRepository<Trip>
+  implements TripRepository
+{
+  listByRig(rigId: Id): Promise<Trip[]> {
+    return this.where((t) => t.rigId === rigId);
+  }
+}
+
+export class InMemoryStopRepository
+  extends InMemoryRepository<Stop>
+  implements StopRepository
+{
+  /** Position-ordered, matching the SQL implementation's ORDER BY. */
+  async listByTrip(tripId: Id): Promise<Stop[]> {
+    const stops = await this.where((s) => s.tripId === tripId);
+    // `where` returns a fresh array of clones, so sorting in place aliases nothing.
+    stops.sort((a, b) => a.position - b.position);
+    return stops;
+  }
+}
+
 /** The full set of in-memory repositories, one per aggregate. */
 export interface InMemoryRepositories {
   readonly rigs: InMemoryRigRepository;
@@ -124,6 +153,8 @@ export interface InMemoryRepositories {
   readonly tasks: InMemoryMaintenanceTaskRepository;
   readonly logEntries: InMemoryLogEntryRepository;
   readonly equipmentItems: InMemoryEquipmentItemRepository;
+  readonly trips: InMemoryTripRepository;
+  readonly stops: InMemoryStopRepository;
 }
 
 /** Fresh, empty in-memory repositories — the usual starting point for a use-case test. */
@@ -135,5 +166,7 @@ export function createInMemoryRepositories(): InMemoryRepositories {
     tasks: new InMemoryMaintenanceTaskRepository(),
     logEntries: new InMemoryLogEntryRepository(),
     equipmentItems: new InMemoryEquipmentItemRepository(),
+    trips: new InMemoryTripRepository(),
+    stops: new InMemoryStopRepository(),
   };
 }

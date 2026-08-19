@@ -18,6 +18,7 @@ import {
   McpTokenStore,
   RigRepository,
   RunRepository,
+  TripRepository,
   UserStore,
   type McpTokenRecord,
   type UpsertUserInput,
@@ -31,6 +32,7 @@ import {
   InMemoryMaintenanceTaskRepository,
   InMemoryRigRepository,
   InMemoryRunRepository,
+  InMemoryTripRepository,
 } from '@rv-checklist/domain/testing';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
@@ -371,6 +373,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
   const taskRepo = new InMemoryMaintenanceTaskRepository();
   const logEntryRepo = new InMemoryLogEntryRepository();
   const equipmentItemRepo = new InMemoryEquipmentItemRepository();
+  const tripRepo = new InMemoryTripRepository();
 
   const OAUTH_OPTIONS = {
     jwtSecret: MCP_JWT_SECRET,
@@ -420,6 +423,7 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
         { provide: EquipmentItemRepository, useValue: equipmentItemRepo },
         { provide: ChecklistRepository, useValue: checklistRepo },
         { provide: RunRepository, useValue: runRepo },
+        { provide: TripRepository, useValue: tripRepo },
         { provide: MaintenanceTaskRepository, useValue: taskRepo },
         { provide: LogEntryRepository, useValue: logEntryRepo },
         {

@@ -191,3 +191,33 @@ describe('runProgress', () => {
     });
   });
 });
+
+describe('run tripId link (issue #111)', () => {
+  const base = {
+    id: id(1),
+    checklistId: id(2),
+    rigId: id(3),
+    startedOn: '2026-08-19',
+    steps: [],
+  };
+
+  it('parses a run linked to a trip', () => {
+    const linked = { ...base, tripId: id(4) };
+    expect(RunSchema.parse(linked)).toEqual(linked);
+  });
+
+  it('parses a run with no trip link', () => {
+    expect(RunSchema.parse(base)).toEqual(base);
+  });
+
+  it('accepts an optional tripId on the create body', () => {
+    const body = { checklistId: id(2), tripId: id(4) };
+    expect(CreateRunSchema.parse(body)).toEqual(body);
+  });
+
+  it('rejects a non-uuid tripId', () => {
+    expect(RunSchema.safeParse({ ...base, tripId: 'nope' }).success).toBe(
+      false,
+    );
+  });
+});

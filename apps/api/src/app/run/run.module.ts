@@ -11,11 +11,14 @@ import {
   RigRepository,
   RunEntity,
   RunRepository,
+  TripEntity,
+  TripRepository,
   TypeOrmChecklistRepository,
   TypeOrmLogEntryRepository,
   TypeOrmMaintenanceTaskRepository,
   TypeOrmRigRepository,
   TypeOrmRunRepository,
+  TypeOrmTripRepository,
 } from '@rv-checklist/api-data-access';
 import { Clock, SystemClock } from '../auth/clock.js';
 import { RunController } from './run.controller.js';
@@ -40,6 +43,7 @@ import { RunService } from './run.service.js';
       RigEntity,
       MaintenanceTaskEntity,
       LogEntryEntity,
+      TripEntity,
     ]),
   ],
   controllers: [RunController],
@@ -53,6 +57,8 @@ import { RunService } from './run.service.js';
       useClass: TypeOrmMaintenanceTaskRepository,
     },
     { provide: LogEntryRepository, useClass: TypeOrmLogEntryRepository },
+    // A run may link to a trip (issue #111); the trip gate resolves through it.
+    { provide: TripRepository, useClass: TypeOrmTripRepository },
     { provide: Clock, useClass: SystemClock },
   ],
   exports: [RunService],

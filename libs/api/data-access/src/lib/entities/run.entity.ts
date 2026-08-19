@@ -39,6 +39,12 @@ export class RunEntity {
   @Column({ name: 'rig_id', type: 'uuid' })
   rigId!: string;
 
+  // The optional trip link (issue #111) — `ON DELETE SET NULL`, so deleting a
+  // trip unlinks its runs, never deletes them. Indexed for the trip-screen read.
+  @Index()
+  @Column({ name: 'trip_id', type: 'uuid', nullable: true })
+  tripId!: string | null;
+
   // A calendar day (IsoDate) — postgres `date` round-trips as a 'YYYY-MM-DD'
   // string, which is exactly the wire shape, so no mapping is needed.
   @Column({ name: 'started_on', type: 'date' })
