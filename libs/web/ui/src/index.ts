@@ -1,6 +1,7 @@
 export * from './lib/list-detail';
 export * from './lib/page';
 export * from './lib/progress-bar';
+export * from './lib/status-chip';
 export * from './lib/tag';
 
 // Vendored shadcn/ui controls (issue #23). Sources come from the shadcn
