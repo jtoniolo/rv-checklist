@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
+  AttachmentRepository,
   ChecklistRepository,
   ownedOrUndefined,
   RigRepository,
@@ -11,10 +12,14 @@ import {
   tripStatus,
   type CreateTrip,
   type Id,
+  type Stop,
+  type StopRead,
   type Trip,
   type TripRead,
   type UpdateTrip,
 } from '@rv-checklist/domain';
+import { ObjectStorage } from '../storage/object-storage.js';
+import { stopAttachmentPrefix } from './attachment-keys.js';
 
 /**
  * Trip CRUD, owner-scoped (issue #111). A trip belongs to a rig (ADR-0006), so
@@ -29,10 +34,12 @@ import {
  * denormalized grouping (ADR-0017's pattern), unconstrained in the database,
  * so reads drop the id of a since-deleted checklist instead of failing.
  *
- * Deleting a trip cascades its stops (and their coming attachments, ADR-0026)
- * at the database, and unlinks — never deletes — its runs. The rig's Distance
- * is untouched: the km were really driven; only *stop-level* operations
- * (arrive, un-arrive, leg edits, stop delete — {@link StopService}) adjust it.
+ * Deleting a trip cascades its stops and their attachments (ADR-0026): the
+ * database cascade reaches the rows, and this service clears each stop's
+ * one-prefix slice of the bucket — objects the database cannot touch. Runs
+ * are unlinked, never deleted. The rig's Distance is untouched: the km were
+ * really driven; only *stop-level* operations (arrive, un-arrive, leg edits,
+ * stop delete — {@link StopService}) adjust it.
  */
 @Injectable()
 export class TripService {
@@ -41,6 +48,8 @@ export class TripService {
     private readonly stops: StopRepository,
     private readonly checklists: ChecklistRepository,
     private readonly rigs: RigRepository,
+    private readonly attachments: AttachmentRepository,
+    private readonly storage: ObjectStorage,
   ) {}
 
   /** Whether the rig exists and belongs to the owner — the single ownership gate. */
@@ -59,13 +68,18 @@ export class TripService {
     throw new NotFoundException('Trip not found');
   }
 
-  /** A stored trip widened to the read shape: ordered stops, derived status, live checklist ids. */
+  /** A stored stop widened to the read shape: its attachments' metadata embedded (ADR-0026). */
+  private async toStopRead(stop: Stop): Promise<StopRead> {
+    return { ...stop, attachments: await this.attachments.listByStop(stop.id) };
+  }
+
+  /** A stored trip widened to the read shape: ordered stops (with attachments), derived status, live checklist ids. */
   private async toRead(trip: Trip): Promise<TripRead> {
     const stops = await this.stops.listByTrip(trip.id);
     return {
       ...trip,
       checklistIds: await this.liveChecklistIds(trip),
-      stops,
+      stops: await Promise.all(stops.map((stop) => this.toStopRead(stop))),
       status: tripStatus(stops),
     };
   }
@@ -121,9 +135,17 @@ export class TripService {
     return this.toRead(await this.trips.save(next));
   }
 
-  /** Delete one of the owner's trips (its stops go with it; its runs are unlinked). */
+  /**
+   * Delete one of the owner's trips (its stops go with it; its runs are
+   * unlinked). Each stop's attachment objects are cleared from the bucket
+   * first — the database cascade only reaches the rows (ADR-0026).
+   */
   async remove(ownerId: Id, id: Id): Promise<void> {
     const trip = await this.ownedTrip(ownerId, id);
+    const stops = await this.stops.listByTrip(trip.id);
+    for (const stop of stops) {
+      await this.storage.deletePrefix(stopAttachmentPrefix(stop.id));
+    }
     await this.trips.delete(trip.id);
   }
 }

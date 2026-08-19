@@ -82,6 +82,24 @@ export const EnvSchema = z.object({
   GOOGLE_MAPS_API_KEY: z.string().min(1),
 
   /**
+   * Garage S3 endpoint for attachment storage (ADR-0026). Garage runs on the
+   * home lab host, outside the cluster, so the same endpoint serves cluster
+   * and local dev. Path-style addressing — the S3 client sets
+   * `forcePathStyle`.
+   */
+  S3_ENDPOINT: z.url(),
+  /**
+   * The app's single attachment bucket (ADR-0026 — one bucket for the whole
+   * app; photo fields share it later). `rv-checklist` in production,
+   * `rv-checklist-local` for local dev.
+   */
+  S3_BUCKET: z.string().min(1),
+  /** Garage key id for the bucket (provisioned by ticket #110, lives in Vault). */
+  S3_ACCESS_KEY_ID: z.string().min(1),
+  /** Garage secret key paired with S3_ACCESS_KEY_ID. */
+  S3_SECRET_ACCESS_KEY: z.string().min(1),
+
+  /**
    * Comma-separated allowlist of redirect URIs accepted during dynamic
    * client registration (ADR-0024). Loopback URIs (`http://localhost` and
    * `http://127.0.0.1`, any port, any path) are always accepted regardless

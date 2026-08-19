@@ -15,3 +15,4 @@ export * from './lib/web-session.js';
 export * from './lib/ports.js';
 export * from './lib/maps.js';
 export * from './lib/trip.js';
+export * from './lib/attachment.js';

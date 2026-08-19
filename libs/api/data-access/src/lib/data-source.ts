@@ -1,4 +1,5 @@
 import { type DataSourceOptions } from 'typeorm';
+import { AttachmentEntity } from './entities/attachment.entity.js';
 import { ChecklistEntity } from './entities/checklist.entity.js';
 import { EquipmentItemEntity } from './entities/equipment-item.entity.js';
 import { LogEntryEntity } from './entities/log-entry.entity.js';
@@ -36,6 +37,7 @@ import { LogEntryComment1721002200000 } from './migrations/1721002200000-log-ent
 import { Trips1721002300000 } from './migrations/1721002300000-trips.js';
 import { Stops1721002400000 } from './migrations/1721002400000-stops.js';
 import { RunTripLink1721002500000 } from './migrations/1721002500000-run-trip-link.js';
+import { Attachments1721002600000 } from './migrations/1721002600000-attachments.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -63,6 +65,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       EquipmentItemEntity,
       TripEntity,
       StopEntity,
+      AttachmentEntity,
     ],
     migrations: [
       Baseline1721000000000,
@@ -91,6 +94,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       Trips1721002300000,
       Stops1721002400000,
       RunTripLink1721002500000,
+      Attachments1721002600000,
     ],
     migrationsRun: true,
     synchronize: false,

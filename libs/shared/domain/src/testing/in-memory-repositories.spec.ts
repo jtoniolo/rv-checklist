@@ -29,6 +29,15 @@ const run = (id: string, tripId?: string) => ({
   ...(tripId && { tripId }),
 });
 
+const attachment = (id: string, stopId: string) => ({
+  id,
+  stopId,
+  filename: `${id}.pdf`,
+  mimeType: 'application/pdf' as const,
+  sizeBytes: 1000,
+  isCampgroundMap: false,
+});
+
 describe('in-memory repositories', () => {
   it('saves and finds an aggregate by id', async () => {
     const { rigs } = createInMemoryRepositories();
@@ -117,5 +126,13 @@ describe('in-memory repositories', () => {
     await runs.save(run('r3', 't2'));
     const forTrip = await runs.listByTrip('t1');
     expect(forTrip.map((r) => r.id)).toEqual(['r1']);
+  });
+
+  it('scopes attachments to their stop', async () => {
+    const { attachments } = createInMemoryRepositories();
+    await attachments.save(attachment('a1', 's1'));
+    await attachments.save(attachment('a2', 's2'));
+    const forStop = await attachments.listByStop('s1');
+    expect(forStop.map((a) => a.id)).toEqual(['a1']);
   });
 });

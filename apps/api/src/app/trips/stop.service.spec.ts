@@ -1,10 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
 import type { Rig, Trip } from '@rv-checklist/domain';
 import {
+  InMemoryAttachmentRepository,
   InMemoryRigRepository,
   InMemoryStopRepository,
   InMemoryTripRepository,
 } from '@rv-checklist/domain/testing';
+import { InMemoryObjectStorage } from '../storage/in-memory-object-storage.js';
 import { StopService } from './stop.service.js';
 
 const alice = '550e8400-e29b-41d4-a716-446655440001';
@@ -44,7 +46,17 @@ async function makeService(aliceRig: Partial<Rig> = {}): Promise<{
   await rigs.save({ id: bobRigId, ownerId: bob, nickname: "Bob's Rig" });
   await trips.save(aliceTrip);
   await trips.save(bobTrip);
-  return { service: new StopService(stops, trips, rigs), stops, rigs };
+  return {
+    service: new StopService(
+      stops,
+      trips,
+      rigs,
+      new InMemoryAttachmentRepository(),
+      new InMemoryObjectStorage(),
+    ),
+    stops,
+    rigs,
+  };
 }
 
 const aliceDistance = async (rigs: InMemoryRigRepository) => {

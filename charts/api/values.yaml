@@ -35,11 +35,19 @@ config:
   MCP_ISSUER_URL: ""
   JWT_ACCESS_TTL: "900"
   REFRESH_TTL_DAYS: "180"
+  # Required — rendering fails without it. Garage S3 endpoint for attachment
+  # storage (ADR-0026). Garage runs on the home lab host, outside the cluster
+  # (http://<garage-host>:3900). Not a secret — it is unreachable without the key
+  # pair in existingSecret.
+  S3_ENDPOINT: ""
+  # Required — rendering fails without it. The app's single attachment bucket
+  # (ADR-0026): `rv-checklist` in production.
+  S3_BUCKET: ""
 
 # Name of a pre-existing Secret. The chart does not create a Secret — the
 # cluster materialises one (e.g. via HashiCorp Vault) and you reference it here.
 #
-# It must supply exactly these five keys:
+# It must supply exactly these seven keys:
 #   JWT_SECRET           — signing key for the first-party access JWT (long
 #                          and random)
 #   MCP_JWT_SECRET       — signing key for MCP OAuth JWTs (v0.2.9+), at least
@@ -52,6 +60,14 @@ config:
 #   GOOGLE_MAPS_API_KEY  — Google Maps Platform API key for leg-distance
 #                          fetches (ADR-0025). Scoped to Routes API + Places
 #                          API (New); daily quotas capped in the free tier.
+#   S3_ACCESS_KEY_ID     — Garage key id for the attachment bucket (ADR-0026,
+#                          provisioned by ticket #110). In Vault (KV path in
+#                          the operator's private homelab config) as
+#                          `s3_access_key_id`.
+#   S3_SECRET_ACCESS_KEY — Garage secret key paired with S3_ACCESS_KEY_ID.
+#                          In Vault, same KV path, as
+#                          `s3_access_key` — NOT `s3_secret_access_key`; the
+#                          Vault key name differs from the env var name.
 #
 # The Deployment injects the Secret with `envFrom`, so new keys added to the
 # Secret reach the pod without any chart change.
@@ -74,6 +90,8 @@ secretKeys:
   - GOOGLE_CLIENT_SECRET
   - DATABASE_URL
   - GOOGLE_MAPS_API_KEY
+  - S3_ACCESS_KEY_ID
+  - S3_SECRET_ACCESS_KEY
 
 service:
   type: ClusterIP
