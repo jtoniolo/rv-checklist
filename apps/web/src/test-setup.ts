@@ -1,4 +1,4 @@
-import { Blob } from 'node:buffer';
+import { Blob, File } from 'node:buffer';
 import {
   ReadableStream,
   TransformStream,
@@ -24,6 +24,12 @@ Object.assign(globalThis, {
   TransformStream,
   WritableStream,
   Blob,
+  // Node's File must displace jsdom's before undici loads: undici's webidl
+  // captures the global `File` at load time, so a jsdom File appended to a
+  // FormData fails the brand check and serializes as an empty part. With
+  // Node's File in place, specs can build files, `fetchBaseQuery` can
+  // serialize multipart bodies, and mocks can parse them back.
+  File,
   // undici's webidl layer references the MessagePort type at load. The
   // MessageChannel constructor itself deliberately stays off the global:
   // React's scheduler would grab it, and a worker_threads port with a
@@ -34,7 +40,8 @@ Object.assign(globalThis, {
   MessagePort,
 });
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { Headers, Request, Response } = require('undici') as {
+const { FormData, Headers, Request, Response } = require('undici') as {
+  FormData: unknown;
   Headers: unknown;
   Request: unknown;
   Response: unknown;
@@ -45,7 +52,13 @@ const { Headers, Request, Response } = require('undici') as {
 // out (fetchBaseQuery turns the rejection into a query error).
 const noNetwork = (): Promise<never> =>
   Promise.reject(new Error('No network in tests — mock fetch.'));
-Object.assign(globalThis, { fetch: noNetwork, Headers, Request, Response });
+Object.assign(globalThis, {
+  fetch: noNetwork,
+  FormData,
+  Headers,
+  Request,
+  Response,
+});
 
 // jsdom has no ResizeObserver; the Radix-based shadcn controls (Checkbox, etc.)
 // observe their size on mount, so provide a no-op stub for the component specs.
