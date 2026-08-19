@@ -1,9 +1,11 @@
 import {
+  AttachmentSchema,
   CreateStopSchema,
   CreateTripSchema,
   ReorderStopSchema,
+  SetCampgroundMapSchema,
   SetStopArrivedSchema,
-  StopSchema,
+  StopReadSchema,
   TripReadSchema,
   UpdateStopSchema,
   UpdateTripSchema,
@@ -39,5 +41,11 @@ export class SetStopArrivedDto extends createZodDto(SetStopArrivedSchema) {}
 /** `POST /stops/:id/reorder` body — the stop's new zero-based position. */
 export class ReorderStopDto extends createZodDto(ReorderStopSchema) {}
 
-/** The response shape for every stop endpoint. */
-export class StopDto extends createZodDto(StopSchema) {}
+/** The response shape for every stop endpoint: attachment metadata embedded (ADR-0026). */
+export class StopDto extends createZodDto(StopReadSchema) {}
+
+/** The response shape for the attachment endpoints — metadata only, never bytes. */
+export class AttachmentDto extends createZodDto(AttachmentSchema) {}
+
+/** `POST /attachments/:id/campground-map` body — the explicit flag / unflag. */
+export class SetCampgroundMapDto extends createZodDto(SetCampgroundMapSchema) {}
