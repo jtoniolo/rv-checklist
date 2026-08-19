@@ -12,6 +12,8 @@ helm upgrade --install rv-checklist-api \
   oci://ghcr.io/jtoniolo/charts/rv-checklist-api --version X.Y.Z \
   --set config.GOOGLE_CLIENT_ID=<your-google-oauth-client-id> \
   --set config.MCP_ISSUER_URL=<public-origin-of-the-api> \
+  --set config.S3_ENDPOINT=<garage-s3-endpoint> \
+  --set config.S3_BUCKET=<attachment-bucket> \
   --set existingSecret=rv-checklist-api
 ```
 
@@ -29,6 +31,17 @@ materialises (e.g. via HashiCorp Vault). It must supply exactly these keys:
 | `MCP_JWT_SECRET`       | Signing key for MCP OAuth JWTs (v0.2.9+). At least 32 characters. Separate from `JWT_SECRET` so rotating one does not invalidate the other's tokens. |
 | `GOOGLE_CLIENT_SECRET` | Client secret of the Google OAuth client (v0.2.9+). The MCP OAuth server exchanges authorization codes with Google. From Google Cloud Console → Credentials. |
 | `DATABASE_URL`         | The whole Postgres connection string, not discrete host/user/pass. |
+| `GOOGLE_MAPS_API_KEY`  | Google Maps Platform API key for leg-distance fetches (ADR-0025). Scoped to Routes API + Places API (New); daily quotas capped in the free tier. |
+| `S3_ACCESS_KEY_ID`     | Garage key id for the attachment bucket (ADR-0026, provisioned by ticket #110). |
+| `S3_SECRET_ACCESS_KEY` | Garage secret key paired with `S3_ACCESS_KEY_ID`.                   |
+
+**Vault mapping (deploy note):** the Vault keys at `<private-kv-path>`
+are lowercase, and one of them is *not* a plain lowercase→uppercase rename:
+
+| Vault key (`<private-kv-path>`) | Secret / env var key   |
+| ---------------------------------------- | ---------------------- |
+| `s3_access_key_id`                       | `S3_ACCESS_KEY_ID`     |
+| `s3_access_key`                          | `S3_SECRET_ACCESS_KEY` |
 
 The Deployment injects the Secret with `envFrom`, so extra keys reach the pod
 without a chart change. The keys above are also listed in `secretKeys` in
@@ -44,6 +57,13 @@ So does `MCP_ISSUER_URL`: the API's own public origin (the API serves the
 OAuth discovery routes, so this is the API's host, not the web app's), no
 path component. Rendering fails if you leave it empty, because the app's own
 fallback (`http://localhost:3000`) silently breaks MCP OAuth.
+
+`S3_ENDPOINT` and `S3_BUCKET` are ConfigMap values too (ADR-0026): the Garage
+S3 endpoint for attachment storage (`http://your-garage-host:3900` on the home lab —
+Garage runs on the host, outside the cluster) and the app's single attachment
+bucket (`rv-checklist` in production). Neither is secret — the endpoint is
+unreachable without the key pair in the Secret. Rendering fails if either is
+left empty.
 
 ### Rotating the secret is the consumer's job
 
