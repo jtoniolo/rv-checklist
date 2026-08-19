@@ -33,6 +33,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0024](0024-mcp-oauth-authorization.md) | MCP OAuth 2.1 authorization — `@rekog/mcp-nest-auth` server, dual auth with the static `rvmcp_` token, open DCR with allowlisted redirects, 30-day JWTs with per-call grant check, Connected apps page (amends 0021, 0022) |
 | [0025](0025-google-maps-leg-distances.md) | Google Maps for leg distances — Routes API + Places (New), place IDs stored, on-demand fetch pre-fills the editable leg |
 | [0026](0026-stop-attachments-shared-garage-bucket.md) | Stop attachments — shared Garage bucket, API-proxied, campground-map flag, hard-delete cascade (extends 0007) |
+| [0027](0027-mcp-trips-and-stops-tools.md) | MCP trips and stops tools — full CRUD incl. `mark_stop_arrived`; arrival writes the rig's Distance as a service-owned side effect (amends 0023) |
 
 ## Archived prototypes
 
