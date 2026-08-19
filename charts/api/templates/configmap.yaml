@@ -4,6 +4,12 @@
 {{- if not .Values.config.MCP_ISSUER_URL }}
 {{- fail "config.MCP_ISSUER_URL is required since v0.2.9. Set it to the API's public origin with no path component (usually the same value as WEB_ORIGIN). Left empty, the app falls back to http://localhost:3000 and MCP OAuth silently breaks." }}
 {{- end }}
+{{- if not .Values.config.S3_ENDPOINT }}
+{{- fail "config.S3_ENDPOINT is required. Set it to the Garage S3 endpoint for attachment storage (ADR-0026) — on the home lab that is http://10.0.6.16:3900. Left empty, the API fails its own env validation and CrashLoops." }}
+{{- end }}
+{{- if not .Values.config.S3_BUCKET }}
+{{- fail "config.S3_BUCKET is required. Set it to the app's attachment bucket (ADR-0026) — rv-checklist in production. Left empty, the API fails its own env validation and CrashLoops." }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
