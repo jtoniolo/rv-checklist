@@ -1,13 +1,17 @@
-import { StatusChip } from '@rv-checklist/web-ui';
 import { notFound } from 'next/navigation';
 import type { JSX } from 'react';
+import { TripScreen } from '../../../../trip-screen';
 import { CacheSeeder } from '@/lib/cache-seeder';
-import { fetchTripsByRig } from '@/lib/server-api';
+import {
+  fetchChecklists,
+  fetchRunsByTrip,
+  fetchTripsByRig,
+} from '@/lib/server-api';
 
 /**
- * Stub trip page (issue #114): fixes the `/rig/{rigId}/trips/{tripId}` route
- * shape and confirms the trip exists. The trip dashboard replaces this body
- * (issue #116).
+ * The trip page (issue #116) — Pattern C (ADR-0018): fetch the rig's trips,
+ * its checklists, and this trip's runs on the server, 404 when the trip id
+ * isn't among the rig's trips, seed the cache, and render the client screen.
  */
 export default async function TripPage({
   params,
@@ -15,7 +19,11 @@ export default async function TripPage({
   readonly params: Promise<{ rigId: string; tripId: string }>;
 }): Promise<JSX.Element> {
   const { rigId, tripId } = await params;
-  const trips = await fetchTripsByRig(rigId);
+  const [trips, checklists, runs] = await Promise.all([
+    fetchTripsByRig(rigId),
+    fetchChecklists(rigId),
+    fetchRunsByTrip(tripId),
+  ]);
   const trip = trips.find((t) => t.id === tripId);
 
   if (trip === undefined) {
@@ -23,14 +31,12 @@ export default async function TripPage({
   }
 
   return (
-    <CacheSeeder trips={{ rigId, data: trips }}>
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">{trip.name}</h1>
-          <StatusChip status={trip.status} />
-        </div>
-        <p className="text-brand-muted">The trip dashboard is on its way.</p>
-      </div>
+    <CacheSeeder
+      trips={{ rigId, data: trips }}
+      checklists={{ rigId, data: checklists }}
+      runsByTrip={{ tripId, data: runs }}
+    >
+      <TripScreen rigId={rigId} tripId={tripId} />
     </CacheSeeder>
   );
 }

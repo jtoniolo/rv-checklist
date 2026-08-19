@@ -98,6 +98,10 @@ export function fetchRunsByRig(rigId: Id): Promise<Run[]> {
   return serverFetch(`/runs?rigId=${rigId}`, arrayOf(RunSchema));
 }
 
+export function fetchRunsByTrip(tripId: Id): Promise<Run[]> {
+  return serverFetch(`/runs?tripId=${tripId}`, arrayOf(RunSchema));
+}
+
 export function fetchTripsByRig(rigId: Id): Promise<TripRead[]> {
   return serverFetch(`/trips?rigId=${rigId}`, arrayOf(TripReadSchema));
 }
