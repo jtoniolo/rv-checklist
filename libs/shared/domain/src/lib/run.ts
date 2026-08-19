@@ -36,11 +36,17 @@ export type RunStep = z.infer<typeof RunStepSchema>;
  * A Run — a dated copy of a checklist's steps, created when the user starts working through
  * it (CONTEXT.md). It is a copy, not a frozen snapshot: runs and their answers stay
  * editable, and later checklist edits never alter it.
+ *
+ * `tripId` links the run to a Trip as a grouping of convenience (CONTEXT.md,
+ * issue #111) — the same checklist may be run any number of times on one trip.
+ * Optional: most runs have no trip. Absent also covers a since-deleted trip
+ * (deleting a trip unlinks its runs, never deletes them).
  */
 export const RunSchema = z.object({
   id: IdSchema,
   checklistId: IdSchema,
   rigId: IdSchema,
+  tripId: IdSchema.optional(),
   startedOn: IsoDateSchema,
   steps: z.array(RunStepSchema),
 });
@@ -48,10 +54,12 @@ export type Run = z.infer<typeof RunSchema>;
 
 /**
  * Create body — starting a run needs only the checklist; the server copies its steps.
- * `startedOn` may be supplied, else the server dates it.
+ * `startedOn` may be supplied, else the server dates it. A `tripId` links the
+ * run to one of the rig's trips from the start (issue #111).
  */
 export const CreateRunSchema = z.object({
   checklistId: IdSchema,
+  tripId: IdSchema.optional(),
   startedOn: IsoDateSchema.optional(),
 });
 export type CreateRun = z.infer<typeof CreateRunSchema>;
