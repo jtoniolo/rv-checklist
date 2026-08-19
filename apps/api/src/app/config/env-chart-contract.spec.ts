@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import path from 'node:path';
 import { parse } from 'yaml';
 import { EnvSchema } from './env.js';
 
@@ -16,7 +16,7 @@ import { EnvSchema } from './env.js';
  * chart when the chart is the thing left behind.
  */
 describe('env / chart contract', () => {
-  const valuesPath = join(
+  const valuesPath = path.join(
     __dirname,
     '../../../../../charts/api/values.yaml',
   );
@@ -44,7 +44,9 @@ describe('env / chart contract', () => {
   });
 
   it('never lists a key as both config and secret', () => {
-    const overlap = values.secretKeys.filter((key) => key in values.config);
+    const overlap = values.secretKeys.filter((key) =>
+      Object.hasOwn(values.config, key),
+    );
     expect(overlap).toEqual([]);
   });
 });
