@@ -41,8 +41,9 @@ page layer so that feature components read only from hooks.
 - **Rig-scoped URL routes.** The URL fully determines the page. Routes include a
   public welcome route; a root that redirects to the last-visited Rig via a
   cookie used only as a redirect hint; a rig manager route; and per-Rig routes
-  for the rig home/dashboard, Checklists (list and detail), Runs (detail), and
-  Maintenance (list, task detail, history). Client-state navigation, its
+  for the rig home/dashboard, Checklists (list and detail), Runs (detail),
+  Maintenance (list, task detail, history), and Trips (list, new, trip
+  detail/dashboard, edit — issue #114). Client-state navigation, its
   history-state serialisation, the active-rig store slice, and its localStorage
   rehydration are deleted — the URL is the active Rig now.
 - **Edge middleware.** Guards signed-in routes, redirects signed-out requests to

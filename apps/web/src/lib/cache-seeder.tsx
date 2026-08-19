@@ -8,6 +8,7 @@ import type {
   Owner,
   Rig,
   Run,
+  TripRead,
 } from '@rv-checklist/domain';
 import {
   seedChecklists,
@@ -18,6 +19,7 @@ import {
   seedRunsByRig,
   seedSignedIn,
   seedTasks,
+  seedTrips,
   useAppStore,
 } from '@rv-checklist/web-data-access';
 import { useRef, type JSX, type ReactNode } from 'react';
@@ -40,6 +42,7 @@ export interface CacheSeedProps {
   readonly checklists?: { readonly rigId: Id; readonly data: Checklist[] };
   readonly run?: { readonly runId: Id; readonly data: Run };
   readonly runsByRig?: { readonly rigId: Id; readonly data: Run[] };
+  readonly trips?: { readonly rigId: Id; readonly data: TripRead[] };
   readonly children: ReactNode;
 }
 
@@ -51,6 +54,7 @@ export function CacheSeeder({
   checklists,
   run,
   runsByRig,
+  trips,
   children,
 }: CacheSeedProps): JSX.Element {
   const store = useAppStore();
@@ -79,6 +83,9 @@ export function CacheSeeder({
     }
     if (runsByRig !== undefined) {
       seedRunsByRig(store, runsByRig.rigId, runsByRig.data);
+    }
+    if (trips !== undefined) {
+      seedTrips(store, trips.rigId, trips.data);
     }
   }
 
