@@ -11,6 +11,9 @@ const config = {
     '^.+\\.[tj]sx?$': ['babel-jest', { presets: ['@nx/react/babel'] }],
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
+  // Mirror the app's `@/*` path alias (tsconfig.json) for suites that exercise
+  // server components importing via `@/lib/...`.
+  moduleNameMapper: { '^@/(.*)$': '<rootDir>/src/$1' },
   coverageDirectory: '../../coverage/apps/web',
   testEnvironment: 'jsdom',
   setupFiles: ['<rootDir>/src/test-setup.ts'],
