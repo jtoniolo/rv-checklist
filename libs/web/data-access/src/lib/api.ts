@@ -6,6 +6,7 @@ import {
   type FetchBaseQueryError,
 } from '@reduxjs/toolkit/query/react';
 import {
+  AttachmentSchema,
   ChecklistSchema,
   EquipmentItemSchema,
   LogEntrySchema,
@@ -22,6 +23,7 @@ import {
   RigSchema,
   RunSchema,
   TripReadSchema,
+  type Attachment,
   type Checklist,
   type CreateChecklist,
   type CreateEquipmentItem,
@@ -462,6 +464,56 @@ export const api = createApi({
       ],
     }),
 
+    // Attachment endpoints (issue #117, ADR-0026). Attachment metadata rides
+    // on stop reads, which arrive through the rig's trips list — so every
+    // mutation invalidates the trip and the trips list to refresh the UI.
+    uploadAttachment: builder.mutation<
+      Attachment,
+      { stopId: Id; tripId: Id; rigId: Id; file: File }
+    >({
+      query: ({ stopId, file }) => {
+        // fetchBaseQuery passes FormData through untouched; the browser sets
+        // the multipart boundary. The field must be named `file` (the API's
+        // single-file interceptor).
+        const body = new FormData();
+        body.append('file', file);
+        return { url: `/stops/${stopId}/attachments`, method: 'POST', body };
+      },
+      transformResponse: (raw: unknown) => AttachmentSchema.parse(raw),
+      invalidatesTags: (_result, _error, { tripId, rigId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'Trip', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    setCampgroundMap: builder.mutation<
+      Attachment,
+      { id: Id; tripId: Id; rigId: Id; isCampgroundMap: boolean }
+    >({
+      query: ({ id, isCampgroundMap }) => ({
+        url: `/attachments/${id}/campground-map`,
+        method: 'POST',
+        body: { isCampgroundMap },
+      }),
+      transformResponse: (raw: unknown) => AttachmentSchema.parse(raw),
+      // Flagging swaps the flag off any sibling attachment server-side, so
+      // the whole stop read is stale, not just this attachment.
+      invalidatesTags: (_result, _error, { tripId, rigId }) => [
+        { type: 'Trip', id: tripId },
+        { type: 'Trip', id: `LIST:${rigId}` },
+      ],
+    }),
+
+    deleteAttachment: builder.mutation<void, { id: Id; tripId: Id; rigId: Id }>(
+      {
+        query: ({ id }) => ({ url: `/attachments/${id}`, method: 'DELETE' }),
+        invalidatesTags: (_result, _error, { tripId, rigId }) => [
+          { type: 'Trip', id: tripId },
+          { type: 'Trip', id: `LIST:${rigId}` },
+        ],
+      },
+    ),
+
     // Maps proxy endpoints (issue #112, ADR-0025): responses only pre-fill
     // editable fields and are never persisted, so nothing here carries tags.
     // The queries are used lazily — the component debounces autocomplete and
@@ -734,6 +786,9 @@ export const {
   useUpdateStopMutation,
   useDeleteStopMutation,
   useReorderStopMutation,
+  useUploadAttachmentMutation,
+  useSetCampgroundMapMutation,
+  useDeleteAttachmentMutation,
   useLazyMapsAutocompleteQuery,
   useLazyPlaceDetailsQuery,
   useRouteDistanceMutation,
@@ -758,3 +813,13 @@ export const {
   useListWebSessionsQuery,
   useRevokeWebSessionMutation,
 } = api;
+
+/**
+ * The URL an attachment's bytes stream from — the API's proxied download
+ * (ADR-0026), authenticated by the same httpOnly cookies as every other call
+ * (ADR-0019), so a plain same-site link or a `credentials: 'include'` fetch
+ * both work. Exported so screens never build API URLs from raw config.
+ */
+export function attachmentUrl(id: Id): string {
+  return `${config.apiBaseUrl}/attachments/${id}`;
+}
