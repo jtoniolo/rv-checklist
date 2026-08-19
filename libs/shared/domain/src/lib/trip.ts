@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AttachmentSchema } from './attachment.js';
 import { IdSchema, IsoDateSchema } from './common.js';
 
 /**
@@ -39,6 +40,17 @@ export const StopSchema = z.object({
 export type Stop = z.infer<typeof StopSchema>;
 
 /**
+ * A stop as it is read over the wire: the stored stop plus its attachments'
+ * metadata (ADR-0026 — filename, type, size, map flag; the bytes stay behind
+ * the download route). The array defaults to empty so payloads and fixtures
+ * predating attachments keep parsing.
+ */
+export const StopReadSchema = StopSchema.extend({
+  attachments: z.array(AttachmentSchema).default([]),
+});
+export type StopRead = z.infer<typeof StopReadSchema>;
+
+/**
  * A Trip — a named journey of a rig from an explicitly set starting point
  * through an ordered sequence of stops (CONTEXT.md). One-way: it ends wherever
  * its last stop is. The starting point has the same shape as a stop's location
@@ -68,7 +80,7 @@ export type TripStatus = z.infer<typeof TripStatusSchema>;
  * render a trip card without a second request.
  */
 export const TripReadSchema = TripSchema.extend({
-  stops: z.array(StopSchema),
+  stops: z.array(StopReadSchema),
   status: TripStatusSchema,
 });
 export type TripRead = z.infer<typeof TripReadSchema>;
