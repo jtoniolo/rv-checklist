@@ -20,6 +20,15 @@ const checklist = (id: string, rigId: string): Checklist => ({
   steps: [],
 });
 
+const run = (id: string, tripId?: string) => ({
+  id,
+  checklistId: 'x',
+  rigId: 'rig-1',
+  startedOn: '2026-08-19',
+  steps: [],
+  ...(tripId && { tripId }),
+});
+
 describe('in-memory repositories', () => {
   it('saves and finds an aggregate by id', async () => {
     const { rigs } = createInMemoryRepositories();
@@ -72,5 +81,41 @@ describe('in-memory repositories', () => {
     await checklists.save(checklist('y', 'rig-2'));
     const forRig = await checklists.listByRig('rig-1');
     expect(forRig.map((c) => c.id)).toEqual(['x']);
+  });
+
+  it('scopes trips to their rig', async () => {
+    const { trips } = createInMemoryRepositories();
+    await trips.save({
+      id: 't1',
+      rigId: 'rig-1',
+      name: 'One',
+      checklistIds: [],
+    });
+    await trips.save({
+      id: 't2',
+      rigId: 'rig-2',
+      name: 'Two',
+      checklistIds: [],
+    });
+    const forRig = await trips.listByRig('rig-1');
+    expect(forRig.map((t) => t.id)).toEqual(['t1']);
+  });
+
+  it('lists a trip’s stops ordered by position, not insertion order', async () => {
+    const { stops } = createInMemoryRepositories();
+    await stops.save({ id: 's2', tripId: 't1', position: 1, arrived: false });
+    await stops.save({ id: 's1', tripId: 't1', position: 0, arrived: false });
+    await stops.save({ id: 'sx', tripId: 't2', position: 0, arrived: false });
+    const forTrip = await stops.listByTrip('t1');
+    expect(forTrip.map((s) => s.id)).toEqual(['s1', 's2']);
+  });
+
+  it('scopes runs to their trip', async () => {
+    const { runs } = createInMemoryRepositories();
+    await runs.save(run('r1', 't1'));
+    await runs.save(run('r2'));
+    await runs.save(run('r3', 't2'));
+    const forTrip = await runs.listByTrip('t1');
+    expect(forTrip.map((r) => r.id)).toEqual(['r1']);
   });
 });

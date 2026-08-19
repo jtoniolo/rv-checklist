@@ -5,6 +5,7 @@ import type { LogEntry } from './log-entry.js';
 import type { MaintenanceTask } from './maintenance-task.js';
 import type { Rig } from './rig.js';
 import type { Run } from './run.js';
+import type { Stop, Trip } from './trip.js';
 
 /**
  * Repository ports — the seam that makes the whole core loop unit-testable without a
@@ -37,6 +38,7 @@ export interface ChecklistRepository extends Repository<Checklist> {
 export interface RunRepository extends Repository<Run> {
   listByRig(rigId: Id): Promise<Run[]>;
   listByChecklist(checklistId: Id): Promise<Run[]>;
+  listByTrip(tripId: Id): Promise<Run[]>;
 }
 
 /** Maintenance tasks — recurring upkeep jobs on a rig. */
@@ -53,4 +55,14 @@ export interface LogEntryRepository extends Repository<LogEntry> {
 /** Equipment items — descriptive inventory on a rig (issue #79). */
 export interface EquipmentItemRepository extends Repository<EquipmentItem> {
   listByRig(rigId: Id): Promise<EquipmentItem[]>;
+}
+
+/** Trips — named journeys of a rig through ordered stops (issue #111). */
+export interface TripRepository extends Repository<Trip> {
+  listByRig(rigId: Id): Promise<Trip[]>;
+}
+
+/** Stops — ordered overnight halts on a trip; the list comes back position-ordered. */
+export interface StopRepository extends Repository<Stop> {
+  listByTrip(tripId: Id): Promise<Stop[]>;
 }
