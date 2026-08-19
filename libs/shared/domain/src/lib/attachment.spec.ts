@@ -22,15 +22,12 @@ describe('AttachmentSchema', () => {
   });
 
   it.each(attachmentMimeTypes)('accepts %s', (mimeType) => {
-    expect(AttachmentSchema.safeParse({ ...map, mimeType }).success).toBe(
-      true,
-    );
+    expect(AttachmentSchema.safeParse({ ...map, mimeType }).success).toBe(true);
   });
 
   it('rejects a type outside the accepted set (ADR-0026)', () => {
     expect(
-      AttachmentSchema.safeParse({ ...map, mimeType: 'image/svg+xml' })
-        .success,
+      AttachmentSchema.safeParse({ ...map, mimeType: 'image/svg+xml' }).success,
     ).toBe(false);
   });
 
