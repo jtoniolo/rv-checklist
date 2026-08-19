@@ -6,6 +6,7 @@ import type {
   Owner,
   Rig,
   Run,
+  TripRead,
 } from '@rv-checklist/domain';
 import { api } from './api.js';
 import { signedIn } from './auth.slice.js';
@@ -68,4 +69,8 @@ export function seedRun(store: AppStore, runId: Id, data: Run): void {
 
 export function seedRunsByRig(store: AppStore, rigId: Id, data: Run[]): void {
   void store.dispatch(api.util.upsertQueryData('listRunsByRig', rigId, data));
+}
+
+export function seedTrips(store: AppStore, rigId: Id, data: TripRead[]): void {
+  void store.dispatch(api.util.upsertQueryData('listTripsByRig', rigId, data));
 }
