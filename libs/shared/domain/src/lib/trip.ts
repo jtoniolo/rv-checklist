@@ -12,11 +12,15 @@ import { IdSchema, IsoDateSchema } from './common.js';
  *
  * `legKm` is the distance in whole km driven into this stop from the previous
  * stop or the trip's starting point — always the owner's editable figure,
- * whether typed by hand or pre-filled from the maps proxy (which rounds to the
- * nearest 5 km, ADR-0025). Marking the stop arrived logs it onto the rig's
- * Distance. `checkInTime` / `checkOutTime` are free text: nothing computes on
- * them, so "after 2pm" is as valid as "14:00". `costCents` is the house cents
- * pattern (see `log-entry.ts`).
+ * whether typed by hand or filled from the maps proxy (which rounds to the
+ * nearest 5 km, ADR-0025). `legKmManual` records the leg's provenance (issue
+ * #121): `true` means the owner typed the current `legKm`, so an automatic
+ * fetch must never overwrite it; `false` means a maps fetch filled it, free to
+ * refresh. Absent means unknown (pre-#121 data) — an existing leg of unknown
+ * provenance is treated as manual. Marking the stop arrived logs its leg onto
+ * the rig's Distance. `checkInTime` / `checkOutTime` are free text: nothing
+ * computes on them, so "after 2pm" is as valid as "14:00". `costCents` is the
+ * house cents pattern (see `log-entry.ts`).
  */
 export const StopSchema = z.object({
   id: IdSchema,
@@ -36,6 +40,7 @@ export const StopSchema = z.object({
   phone: z.string().min(1).optional(),
   notes: z.string().min(1).optional(),
   legKm: z.number().int().nonnegative().optional(),
+  legKmManual: z.boolean().optional(),
 });
 export type Stop = z.infer<typeof StopSchema>;
 
@@ -142,6 +147,7 @@ export const UpdateStopSchema = z
     phone: z.string().min(1).nullable(),
     notes: z.string().min(1).nullable(),
     legKm: z.number().int().nonnegative().nullable(),
+    legKmManual: z.boolean().nullable(),
   })
   .partial();
 export type UpdateStop = z.infer<typeof UpdateStopSchema>;

@@ -38,6 +38,7 @@ import { Trips1721002300000 } from './migrations/1721002300000-trips.js';
 import { Stops1721002400000 } from './migrations/1721002400000-stops.js';
 import { RunTripLink1721002500000 } from './migrations/1721002500000-run-trip-link.js';
 import { Attachments1721002600000 } from './migrations/1721002600000-attachments.js';
+import { StopLegKmManual1721002700000 } from './migrations/1721002700000-stop-leg-km-manual.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -95,6 +96,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       Stops1721002400000,
       RunTripLink1721002500000,
       Attachments1721002600000,
+      StopLegKmManual1721002700000,
     ],
     migrationsRun: true,
     synchronize: false,

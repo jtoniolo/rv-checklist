@@ -175,6 +175,9 @@ export class StopService {
     else if (changes.notes !== undefined) next.notes = changes.notes;
     if (changes.legKm === null) delete next.legKm;
     else if (changes.legKm !== undefined) next.legKm = changes.legKm;
+    if (changes.legKmManual === null) delete next.legKmManual;
+    else if (changes.legKmManual !== undefined)
+      next.legKmManual = changes.legKmManual;
 
     if (stop.arrived) {
       await this.adjustDistance(

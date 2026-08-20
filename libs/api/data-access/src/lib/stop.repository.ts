@@ -42,6 +42,7 @@ function toStop(entity: StopEntity): Stop {
     phone: entity.phone ?? undefined,
     notes: entity.notes ?? undefined,
     legKm: entity.legKm ?? undefined,
+    legKmManual: entity.legKmManual ?? undefined,
   };
 }
 
@@ -65,6 +66,7 @@ function toRow(stop: Stop): Partial<StopEntity> {
     phone: stop.phone ?? null,
     notes: stop.notes ?? null,
     legKm: stop.legKm ?? null,
+    legKmManual: stop.legKmManual ?? null,
   };
 }
 /* eslint-enable unicorn/no-null */

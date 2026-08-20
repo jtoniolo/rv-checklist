@@ -41,8 +41,12 @@ const CLEARED = null;
  * The full trip editor (issue #115) at `/rig/{rigId}/trips/{tripId}/edit`:
  * trip fields (name, start point) plus the stop editor — add, edit, delete,
  * reorder, and the Maps-assisted flows (autocomplete, place-details pre-fill,
- * fetch distance) per ADR-0025. Linked checklists are managed on the trip
- * screen (#116), not here.
+ * distance) per ADR-0025. Legs fill themselves (issue #121): whenever a stop
+ * and its previous end both carry place IDs the leg is fetched automatically —
+ * on add, on a place change at either end, and recalculated for affected stops
+ * on reorder and delete. A manually typed leg is never overwritten
+ * automatically (`legKmManual` provenance); the explicit fetch remains.
+ * Linked checklists are managed on the trip screen (#116), not here.
  */
 export function TripEditorScreen({
   rigId,
@@ -119,6 +123,7 @@ function TripFieldsForm({
   readonly rigId: Id;
 }): JSX.Element {
   const [updateTrip, { isLoading, isError }] = useUpdateTripMutation();
+  const autoFillLeg = useAutoFillLeg(trip.id, rigId);
   const [name, setName] = useState(trip.name);
   const [startText, setStartText] = useState(trip.startLocation ?? '');
   const [startPlaceId, setStartPlaceId] = useState(trip.startPlaceId);
@@ -134,6 +139,19 @@ function TripFieldsForm({
     );
     if (Object.keys(changes).length === 0) return;
     await updateTrip({ id: trip.id, rigId, changes }).unwrap();
+    // The start place is the first leg's origin — a change refills that leg
+    // (issue #121); autoFillLeg skips manual, arrived, and un-placed stops.
+    if ('startPlaceId' in changes) {
+      const first = trip.stops.toSorted((a, b) => a.position - b.position)[0];
+      if (first) {
+        await autoFillLeg(
+          first,
+          typeof changes.startPlaceId === 'string'
+            ? changes.startPlaceId
+            : undefined,
+        );
+      }
+    }
   };
 
   return (
@@ -200,6 +218,8 @@ interface StopFieldValues {
   readonly phone: string | undefined;
   readonly notes: string | undefined;
   readonly legKm: number | undefined;
+  /** The leg's provenance: true = typed, false = fetched, undefined = no leg/unknown. */
+  readonly legKmManual: boolean | undefined;
 }
 
 const STOP_FIELD_KEYS = [
@@ -216,6 +236,7 @@ const STOP_FIELD_KEYS = [
   'phone',
   'notes',
   'legKm',
+  'legKmManual',
 ] as const;
 
 /** The stop PATCH body: unchanged fields omitted, cleared ones `null`. */
@@ -228,6 +249,78 @@ function stopChanges(original: StopRead, next: StopFieldValues): UpdateStop {
     changes[key] = after ?? CLEARED;
   }
   return UpdateStopSchema.parse(changes);
+}
+
+/**
+ * Whether an automatic fetch may write this stop's leg (issue #121): never an
+ * arrived stop (its leg is a log record with rig-Distance side effects), never
+ * a manually typed leg, and never a pre-existing leg of unknown provenance
+ * (pre-#121 data is treated as manual). The explicit fetch in the stop form
+ * ignores this and always overwrites.
+ */
+function canAutoFill(stop: StopRead): boolean {
+  if (stop.arrived || stop.legKmManual === true) return false;
+  return stop.legKmManual === false || stop.legKm === undefined;
+}
+
+/** The place ID the leg into `index` starts from in an explicit stop ordering. */
+function previousPlaceIn(
+  ordered: readonly StopRead[],
+  index: number,
+  startPlaceId: string | undefined,
+): string | undefined {
+  return index === 0 ? startPlaceId : ordered[index - 1]?.placeId;
+}
+
+/**
+ * Exactly what blocks a distance fetch (issue #121): name the missing end(s)
+ * instead of leaving a silently dead control. `undefined` when nothing blocks.
+ */
+function missingPlaceMessage(
+  hasStopPlace: boolean,
+  hasPreviousPlace: boolean,
+): string | undefined {
+  if (hasStopPlace && hasPreviousPlace) return undefined;
+  const stopEnd = 'this stop’s campground';
+  const previousEnd =
+    'the previous point (the stop before it, or the trip’s start point)';
+  let missing: string;
+  if (hasStopPlace) missing = previousEnd;
+  else if (hasPreviousPlace) missing = stopEnd;
+  else missing = `${stopEnd} and ${previousEnd}`;
+  return `To fetch the distance, pick ${missing} from Google suggestions.`;
+}
+
+/**
+ * The automatic leg-fill writer (issue #121): fetch the road distance into
+ * `stop` from `fromPlaceId` and store it as a fetched (non-manual) leg.
+ * Skips whatever {@link canAutoFill} protects and un-placed ends; failures
+ * are silent — the explicit fetch in the stop form remains.
+ */
+function useAutoFillLeg(
+  tripId: Id,
+  rigId: Id,
+): (stop: StopRead, fromPlaceId: string | undefined) => Promise<void> {
+  const [routeDistance] = useRouteDistanceMutation();
+  const [updateStop] = useUpdateStopMutation();
+  return async (stop, fromPlaceId) => {
+    if (!canAutoFill(stop)) return;
+    if (fromPlaceId === undefined || stop.placeId === undefined) return;
+    try {
+      const { legKm } = await routeDistance({
+        originPlaceId: fromPlaceId,
+        destinationPlaceId: stop.placeId,
+      }).unwrap();
+      await updateStop({
+        id: stop.id,
+        tripId,
+        rigId,
+        changes: { legKm, legKmManual: false },
+      }).unwrap();
+    } catch {
+      // Best-effort: manual entry and the explicit fetch stay available.
+    }
+  };
 }
 
 function StopsSection({
@@ -246,10 +339,58 @@ function StopsSection({
   const [updateStop, { isLoading: isUpdating }] = useUpdateStopMutation();
   const [deleteStop] = useDeleteStopMutation();
   const [reorderStop] = useReorderStopMutation();
+  const autoFillLeg = useAutoFillLeg(trip.id, rigId);
 
   /** The place ID a leg into `index` starts from — previous stop, or the trip start. */
   const previousEndPlaceId = (index: number): string | undefined =>
-    index === 0 ? trip.startPlaceId : stops[index - 1]?.placeId;
+    previousPlaceIn(stops, index, trip.startPlaceId);
+
+  /**
+   * Recalculate the leg of every stop whose previous end changed between two
+   * orderings (issue #121) — after a reorder or a delete. Manual legs,
+   * arrived stops, and un-placed ends are skipped by {@link useAutoFillLeg}.
+   */
+  const recalculateChangedLegs = async (
+    before: readonly StopRead[],
+    after: readonly StopRead[],
+  ): Promise<void> => {
+    await Promise.all(
+      after.map((stop, index) => {
+        const oldIndex = before.findIndex((s) => s.id === stop.id);
+        const oldFrom = previousPlaceIn(before, oldIndex, trip.startPlaceId);
+        const newFrom = previousPlaceIn(after, index, trip.startPlaceId);
+        return oldFrom === newFrom
+          ? Promise.resolve()
+          : autoFillLeg(stop, newFrom);
+      }),
+    );
+  };
+
+  const moveStop = async (stop: StopRead, position: number): Promise<void> => {
+    try {
+      const after = await reorderStop({
+        id: stop.id,
+        tripId: trip.id,
+        rigId,
+        position,
+      }).unwrap();
+      await recalculateChangedLegs(stops, after);
+    } catch {
+      // The reorder failed; the list simply stays as it was.
+    }
+  };
+
+  const removeStop = async (stop: StopRead): Promise<void> => {
+    try {
+      await deleteStop({ id: stop.id, tripId: trip.id, rigId }).unwrap();
+      await recalculateChangedLegs(
+        stops,
+        stops.filter((s) => s.id !== stop.id),
+      );
+    } catch {
+      // The delete failed; the list simply stays as it was.
+    }
+  };
 
   const submitStop = async (
     original: StopRead | undefined,
@@ -268,6 +409,20 @@ function StopsSection({
             rigId,
             changes,
           }).unwrap();
+          // This stop is the next stop's previous end — a place change here
+          // moves that leg's origin, so it refills too (issue #121).
+          if ('placeId' in changes) {
+            const next =
+              stops[stops.findIndex((s) => s.id === original.id) + 1];
+            if (next) {
+              await autoFillLeg(
+                next,
+                typeof changes.placeId === 'string'
+                  ? changes.placeId
+                  : undefined,
+              );
+            }
+          }
         }
       }
       setEditing(undefined);
@@ -320,12 +475,7 @@ function StopsSection({
                   aria-label={`Move stop ${String(index + 1)} up`}
                   disabled={index === 0}
                   onClick={() => {
-                    void reorderStop({
-                      id: stop.id,
-                      tripId: trip.id,
-                      rigId,
-                      position: index - 1,
-                    });
+                    void moveStop(stop, index - 1);
                   }}
                 >
                   ↑
@@ -337,12 +487,7 @@ function StopsSection({
                   aria-label={`Move stop ${String(index + 1)} down`}
                   disabled={index === stops.length - 1}
                   onClick={() => {
-                    void reorderStop({
-                      id: stop.id,
-                      tripId: trip.id,
-                      rigId,
-                      position: index + 1,
-                    });
+                    void moveStop(stop, index + 1);
                   }}
                 >
                   ↓
@@ -363,11 +508,7 @@ function StopsSection({
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    void deleteStop({
-                      id: stop.id,
-                      tripId: trip.id,
-                      rigId,
-                    });
+                    void removeStop(stop);
                   }}
                 >
                   Delete
@@ -479,13 +620,26 @@ function StopForm({
   const [legKmText, setLegKmText] = useState(
     initial?.legKm === undefined ? '' : String(initial.legKm),
   );
+  // The leg's provenance (issue #121): true = the owner typed the current
+  // value, false = a maps fetch filled it, undefined = unknown (pre-#121
+  // data, or no leg yet). Typing sets it true; any fetch sets it false.
+  const [legKmManual, setLegKmManual] = useState<boolean | undefined>(
+    initial?.legKmManual,
+  );
   const [error, setError] = useState<string | undefined>(undefined);
 
   const [routeDistance, { isLoading: isFetchingDistance }] =
     useRouteDistanceMutation();
   const canFetchDistance =
     placeId !== undefined && previousEndPlaceId !== undefined;
+  const missingPlace = missingPlaceMessage(
+    placeId !== undefined,
+    previousEndPlaceId !== undefined,
+  );
+  // A pre-existing leg of unknown provenance is treated as manual.
+  const isLegManual = legKmManual ?? initial?.legKm !== undefined;
 
+  /** The explicit fetch: always overwrites the leg and clears the manual flag. */
   const fetchDistance = async (): Promise<void> => {
     if (placeId === undefined || previousEndPlaceId === undefined) return;
     try {
@@ -494,9 +648,32 @@ function StopForm({
         destinationPlaceId: placeId,
       }).unwrap();
       setLegKmText(String(legKm));
+      setLegKmManual(false);
       setError(undefined);
     } catch {
       setError('Couldn’t fetch the distance — enter it by hand or try again.');
+    }
+  };
+
+  /**
+   * The automatic fill on a place pick (issue #121): fetch only when both
+   * ends carry a place and nothing protects the current leg — never a manual
+   * (or unknown-provenance) leg, never an arrived stop's (its leg is a log
+   * record with rig-Distance side effects). Failures are silent — the
+   * explicit fetch and manual entry remain.
+   */
+  const autoFillDistance = async (destination: string): Promise<void> => {
+    if (previousEndPlaceId === undefined) return;
+    if (isLegManual || initial?.arrived === true) return;
+    try {
+      const { legKm } = await routeDistance({
+        originPlaceId: previousEndPlaceId,
+        destinationPlaceId: destination,
+      }).unwrap();
+      setLegKmText(String(legKm));
+      setLegKmManual(false);
+    } catch {
+      // Best-effort.
     }
   };
 
@@ -541,6 +718,9 @@ function StopForm({
       phone: parseText(phone),
       notes: parseText(notes),
       legKm,
+      // No leg means no provenance; otherwise the tracked flag (an untouched
+      // pre-#121 leg stays undefined, so nothing is written for it).
+      legKmManual: legKm === undefined ? undefined : legKmManual,
     });
   };
 
@@ -560,6 +740,9 @@ function StopForm({
         placeholder="Killbear Provincial Park"
         onChange={(text, picked) => {
           setCampground(text);
+          if (picked !== undefined && picked !== placeId) {
+            void autoFillDistance(picked);
+          }
           setPlaceId(picked);
         }}
         onDetails={(details) => {
@@ -694,6 +877,7 @@ function StopForm({
             value={legKmText}
             onChange={(e) => {
               setLegKmText(e.target.value);
+              setLegKmManual(true);
             }}
           />
           <Button
@@ -708,11 +892,8 @@ function StopForm({
             {isFetchingDistance ? 'Fetching…' : 'Fetch distance'}
           </Button>
         </div>
-        {canFetchDistance ? undefined : (
-          <span className="text-xs">
-            Fetching needs a linked Google place on this stop and on the
-            previous end (the stop before it, or the trip&apos;s start point).
-          </span>
+        {missingPlace === undefined ? undefined : (
+          <span className="text-xs">{missingPlace}</span>
         )}
         {initial?.arrived === true ? (
           <span className="text-xs">
