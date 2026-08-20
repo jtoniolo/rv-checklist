@@ -4,7 +4,9 @@ Date: 2026-08-19
 
 ## Status
 
-Accepted
+Accepted — amended 2026-08-19 (issue #121): the "fetch on demand only"
+bullet became "automatic fetch with manual override"; an explicit
+re-fetch action and manual entry remain.
 
 ## Context
 
@@ -44,10 +46,20 @@ entity was considered and rejected as not worth its weight (#104).
   figure is honestly the owner's estimate, not a stored Google datum.
   Random jitter was rejected: noise derived from Google's number is
   still derived data and buys nothing.
-- **Fetch on demand only.** An explicit "fetch distance" action,
-  requiring place IDs on both ends of the leg; manual km entry remains
-  the fallback for stops without one (boondocking, a friend's
-  driveway).
+- **Automatic fetch with manual override** (amended by issue #121;
+  originally "fetch on demand only" via an explicit action). Whenever a
+  stop and its previous end (the previous stop, or the trip's start
+  place for the first stop) both carry place IDs, the leg is fetched
+  and filled automatically: on stop add, on a place change at either
+  end, and recalculated for affected stops on reorder and delete. The
+  stop stores the leg's provenance (`legKmManual`): a leg the owner
+  typed is never overwritten automatically, and neither is a
+  pre-amendment leg of unknown provenance or an arrived stop's leg (a
+  log record with rig-Distance side effects). An explicit "fetch
+  distance" action remains and always overwrites; manual km entry
+  remains the fallback for stops without a place ID (boondocking, a
+  friend's driveway), and the UI names exactly which end is missing a
+  place when a leg cannot compute.
 
 ## Consequences
 

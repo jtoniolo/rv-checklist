@@ -75,6 +75,12 @@ export class StopEntity {
   @Column({ name: 'leg_km', type: 'int', nullable: true })
   legKm!: number | null;
 
+  // The leg's provenance (issue #121): true = the owner typed it, false = a
+  // maps fetch filled it. NULL = unknown (pre-#121 rows) — treated as manual
+  // when a leg exists, so automatic fetches never overwrite it.
+  @Column({ name: 'leg_km_manual', type: 'boolean', nullable: true })
+  legKmManual!: boolean | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
