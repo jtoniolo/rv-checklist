@@ -125,15 +125,6 @@ export class InMemoryEquipmentItemRepository
   }
 }
 
-export class InMemoryTripRepository
-  extends InMemoryRepository<Trip>
-  implements TripRepository
-{
-  listByRig(rigId: Id): Promise<Trip[]> {
-    return this.where((t) => t.rigId === rigId);
-  }
-}
-
 export class InMemoryStopRepository
   extends InMemoryRepository<Stop>
   implements StopRepository
@@ -144,6 +135,36 @@ export class InMemoryStopRepository
     // `where` returns a fresh array of clones, so sorting in place aliases nothing.
     stops.sort((a, b) => a.position - b.position);
     return stops;
+  }
+}
+
+export class InMemoryTripRepository
+  extends InMemoryRepository<Trip>
+  implements TripRepository
+{
+  /**
+   * Where {@link createWithStops} lands its stops. Pass the suite's stop
+   * repository so an atomic create is visible through it (as the shared SQL
+   * database makes it in production); a repository constructed without one
+   * keeps trip-only behaviour — its private stop store is reachable by nothing.
+   */
+  constructor(
+    private readonly stopRepository: InMemoryStopRepository = new InMemoryStopRepository(),
+  ) {
+    super();
+  }
+
+  listByRig(rigId: Id): Promise<Trip[]> {
+    return this.where((t) => t.rigId === rigId);
+  }
+
+  /** Trip and stops in one save — the in-memory stand-in for the SQL transaction (issue #120). */
+  async createWithStops(trip: Trip, stops: Stop[]): Promise<Trip> {
+    const saved = await this.save(trip);
+    for (const stop of stops) {
+      await this.stopRepository.save(stop);
+    }
+    return saved;
   }
 }
 
@@ -171,6 +192,7 @@ export interface InMemoryRepositories {
 
 /** Fresh, empty in-memory repositories — the usual starting point for a use-case test. */
 export function createInMemoryRepositories(): InMemoryRepositories {
+  const stops = new InMemoryStopRepository();
   return {
     rigs: new InMemoryRigRepository(),
     checklists: new InMemoryChecklistRepository(),
@@ -178,8 +200,10 @@ export function createInMemoryRepositories(): InMemoryRepositories {
     tasks: new InMemoryMaintenanceTaskRepository(),
     logEntries: new InMemoryLogEntryRepository(),
     equipmentItems: new InMemoryEquipmentItemRepository(),
-    trips: new InMemoryTripRepository(),
-    stops: new InMemoryStopRepository(),
+    // Wired together so an atomic create-with-stops (issue #120) is visible
+    // through the stop repository, as the shared database makes it in production.
+    trips: new InMemoryTripRepository(stops),
+    stops,
     attachments: new InMemoryAttachmentRepository(),
   };
 }

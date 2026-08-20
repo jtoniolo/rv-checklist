@@ -50,14 +50,21 @@ describe('TripController over HTTP (through the Zod serializer)', () => {
   beforeAll(async () => {
     const rigs = new InMemoryRigRepository();
     await rigs.save(rig);
+    // The trip repository is wired with the stop repository so the atomic
+    // create-with-stops (issue #120) is visible through the stop read path,
+    // as the shared database makes it in production.
+    const stops = new InMemoryStopRepository();
 
     const moduleRef = await Test.createTestingModule({
       controllers: [TripController, StopController],
       providers: [
         TripService,
         StopService,
-        { provide: TripRepository, useValue: new InMemoryTripRepository() },
-        { provide: StopRepository, useValue: new InMemoryStopRepository() },
+        {
+          provide: TripRepository,
+          useValue: new InMemoryTripRepository(stops),
+        },
+        { provide: StopRepository, useValue: stops },
         {
           provide: ChecklistRepository,
           useValue: new InMemoryChecklistRepository(),
@@ -129,6 +136,53 @@ describe('TripController over HTTP (through the Zod serializer)', () => {
         expect.objectContaining({ name: 'Fall colours loop', rigId }),
       ]),
     );
+  });
+
+  it('creates a trip with its initial stops in one request and reads back the full plan (issue #120)', async () => {
+    const created = await fetch(`${baseUrl}/trips`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        rigId,
+        name: 'Maritimes run',
+        startLocation: 'Home driveway, Ottawa',
+        startPlaceId: 'ChIJHome123',
+        stops: [
+          { campground: 'KOA Kingston', legKm: 165 },
+          { campground: 'Fundy National Park' },
+        ],
+      }),
+    });
+    expect(created.status).toBe(201);
+    const createdBody = (await created.json()) as {
+      id: string;
+      stops: Record<string, unknown>[];
+    };
+    expect(createdBody).toMatchObject({
+      name: 'Maritimes run',
+      startPlaceId: 'ChIJHome123',
+      status: 'planned',
+    });
+    expect(createdBody.stops).toEqual([
+      expect.objectContaining({
+        campground: 'KOA Kingston',
+        legKm: 165,
+        position: 0,
+        arrived: false,
+      }),
+      expect.objectContaining({
+        campground: 'Fundy National Park',
+        position: 1,
+        arrived: false,
+      }),
+    ]);
+
+    // The whole plan survives a fresh read — trip and stops landed together.
+    const read = await fetch(`${baseUrl}/trips/${createdBody.id}`);
+    expect(read.status).toBe(200);
+    const readBody = (await read.json()) as { stops: unknown[] };
+    expect(readBody).toMatchObject({ name: 'Maritimes run' });
+    expect(readBody.stops).toHaveLength(2);
   });
 
   it('embeds a created stop on the trip read, flipping the status on arrival', async () => {
