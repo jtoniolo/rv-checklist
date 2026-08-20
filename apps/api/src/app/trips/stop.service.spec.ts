@@ -127,6 +127,32 @@ describe('StopService', () => {
 
       expect(await aliceDistance(rigs)).toBe(1000);
     });
+
+    it('sets and clears the legKmManual provenance flag (issue #121)', async () => {
+      const { service } = await makeService();
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 100,
+        legKmManual: true,
+      });
+      expect(stop.legKmManual).toBe(true);
+
+      const fetched = await service.update(alice, stop.id, {
+        legKm: 145,
+        legKmManual: false,
+      });
+      expect(fetched.legKmManual).toBe(false);
+      expect(fetched.legKm).toBe(145);
+
+      const cleared = await service.update(alice, stop.id, {
+        // eslint-disable-next-line unicorn/no-null
+        legKm: null,
+        // eslint-disable-next-line unicorn/no-null
+        legKmManual: null,
+      });
+      expect(cleared.legKm).toBeUndefined();
+      expect(cleared.legKmManual).toBeUndefined();
+    });
   });
 
   describe('arrival — the Distance side effects (issue #111)', () => {
