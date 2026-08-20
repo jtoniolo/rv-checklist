@@ -175,6 +175,7 @@ function TripFieldsForm({
         onChange={(text, placeId) => {
           setStartText(text);
           setStartPlaceId(placeId);
+          if (placeId !== undefined) setStartError(undefined);
         }}
       />
       {startError === undefined ? undefined : (
