@@ -423,8 +423,10 @@ describe('MCP endpoint integration (ADR-0021, ADR-0023, ADR-0024)', () => {
   const taskRepo = new InMemoryMaintenanceTaskRepository();
   const logEntryRepo = new InMemoryLogEntryRepository();
   const equipmentItemRepo = new InMemoryEquipmentItemRepository();
-  const tripRepo = new InMemoryTripRepository();
+  // Wired together so an atomic create-with-stops (issue #120) is visible
+  // through the stop repository, as the shared database makes it in production.
   const stopRepo = new InMemoryStopRepository();
+  const tripRepo = new InMemoryTripRepository(stopRepo);
   const attachmentRepo = new InMemoryAttachmentRepository();
 
   const OAUTH_OPTIONS = {

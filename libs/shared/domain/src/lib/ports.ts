@@ -61,6 +61,13 @@ export interface EquipmentItemRepository extends Repository<EquipmentItem> {
 /** Trips — named journeys of a rig through ordered stops (issue #111). */
 export interface TripRepository extends Repository<Trip> {
   listByRig(rigId: Id): Promise<Trip[]>;
+  /**
+   * Write the trip and its initial stops in one atomic save (issue #120):
+   * either the whole plan lands or nothing does — a mid-save failure must
+   * never strand a stopless trip. The use-case hands over fully-built
+   * aggregates (ids, positions, arrived already assigned), as with `save`.
+   */
+  createWithStops(trip: Trip, stops: Stop[]): Promise<Trip>;
 }
 
 /** Stops — ordered overnight halts on a trip; the list comes back position-ordered. */
