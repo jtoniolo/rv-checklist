@@ -43,6 +43,7 @@ const fullStop = {
   phone: '+1 705 555 0123',
   notes: 'gate code 4482, wifi at office',
   legKm: 245,
+  legKmManual: true,
 };
 
 describe('TripSchema', () => {
@@ -110,6 +111,11 @@ describe('StopSchema', () => {
     expect(StopSchema.safeParse({ ...fullStop, position: -1 }).success).toBe(
       false,
     );
+  });
+
+  it('parses a stop without legKmManual (pre-#121 data — provenance unknown)', () => {
+    const { legKmManual: _m, ...legacy } = fullStop;
+    expect(StopSchema.parse(legacy)).toEqual(legacy);
   });
 });
 
@@ -183,6 +189,15 @@ describe('UpdateStopSchema', () => {
   it('accepts values to set fields', () => {
     const update = { campground: 'KOA Kingston', legKm: 165 };
     expect(UpdateStopSchema.parse(update)).toEqual(update);
+  });
+
+  it('sets and clears the legKmManual provenance flag (issue #121)', () => {
+    expect(UpdateStopSchema.parse({ legKmManual: true })).toEqual({
+      legKmManual: true,
+    });
+    // eslint-disable-next-line unicorn/no-null
+    const cleared = { legKm: null, legKmManual: null };
+    expect(UpdateStopSchema.parse(cleared)).toEqual(cleared);
   });
 
   it('never edits arrived or position (dedicated operations own them)', () => {
