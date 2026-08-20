@@ -1,4 +1,4 @@
-import type { TripRead } from '@rv-checklist/domain';
+import type { PlaceSuggestion, TripRead } from '@rv-checklist/domain';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NewTripScreen } from './new-trip-screen';
 import { StoreProvider } from './store-provider';
@@ -29,16 +29,60 @@ jest.mock('next/navigation', () => ({
 
 const RIG_ID = '550e8400-e29b-41d4-a716-446655440010';
 const TRIP_ID = '550e8400-e29b-41d4-a716-446655440100';
+const STOP_ID = '550e8400-e29b-41d4-a716-446655440101';
 
 const created: TripRead = {
   id: TRIP_ID,
   rigId: RIG_ID,
   name: 'Fall Colours Loop',
   startLocation: 'Home — Newmarket, ON',
+  startPlaceId: 'ChIJ-home',
   checklistIds: [],
-  stops: [],
+  stops: [
+    {
+      id: STOP_ID,
+      tripId: TRIP_ID,
+      position: 0,
+      arrived: false,
+      campground: 'Killbear Provincial Park',
+      attachments: [],
+    },
+  ],
   status: 'planned',
 };
+
+const suggestions: PlaceSuggestion[] = [
+  { placeId: 'ChIJ-home', description: 'Home — Newmarket, ON' },
+];
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return Response.json(data, {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+/** Route every request the screen can make to canned data (house style). */
+function stubFetch(): jest.SpyInstance {
+  return jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+    const request = input as Request;
+    const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/maps/autocomplete') {
+      return Promise.resolve(jsonResponse(suggestions));
+    }
+    if (request.method === 'POST' && url.pathname === '/trips') {
+      return Promise.resolve(jsonResponse(created, 201));
+    }
+    throw new Error(`Unstubbed request: ${request.method} ${url.pathname}`);
+  });
+}
+
+/** Every POST request the spy saw, as (pathname, parsed body) pairs. */
+function postRequests(spy: jest.SpyInstance): Request[] {
+  return spy.mock.calls
+    .map((call: readonly unknown[]) => call[0] as Request)
+    .filter((r) => r.method === 'POST');
+}
 
 function renderScreen(): void {
   render(
@@ -48,76 +92,97 @@ function renderScreen(): void {
   );
 }
 
-describe('NewTripScreen (issue #114)', () => {
+function fillName(name: string): void {
+  fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: name } });
+}
+
+/** Pick the start point through the Places autocomplete. */
+async function pickStartPlace(): Promise<void> {
+  fireEvent.change(screen.getByLabelText(/Start point/), {
+    target: { value: 'Newmarket' },
+  });
+  const option = await screen.findByRole('option', {
+    name: 'Home — Newmarket, ON',
+  });
+  fireEvent.click(option);
+}
+
+/** Add one draft stop with free-text campground through the stop form. */
+function addStop(campground: string): void {
+  fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
+  fireEvent.change(screen.getByLabelText(/Campground/), {
+    target: { value: campground },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
+}
+
+describe('NewTripScreen (issues #114, #120)', () => {
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
     mockPush.mockClear();
-    fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation((input) => {
-      const request = input as Request;
-      const url = new URL(request.url);
-      if (request.method === 'POST' && url.pathname === '/trips') {
-        return Promise.resolve(
-          Response.json(created, {
-            status: 201,
-            headers: { 'content-type': 'application/json' },
-          }),
-        );
-      }
-      throw new Error(`Unstubbed request: ${request.method} ${url.pathname}`);
-    });
+    fetchSpy = stubFetch();
   });
 
   afterEach(() => {
     fetchSpy.mockRestore();
   });
 
-  /** The body of the POST /trips request the spy saw. */
-  async function postedBody(): Promise<Record<string, unknown>> {
-    const request = fetchSpy.mock.calls
-      .map((call: readonly unknown[]) => call[0] as Request)
-      .find((r) => r.method === 'POST');
-    if (!request) throw new Error('No POST request');
-    return (await request.clone().json()) as Record<string, unknown>;
-  }
-
-  it('creates the trip and navigates to its route', async () => {
+  it('blocks the save without a Google-picked start place', async () => {
     renderScreen();
+    fillName('Fall Colours Loop');
+    addStop('Killbear Provincial Park');
 
-    fireEvent.change(screen.getByLabelText(/Name/), {
-      target: { value: 'Fall Colours Loop' },
-    });
-    fireEvent.change(screen.getByLabelText(/Start point/), {
-      target: { value: 'Home — Newmarket, ON' },
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create trip' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/pick the start point/i);
+    expect(postRequests(fetchSpy)).toHaveLength(0);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('blocks the save without at least one stop', async () => {
+    renderScreen();
+    fillName('Fall Colours Loop');
+    await pickStartPlace();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create trip' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toMatch(/at least one stop/i);
+    expect(postRequests(fetchSpy)).toHaveLength(0);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('creates trip and stops in one request and navigates to the trip screen', async () => {
+    renderScreen();
+    fillName('Fall Colours Loop');
+    await pickStartPlace();
+    addStop('Killbear Provincial Park');
+    addStop('Pancake Bay');
+
     fireEvent.click(screen.getByRole('button', { name: 'Create trip' }));
 
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith(`/rig/${RIG_ID}/trips/${TRIP_ID}`);
     });
-    expect(await postedBody()).toEqual({
+
+    // One request carries the whole plan — never a POST per stop.
+    const posts = postRequests(fetchSpy);
+    expect(posts.map((r) => new URL(r.url).pathname)).toEqual(['/trips']);
+    const firstPost = posts[0];
+    if (!firstPost) throw new Error('No POST request');
+    const body = (await firstPost.clone().json()) as Record<string, unknown>;
+    expect(body).toEqual({
       rigId: RIG_ID,
       name: 'Fall Colours Loop',
       startLocation: 'Home — Newmarket, ON',
+      startPlaceId: 'ChIJ-home',
       checklistIds: [],
-    });
-  });
-
-  it('omits a blank start point from the create body', async () => {
-    renderScreen();
-
-    fireEvent.change(screen.getByLabelText(/Name/), {
-      target: { value: 'Fall Colours Loop' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create trip' }));
-
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalled();
-    });
-    expect(await postedBody()).toEqual({
-      rigId: RIG_ID,
-      name: 'Fall Colours Loop',
-      checklistIds: [],
+      stops: [
+        { campground: 'Killbear Provincial Park' },
+        { campground: 'Pancake Bay' },
+      ],
     });
   });
 
@@ -126,8 +191,23 @@ describe('NewTripScreen (issue #114)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Create trip' }));
 
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(postRequests(fetchSpy)).toHaveLength(0);
     expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('deletes a draft stop again before the save', async () => {
+    renderScreen();
+    fillName('Fall Colours Loop');
+    await pickStartPlace();
+    addStop('Killbear Provincial Park');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    // With its only stop gone, the save is blocked again.
+    fireEvent.click(screen.getByRole('button', { name: 'Create trip' }));
+    const blockedAgain = await screen.findByRole('alert');
+    expect(blockedAgain.textContent).toMatch(/at least one stop/i);
+    expect(postRequests(fetchSpy)).toHaveLength(0);
   });
 
   it('links back to the trips list', () => {

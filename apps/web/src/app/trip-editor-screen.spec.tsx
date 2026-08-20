@@ -347,29 +347,30 @@ describe('TripEditorScreen (issue #115)', () => {
 
       fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
 
-      expect((await screen.findByRole('alert')).textContent).toMatch(
-        /last stop.*Delete the trip instead/i,
-      );
-      const deleteRequests = fetchSpy.mock.calls
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toMatch(/last stop.*Delete the trip instead/i);
+      const deletionRequests = fetchSpy.mock.calls
         .map((call: readonly unknown[]) => call[0] as Request)
         .filter((r) => r.method === 'DELETE');
-      expect(deleteRequests).toHaveLength(0);
+      expect(deletionRequests).toHaveLength(0);
     });
 
     it('still deletes a stop while others remain', async () => {
       fetchSpy = stubFetch({ trips: [trip] });
       renderScreen();
 
-      const deleteButtons = await screen.findAllByRole('button', {
+      const buttons = await screen.findAllByRole('button', {
         name: 'Delete',
       });
-      fireEvent.click(deleteButtons[0] as HTMLElement);
+      const firstDeleteButton = buttons[0];
+      if (!firstDeleteButton) throw new Error('No Delete button');
+      fireEvent.click(firstDeleteButton);
 
       await waitFor(() => {
-        const deleteRequests = fetchSpy.mock.calls
+        const deletionRequests = fetchSpy.mock.calls
           .map((call: readonly unknown[]) => call[0] as Request)
           .filter((r) => r.method === 'DELETE');
-        expect(deleteRequests).toHaveLength(1);
+        expect(deletionRequests).toHaveLength(1);
       });
     });
   });
@@ -385,14 +386,14 @@ describe('TripEditorScreen (issue #115)', () => {
       });
       fireEvent.click(screen.getByRole('button', { name: 'Save trip' }));
 
-      expect((await screen.findByRole('alert')).textContent).toMatch(
-        /pick the start point/i,
-      );
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toMatch(/pick the start point/i);
       const patches = fetchSpy.mock.calls
         .map((call: readonly unknown[]) => call[0] as Request)
         .filter(
           (r) =>
-            r.method === 'PATCH' && new URL(r.url).pathname.startsWith('/trips'),
+            r.method === 'PATCH' &&
+            new URL(r.url).pathname.startsWith('/trips'),
         );
       expect(patches).toHaveLength(0);
     });
