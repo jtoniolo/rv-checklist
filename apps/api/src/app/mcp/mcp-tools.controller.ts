@@ -416,7 +416,7 @@ export class McpToolsController {
   @Tool({
     name: 'create_trip',
     description:
-      'Create a trip on a rig — a named one-way journey; it ends wherever its last stop is. Status is derived from stop arrivals and is never set directly. checklistIds links checklists of convenience to the trip.',
+      'Create a trip on a rig — a named one-way journey; it ends wherever its last stop is. Optional initial stops are created with the trip in one atomic save, positioned in array order and not yet arrived. Status is derived from stop arrivals and is never set directly. checklistIds links checklists of convenience to the trip.',
     parameters: CreateTripSchema,
     annotations: { readOnlyHint: false },
   })
