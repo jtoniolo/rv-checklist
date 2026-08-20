@@ -1,12 +1,16 @@
 'use client';
 
 import type { Id } from '@rv-checklist/domain';
-import { useCreateTripMutation } from '@rv-checklist/web-data-access';
+import {
+  useCreateTripMutation,
+  useRouteDistanceMutation,
+} from '@rv-checklist/web-data-access';
 import { Button, Input, Label } from '@rv-checklist/web-ui';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type JSX } from 'react';
 import { formatIsoDate } from './dates';
+import { canAutoFillLeg, changedLegOrigins } from './leg-recalc';
 import { PlaceAutocomplete } from './place-autocomplete';
 import { StopForm, type StopFieldValues } from './trip-editor-screen';
 
@@ -47,11 +51,73 @@ export function NewTripScreen({ rigId }: { readonly rigId: Id }): JSX.Element {
   const [startError, setStartError] = useState<string | undefined>(undefined);
   const [stopsError, setStopsError] = useState<string | undefined>(undefined);
 
+  const [routeDistance] = useRouteDistanceMutation();
+
   /** The place ID a leg into the draft at `index` starts from — previous draft, or the trip start. */
   const previousEndPlaceId = (index: number): string | undefined =>
     index === 0 ? startPlaceId : drafts[index - 1]?.values.placeId;
 
+  /** A draft wrapped for the origin diff — its place lifted beside its key. */
+  const placed = (
+    list: readonly DraftStop[],
+  ): readonly { key: number; placeId: string | undefined }[] =>
+    list.map((d) => ({ key: d.key, placeId: d.values.placeId }));
+
+  /**
+   * Refetch the leg of every draft whose origin place changed between the two
+   * orderings (issue #123) — the drafts' counterpart of the editor's
+   * recalculation (issue #121), sharing the same pure rules. Manual legs,
+   * unknown-provenance legs, and un-placed ends are skipped; failures are
+   * silent — the in-form fetch and manual entry remain. Each result is
+   * written functionally by draft key: the fetch is async, so the drafts
+   * array captured here may be stale by the time it lands (a draft deleted
+   * mid-fetch simply matches nothing).
+   */
+  const recalculateDraftLegs = async (
+    before: readonly DraftStop[],
+    after: readonly DraftStop[],
+    beforeStart: string | undefined,
+    afterStart: string | undefined,
+  ): Promise<void> => {
+    const values = new Map(after.map((d) => [d.key, d.values]));
+    const changed = changedLegOrigins(
+      placed(before),
+      beforeStart,
+      placed(after),
+      afterStart,
+      (d) => d.key,
+    );
+    await Promise.all(
+      changed.map(async ({ item, from }) => {
+        const draftValues = values.get(item.key);
+        if (draftValues === undefined || !canAutoFillLeg(draftValues)) return;
+        if (from === undefined || item.placeId === undefined) return;
+        try {
+          const { legKm } = await routeDistance({
+            originPlaceId: from,
+            destinationPlaceId: item.placeId,
+          }).unwrap();
+          setDrafts((current) =>
+            current.map((d) =>
+              d.key === item.key
+                ? {
+                    key: d.key,
+                    values: { ...d.values, legKm, legKmManual: false },
+                  }
+                : d,
+            ),
+          );
+        } catch {
+          // Best-effort: the draft keeps its old leg; the form's explicit
+          // fetch and manual entry stay available.
+        }
+      }),
+    );
+  };
+
   const addDraft = (values: StopFieldValues): void => {
+    // No recalculation: the appended draft fills its own leg in the form and
+    // changes no other draft's origin.
     setDrafts([...drafts, { key: nextKey, values }]);
     setNextKey(nextKey + 1);
     setEditing(undefined);
@@ -59,13 +125,19 @@ export function NewTripScreen({ rigId }: { readonly rigId: Id }): JSX.Element {
   };
 
   const saveDraft = (key: number, values: StopFieldValues): void => {
-    setDrafts(drafts.map((d) => (d.key === key ? { key, values } : d)));
+    const next = drafts.map((d) => (d.key === key ? { key, values } : d));
+    setDrafts(next);
     setEditing(undefined);
+    // This draft is the next draft's previous end — the diff finds that leg
+    // exactly when the saved draft's place changed (issue #123).
+    void recalculateDraftLegs(drafts, next, startPlaceId, startPlaceId);
   };
 
   const deleteDraft = (key: number): void => {
-    setDrafts(drafts.filter((d) => d.key !== key));
+    const next = drafts.filter((d) => d.key !== key);
+    setDrafts(next);
     if (editing === key) setEditing(undefined);
+    void recalculateDraftLegs(drafts, next, startPlaceId, startPlaceId);
   };
 
   const moveDraft = (index: number, delta: -1 | 1): void => {
@@ -74,6 +146,7 @@ export function NewTripScreen({ rigId }: { readonly rigId: Id }): JSX.Element {
     if (moved === undefined) return;
     next.splice(index + delta, 0, moved);
     setDrafts(next);
+    void recalculateDraftLegs(drafts, next, startPlaceId, startPlaceId);
   };
 
   const submit = async (): Promise<void> => {
@@ -144,9 +217,18 @@ export function NewTripScreen({ rigId }: { readonly rigId: Id }): JSX.Element {
           placeId={startPlaceId}
           placeholder="Home — Newmarket, ON"
           onChange={(text, placeId) => {
+            const previous = startPlaceId;
             setStartText(text);
             setStartPlaceId(placeId);
-            if (placeId !== undefined) setStartError(undefined);
+            if (placeId !== undefined) {
+              setStartError(undefined);
+              // A newly picked start place is the first leg's origin — refill
+              // that leg (issue #123), covering a first draft added before
+              // the start was picked. Typing (no place) recalculates nothing.
+              if (placeId !== previous) {
+                void recalculateDraftLegs(drafts, drafts, previous, placeId);
+              }
+            }
           }}
         />
         {nameError === undefined ? undefined : (

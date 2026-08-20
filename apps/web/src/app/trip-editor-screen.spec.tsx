@@ -444,6 +444,76 @@ describe('TripEditorScreen (issue #115)', () => {
       expect(patches).toHaveLength(0);
     });
 
+    it('blocks a retype-identical edit on a place-linked trip instead of silently clearing the place (issue #123)', async () => {
+      fetchSpy = stubFetch({
+        trips: [{ ...trip, startPlaceId: 'ChIJ-home' }],
+      });
+      renderScreen();
+      await screen.findByLabelText(/Start point/);
+
+      // Type a character and delete it again — every keystroke unlinks the
+      // place, and the final text equals the stored startLocation.
+      fireEvent.change(screen.getByLabelText(/Start point/), {
+        target: { value: 'Home — Newmarket, ONx' },
+      });
+      fireEvent.change(screen.getByLabelText(/Start point/), {
+        target: { value: 'Home — Newmarket, ON' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save trip' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toMatch(/pick the start point/i);
+      // `startPlaceId: null` must never reach the PATCH.
+      const patches = fetchSpy.mock.calls
+        .map((call: readonly unknown[]) => call[0] as Request)
+        .filter(
+          (r) =>
+            r.method === 'PATCH' &&
+            new URL(r.url).pathname.startsWith('/trips'),
+        );
+      expect(patches).toHaveLength(0);
+    });
+
+    // Accepted behavior change (issue #123): on a legacy trip without a place,
+    // a retype-identical edit now also blocks and demands a pick — the dirty
+    // flag replaces the old text comparison, which could not tell an edit
+    // that landed on identical text from an untouched field.
+    it('blocks a retype-identical edit on a legacy no-place trip too', async () => {
+      fetchSpy = stubFetch({ trips: [trip] });
+      renderScreen();
+      await screen.findByLabelText(/Start point/);
+
+      fireEvent.change(screen.getByLabelText(/Start point/), {
+        target: { value: 'Home — Newmarket, ONx' },
+      });
+      fireEvent.change(screen.getByLabelText(/Start point/), {
+        target: { value: 'Home — Newmarket, ON' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save trip' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toMatch(/pick the start point/i);
+    });
+
+    it('sends no startPlaceId on a name-only save of a place-linked trip', async () => {
+      fetchSpy = stubFetch({
+        trips: [{ ...trip, startPlaceId: 'ChIJ-home' }],
+      });
+      renderScreen();
+      await screen.findByLabelText(/Start point/);
+
+      fireEvent.change(screen.getByLabelText(/^Name/), {
+        target: { value: 'Renamed loop' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save trip' }));
+
+      await waitFor(async () => {
+        expect(await bodyOf(fetchSpy, 'PATCH', '/trips/')).toEqual({
+          name: 'Renamed loop',
+        });
+      });
+    });
+
     it('still saves a rename when a legacy text-only start point is untouched', async () => {
       fetchSpy = stubFetch({ trips: [trip] });
       renderScreen();
