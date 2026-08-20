@@ -94,12 +94,27 @@ export class TripService {
     return trip.checklistIds.filter((id) => live.has(id));
   }
 
-  /** Create a trip on one of the owner's rigs — the server assigns the id. */
+  /**
+   * Create a trip — with any initial stops — on one of the owner's rigs, in
+   * one atomic save (issue #120). The server assigns every id, positions the
+   * stops 0..n-1 in array order, and starts each un-arrived (arrival is an
+   * explicit operation with Distance side effects). An empty `stops` stays
+   * valid: the at-least-one-stop rule is the web form's, not the wire's.
+   */
   async create(ownerId: Id, input: CreateTrip): Promise<TripRead> {
     if (!(await this.ownsRig(ownerId, input.rigId))) {
       throw new NotFoundException('Rig not found');
     }
-    return this.toRead(await this.trips.save({ id: randomUUID(), ...input }));
+    const { stops, ...tripFields } = input;
+    const trip: Trip = { id: randomUUID(), ...tripFields };
+    const initialStops: Stop[] = stops.map((stop, position) => ({
+      ...stop,
+      id: randomUUID(),
+      tripId: trip.id,
+      position,
+      arrived: false,
+    }));
+    return this.toRead(await this.trips.createWithStops(trip, initialStops));
   }
 
   /** The trips of one of the owner's rigs, each with stops and status embedded. */

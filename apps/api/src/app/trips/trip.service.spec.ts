@@ -30,8 +30,10 @@ async function makeService(): Promise<{
   stops: InMemoryStopRepository;
   checklists: InMemoryChecklistRepository;
 }> {
-  const trips = new InMemoryTripRepository();
   const stops = new InMemoryStopRepository();
+  // Wired with the stop repository so the atomic create-with-stops (issue
+  // #120) lands its stops where the read path looks.
+  const trips = new InMemoryTripRepository(stops);
   const checklists = new InMemoryChecklistRepository();
   const rigs = new InMemoryRigRepository();
   await rigs.save(aliceRig);
@@ -67,6 +69,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Fall colours loop',
         checklistIds: [],
+        stops: [],
       });
 
       expect(trip.id).toEqual(expect.any(String));
@@ -79,6 +82,37 @@ describe('TripService', () => {
       });
     });
 
+    it('creates the trip with its initial stops in one save — positions 0..n-1 in array order, arrived false (issue #120)', async () => {
+      const { service } = await makeService();
+
+      const trip = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Fall colours loop',
+        startLocation: 'Home driveway, Ottawa',
+        startPlaceId: 'ChIJHome123',
+        checklistIds: [],
+        stops: [
+          { campground: 'Killbear Provincial Park', legKm: 245 },
+          { campground: 'Pancake Bay' },
+        ],
+      });
+
+      expect(trip.stops.map((s) => s.campground)).toEqual([
+        'Killbear Provincial Park',
+        'Pancake Bay',
+      ]);
+      expect(trip.stops.map((s) => s.position)).toEqual([0, 1]);
+      expect(trip.stops.map((s) => s.arrived)).toEqual([false, false]);
+      expect(trip.stops[0]?.legKm).toBe(245);
+      expect(trip.status).toBe('planned');
+      // Server-assigned ids, all distinct, all on this trip.
+      expect(new Set(trip.stops.map((s) => s.id)).size).toBe(2);
+      expect(trip.stops.every((s) => s.tripId === trip.id)).toBe(true);
+
+      // The whole plan persisted — a later read returns the same trip.
+      await expect(service.get(alice, trip.id)).resolves.toEqual(trip);
+    });
+
     it('refuses to create a trip on a rig the owner does not own', async () => {
       const { service } = await makeService();
 
@@ -87,6 +121,7 @@ describe('TripService', () => {
           rigId: bobRigId,
           name: 'Nope',
           checklistIds: [],
+          stops: [],
         }),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
@@ -99,6 +134,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Eastbound',
         checklistIds: [],
+        stops: [],
       });
       await stops.save({
         id: goneChecklistId,
@@ -136,6 +172,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Shakedown',
         checklistIds: [],
+        stops: [],
       });
 
       await expect(service.get(alice, created.id)).resolves.toEqual(created);
@@ -157,6 +194,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Draft',
         checklistIds: [],
+        stops: [],
       });
 
       const updated = await service.update(alice, created.id, {
@@ -180,6 +218,7 @@ describe('TripService', () => {
         startLocation: 'Ottawa',
         startPlaceId: 'ChIJHome123',
         checklistIds: [],
+        stops: [],
       });
 
       const updated = await service.update(alice, created.id, {
@@ -198,6 +237,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Loop',
         checklistIds: [],
+        stops: [],
       });
 
       const updated = await service.update(alice, created.id, {
@@ -222,6 +262,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Loop',
         checklistIds: [aliceChecklistId, goneChecklistId],
+        stops: [],
       });
 
       await checklists.delete(goneChecklistId);
@@ -238,6 +279,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Mistake',
         checklistIds: [],
+        stops: [],
       });
 
       await service.remove(alice, created.id);
@@ -255,6 +297,7 @@ describe('TripService', () => {
         rigId: aliceRigId,
         name: 'Private',
         checklistIds: [],
+        stops: [],
       });
 
       await expect(service.list(bob, aliceRigId)).rejects.toBeInstanceOf(

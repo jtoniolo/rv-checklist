@@ -110,6 +110,21 @@ describe('in-memory repositories', () => {
     expect(forRig.map((t) => t.id)).toEqual(['t1']);
   });
 
+  it('lands a create-with-stops where the stop repository reads (issue #120)', async () => {
+    const { trips, stops } = createInMemoryRepositories();
+    await trips.createWithStops(
+      { id: 't1', rigId: 'rig-1', name: 'Loop', checklistIds: [] },
+      [
+        { id: 's1', tripId: 't1', position: 0, arrived: false },
+        { id: 's2', tripId: 't1', position: 1, arrived: false },
+      ],
+    );
+    const savedTrip = await trips.findById('t1');
+    expect(savedTrip?.name).toBe('Loop');
+    const forTrip = await stops.listByTrip('t1');
+    expect(forTrip.map((s) => s.id)).toEqual(['s1', 's2']);
+  });
+
   it('lists a trip’s stops ordered by position, not insertion order', async () => {
     const { stops } = createInMemoryRepositories();
     await stops.save({ id: 's2', tripId: 't1', position: 1, arrived: false });
