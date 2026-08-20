@@ -114,17 +114,42 @@ describe('StopSchema', () => {
 });
 
 describe('CreateTripSchema', () => {
-  it('accepts a name-only create body, defaulting checklistIds to []', () => {
+  it('accepts a name-only create body, defaulting checklistIds and stops to []', () => {
     expect(CreateTripSchema.parse({ rigId, name: 'Shakedown' })).toEqual({
       rigId,
       name: 'Shakedown',
       checklistIds: [],
+      stops: [],
     });
   });
 
   it('accepts a create body with a start point and checklists', () => {
     const { id: _id, ...body } = fullTrip;
-    expect(CreateTripSchema.parse(body)).toEqual(body);
+    expect(CreateTripSchema.parse(body)).toEqual({ ...body, stops: [] });
+  });
+
+  it('accepts initial stops shaped like a stop create body minus tripId (issue #120)', () => {
+    const {
+      id: _id,
+      tripId: _tripId,
+      position: _position,
+      arrived: _arrived,
+      ...stopBody
+    } = fullStop;
+    const { id: _tid, ...body } = fullTrip;
+    expect(CreateTripSchema.parse({ ...body, stops: [stopBody] })).toEqual({
+      ...body,
+      stops: [stopBody],
+    });
+  });
+
+  it('strips server-owned stop fields (id, tripId, position, arrived) from initial stops', () => {
+    const { id: _tid, ...body } = fullTrip;
+    const parsed = CreateTripSchema.parse({ ...body, stops: [fullStop] });
+    expect(parsed.stops[0]).not.toHaveProperty('id');
+    expect(parsed.stops[0]).not.toHaveProperty('tripId');
+    expect(parsed.stops[0]).not.toHaveProperty('position');
+    expect(parsed.stops[0]).not.toHaveProperty('arrived');
   });
 });
 
