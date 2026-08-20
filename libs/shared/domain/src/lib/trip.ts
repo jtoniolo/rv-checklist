@@ -90,12 +90,6 @@ export const TripReadSchema = TripSchema.extend({
 });
 export type TripRead = z.infer<typeof TripReadSchema>;
 
-/** Create body — `id` is server-assigned; an omitted `checklistIds` is simply empty. */
-export const CreateTripSchema = TripSchema.omit({ id: true }).extend({
-  checklistIds: z.array(IdSchema).default([]),
-});
-export type CreateTrip = z.infer<typeof CreateTripSchema>;
-
 /**
  * Edit body — any subset of the editable fields (rig membership never
  * changes). The start point fields are additionally nullable: an explicit
@@ -125,6 +119,29 @@ export const CreateStopSchema = StopSchema.omit({
   arrived: true,
 });
 export type CreateStop = z.infer<typeof CreateStopSchema>;
+
+/**
+ * A stop as it rides inside a trip create body (issue #120): the stop create
+ * body minus `tripId` — the server knows which trip it is creating. Derived
+ * from {@link CreateStopSchema} so a new stop field flows through here
+ * automatically.
+ */
+export const CreateTripStopSchema = CreateStopSchema.omit({ tripId: true });
+export type CreateTripStop = z.infer<typeof CreateTripStopSchema>;
+
+/**
+ * Create body — `id` is server-assigned; an omitted `checklistIds` is simply
+ * empty. `stops` are the trip's initial stops, written atomically with the
+ * trip in one request (issue #120); the server assigns positions 0..n-1 in
+ * array order and every initial stop starts un-arrived. An empty `stops` stays
+ * valid on the wire (the MCP `create_trip` tool shares this schema) — the web
+ * form, not the server, enforces the at-least-one-stop rule.
+ */
+export const CreateTripSchema = TripSchema.omit({ id: true }).extend({
+  checklistIds: z.array(IdSchema).default([]),
+  stops: z.array(CreateTripStopSchema).default([]),
+});
+export type CreateTrip = z.infer<typeof CreateTripSchema>;
 
 /**
  * Edit body — every detail field optional (omitted = unchanged) and nullable

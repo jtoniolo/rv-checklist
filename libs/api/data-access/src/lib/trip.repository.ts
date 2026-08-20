@@ -2,11 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
   Id,
+  Stop,
   Trip,
   TripRepository as TripRepositoryPort,
 } from '@rv-checklist/domain';
 import { Repository } from 'typeorm';
+import { StopEntity } from './entities/stop.entity.js';
 import { TripEntity } from './entities/trip.entity.js';
+import { stopToRow } from './stop.repository.js';
 
 /**
  * The {@link TripRepositoryPort} as a concrete Nest DI token (an abstract
@@ -22,6 +25,7 @@ export abstract class TripRepository implements TripRepositoryPort {
   abstract save(trip: Trip): Promise<Trip>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<Trip[]>;
+  abstract createWithStops(trip: Trip, stops: Stop[]): Promise<Trip>;
 }
 
 /** The persisted row (with its timestamps) narrowed to the {@link Trip} wire model. */
@@ -80,5 +84,20 @@ export class TypeOrmTripRepository extends TripRepository {
   async listByRig(rigId: Id): Promise<Trip[]> {
     const rows = await this.repo.find({ where: { rigId } });
     return rows.map((row) => toTrip(row));
+  }
+
+  async createWithStops(trip: Trip, stops: Stop[]): Promise<Trip> {
+    // One transaction (issue #120): stops carry a trip FK, so the trip row is
+    // written first and everything rolls back together — a mid-save failure
+    // can never strand a stopless trip.
+    return this.repo.manager.transaction(async (manager) => {
+      const tripRepo = manager.getRepository(TripEntity);
+      const stopRepo = manager.getRepository(StopEntity);
+      const saved = await tripRepo.save(tripRepo.create(toRow(trip)));
+      for (const stop of stops) {
+        await stopRepo.save(stopRepo.create(stopToRow(stop)));
+      }
+      return toTrip(saved);
+    });
   }
 }

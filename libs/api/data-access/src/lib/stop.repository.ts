@@ -46,8 +46,13 @@ function toStop(entity: StopEntity): Stop {
   };
 }
 
+/**
+ * The {@link Stop} wire model widened to a persistable row. Exported for the
+ * trip repository's atomic create-with-stops (issue #120), which writes stop
+ * rows inside the trip's transaction — one row mapping, two writers.
+ */
 /* eslint-disable unicorn/no-null -- optional wire fields persist as SQL NULL */
-function toRow(stop: Stop): Partial<StopEntity> {
+export function stopToRow(stop: Stop): Partial<StopEntity> {
   return {
     id: stop.id,
     tripId: stop.tripId,
@@ -91,7 +96,7 @@ export class TypeOrmStopRepository extends StopRepository {
   }
 
   async save(stop: Stop): Promise<Stop> {
-    const saved = await this.repo.save(this.repo.create(toRow(stop)));
+    const saved = await this.repo.save(this.repo.create(stopToRow(stop)));
     return toStop(saved);
   }
 
