@@ -118,6 +118,9 @@ function stubFetch({ trips, legKm = 145 }: StubOptions): jest.SpyInstance {
     if (request.method === 'PATCH' && url.pathname.startsWith('/stops/')) {
       return Promise.resolve(jsonResponse(stop1));
     }
+    if (request.method === 'DELETE' && url.pathname.startsWith('/stops/')) {
+      return Promise.resolve(new Response(undefined, { status: 204 }));
+    }
     if (request.method === 'PATCH' && url.pathname.startsWith('/trips/')) {
       return Promise.resolve(jsonResponse(trips[0]));
     }
@@ -332,6 +335,81 @@ describe('TripEditorScreen (issue #115)', () => {
         expect(await bodyOf(fetchSpy, 'PATCH', '/trips/')).toEqual({
           startLocation: CLEARED,
           startPlaceId: CLEARED,
+        });
+      });
+    });
+  });
+
+  describe('last-stop delete refusal (issue #120)', () => {
+    it('refuses to delete the last remaining stop with a clear message', async () => {
+      fetchSpy = stubFetch({ trips: [{ ...trip, stops: [stop1] }] });
+      renderScreen();
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+      expect((await screen.findByRole('alert')).textContent).toMatch(
+        /last stop.*Delete the trip instead/i,
+      );
+      const deleteRequests = fetchSpy.mock.calls
+        .map((call: readonly unknown[]) => call[0] as Request)
+        .filter((r) => r.method === 'DELETE');
+      expect(deleteRequests).toHaveLength(0);
+    });
+
+    it('still deletes a stop while others remain', async () => {
+      fetchSpy = stubFetch({ trips: [trip] });
+      renderScreen();
+
+      const deleteButtons = await screen.findAllByRole('button', {
+        name: 'Delete',
+      });
+      fireEvent.click(deleteButtons[0] as HTMLElement);
+
+      await waitFor(() => {
+        const deleteRequests = fetchSpy.mock.calls
+          .map((call: readonly unknown[]) => call[0] as Request)
+          .filter((r) => r.method === 'DELETE');
+        expect(deleteRequests).toHaveLength(1);
+      });
+    });
+  });
+
+  describe('start point demands a place pick when edited (issue #120)', () => {
+    it('blocks saving an edited start point without a Google pick', async () => {
+      fetchSpy = stubFetch({ trips: [trip] });
+      renderScreen();
+      await screen.findByLabelText(/Start point/);
+
+      fireEvent.change(screen.getByLabelText(/Start point/), {
+        target: { value: 'Somewhere typed by hand' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save trip' }));
+
+      expect((await screen.findByRole('alert')).textContent).toMatch(
+        /pick the start point/i,
+      );
+      const patches = fetchSpy.mock.calls
+        .map((call: readonly unknown[]) => call[0] as Request)
+        .filter(
+          (r) =>
+            r.method === 'PATCH' && new URL(r.url).pathname.startsWith('/trips'),
+        );
+      expect(patches).toHaveLength(0);
+    });
+
+    it('still saves a rename when a legacy text-only start point is untouched', async () => {
+      fetchSpy = stubFetch({ trips: [trip] });
+      renderScreen();
+      await screen.findByLabelText(/Start point/);
+
+      fireEvent.change(screen.getByLabelText(/^Name/), {
+        target: { value: 'Renamed loop' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save trip' }));
+
+      await waitFor(async () => {
+        expect(await bodyOf(fetchSpy, 'PATCH', '/trips/')).toEqual({
+          name: 'Renamed loop',
         });
       });
     });

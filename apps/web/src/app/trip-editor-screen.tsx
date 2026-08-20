@@ -122,16 +122,27 @@ function TripFieldsForm({
   const [name, setName] = useState(trip.name);
   const [startText, setStartText] = useState(trip.startLocation ?? '');
   const [startPlaceId, setStartPlaceId] = useState(trip.startPlaceId);
+  const [startError, setStartError] = useState<string | undefined>(undefined);
 
   const submit = async (): Promise<void> => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
-    const changes = tripChanges(
-      trip,
-      trimmedName,
-      startText.trim(),
-      startPlaceId,
-    );
+    const trimmedStart = startText.trim();
+    // An *edited* start point demands a Google pick (issue #120) — free text
+    // alone can't feed the first leg. An untouched legacy text-only start
+    // stays readable and never blocks a save of the other fields.
+    if (
+      startPlaceId === undefined &&
+      trimmedStart !== '' &&
+      trimmedStart !== trip.startLocation
+    ) {
+      setStartError(
+        'Pick the start point from the suggestions — a start point without a Google place can’t feed the first leg.',
+      );
+      return;
+    }
+    setStartError(undefined);
+    const changes = tripChanges(trip, trimmedName, trimmedStart, startPlaceId);
     if (Object.keys(changes).length === 0) return;
     await updateTrip({ id: trip.id, rigId, changes }).unwrap();
   };
@@ -166,6 +177,11 @@ function TripFieldsForm({
           setStartPlaceId(placeId);
         }}
       />
+      {startError === undefined ? undefined : (
+        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+          {startError}
+        </p>
+      )}
       {isError ? (
         <p className="text-sm text-red-600 dark:text-red-400" role="alert">
           Couldn&apos;t save the trip. Please try again.
@@ -185,8 +201,10 @@ function TripFieldsForm({
  * the field is blank. The same shape serves the create body (blank fields
  * simply drop out of the JSON) and, diffed against the original, the PATCH
  * body (blank-where-something-was becomes `null` — house clear-vs-omit).
+ * Exported for the new-trip screen (issue #120), whose draft stops hold this
+ * shape in local state until the single create request.
  */
-interface StopFieldValues {
+export interface StopFieldValues {
   readonly campground: string | undefined;
   readonly placeId: string | undefined;
   readonly campsite: string | undefined;
@@ -241,6 +259,7 @@ function StopsSection({
   // Which stop form is open — a stop id, one at a time; 'new' is the add form.
   const [editing, setEditing] = useState<string | undefined>(undefined);
   const [saveFailed, setSaveFailed] = useState(false);
+  const [lastStopBlocked, setLastStopBlocked] = useState(false);
 
   const [createStop, { isLoading: isCreating }] = useCreateStopMutation();
   const [updateStop, { isLoading: isUpdating }] = useUpdateStopMutation();
@@ -363,6 +382,13 @@ function StopsSection({
                   variant="ghost"
                   size="sm"
                   onClick={() => {
+                    // A trip needs at least one stop (issue #120) — the last
+                    // one never deletes from here; delete the trip instead.
+                    if (stops.length === 1) {
+                      setLastStopBlocked(true);
+                      return;
+                    }
+                    setLastStopBlocked(false);
                     void deleteStop({
                       id: stop.id,
                       tripId: trip.id,
@@ -400,6 +426,13 @@ function StopsSection({
         </p>
       ) : undefined}
 
+      {lastStopBlocked ? (
+        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+          This is the trip&apos;s last stop — a trip needs at least one. Delete
+          the trip instead.
+        </p>
+      ) : undefined}
+
       {editing === 'new' ? (
         <StopForm
           previousEndPlaceId={
@@ -419,6 +452,7 @@ function StopsSection({
           className="self-start"
           onClick={() => {
             setSaveFailed(false);
+            setLastStopBlocked(false);
             setEditing('new');
           }}
         >
@@ -441,7 +475,11 @@ function parseText(raw: string): string | undefined {
   return trimmed === '' ? undefined : trimmed;
 }
 
-function StopForm({
+/**
+ * The stop add/edit form. Exported for the new-trip screen (issue #120),
+ * which seeds it from local draft values instead of a persisted stop.
+ */
+export function StopForm({
   initial,
   previousEndPlaceId,
   pending,
@@ -449,8 +487,11 @@ function StopForm({
   onSubmit,
   onCancel,
 }: {
-  /** The stop being edited; `undefined` is the add form. */
-  readonly initial?: StopRead;
+  /**
+   * The stop being edited — a persisted stop or a new-trip draft's values;
+   * `undefined` is the add form.
+   */
+  readonly initial?: Partial<StopFieldValues> & { readonly arrived?: boolean };
   /** The place ID the leg into this stop starts from, if the previous end has one. */
   readonly previousEndPlaceId: string | undefined;
   readonly pending: boolean;
