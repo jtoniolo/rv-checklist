@@ -48,6 +48,24 @@ export class RigEntity {
   @Column({ name: 'distance_km', type: 'integer', nullable: true })
   distanceKm!: number | null;
 
+  // The rig's Dimensions (issue #139): fixed physical measurements as integer
+  // millimetres — see RigSchema. Nullable: SQL NULL is an unset measurement,
+  // which the repository maps to the domain's `undefined`.
+  @Column({ name: 'travel_height_mm', type: 'integer', nullable: true })
+  travelHeightMm!: number | null;
+
+  @Column({ name: 'length_mm', type: 'integer', nullable: true })
+  lengthMm!: number | null;
+
+  @Column({ name: 'combined_length_mm', type: 'integer', nullable: true })
+  combinedLengthMm!: number | null;
+
+  @Column({ name: 'clearance_passenger_mm', type: 'integer', nullable: true })
+  clearancePassengerMm!: number | null;
+
+  @Column({ name: 'clearance_driver_mm', type: 'integer', nullable: true })
+  clearanceDriverMm!: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

@@ -36,17 +36,29 @@ function toRig(entity: RigEntity): Rig {
     nickname: entity.nickname,
     // The rig's current Distance (issue #32) — NULL when unset (CONTEXT.md).
     distanceKm: entity.distanceKm ?? undefined,
+    // The rig's Dimensions (issue #139) — each NULL when unmeasured.
+    travelHeightMm: entity.travelHeightMm ?? undefined,
+    lengthMm: entity.lengthMm ?? undefined,
+    combinedLengthMm: entity.combinedLengthMm ?? undefined,
+    clearancePassengerMm: entity.clearancePassengerMm ?? undefined,
+    clearanceDriverMm: entity.clearanceDriverMm ?? undefined,
   };
 }
 
-/** The wire model with its optional Distance flattened to the row's nullable column. */
+/** The wire model with its optional measurements flattened to the row's nullable columns. */
 function toRow(rig: Rig): Partial<RigEntity> {
   return {
     ...rig,
     // SQL NULL must be written explicitly: `save` skips `undefined` columns,
-    // which would leave a cleared Distance in place (issue #32).
-    // eslint-disable-next-line unicorn/no-null
+    // which would leave a cleared value in place (issue #32).
+    /* eslint-disable unicorn/no-null */
     distanceKm: rig.distanceKm ?? null,
+    travelHeightMm: rig.travelHeightMm ?? null,
+    lengthMm: rig.lengthMm ?? null,
+    combinedLengthMm: rig.combinedLengthMm ?? null,
+    clearancePassengerMm: rig.clearancePassengerMm ?? null,
+    clearanceDriverMm: rig.clearanceDriverMm ?? null,
+    /* eslint-enable unicorn/no-null */
   };
 }
 

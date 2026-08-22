@@ -18,17 +18,31 @@ export function toCreateRig(rig: Rig): CreateRig {
     year: rig.year,
     nickname: rig.nickname,
     distanceKm: rig.distanceKm,
+    travelHeightMm: rig.travelHeightMm,
+    lengthMm: rig.lengthMm,
+    combinedLengthMm: rig.combinedLengthMm,
+    clearancePassengerMm: rig.clearancePassengerMm,
+    clearanceDriverMm: rig.clearanceDriverMm,
   };
 }
 
 /**
- * Map submitted form values to a rig update. A blank distance clears the
- * rig's current Distance (issue #32); the wire spells removal `null`, so a
- * blank field maps to it rather than "unchanged".
+ * Map submitted form values to a rig update. A blank distance or dimension
+ * clears the stored value (issues #32, #139); the wire spells removal `null`,
+ * so a blank field maps to it rather than "unchanged".
  */
 export function toRigUpdate(values: CreateRig): UpdateRig {
-  // eslint-disable-next-line unicorn/no-null
-  return { ...values, distanceKm: values.distanceKm ?? null };
+  /* eslint-disable unicorn/no-null */
+  return {
+    ...values,
+    distanceKm: values.distanceKm ?? null,
+    travelHeightMm: values.travelHeightMm ?? null,
+    lengthMm: values.lengthMm ?? null,
+    combinedLengthMm: values.combinedLengthMm ?? null,
+    clearancePassengerMm: values.clearancePassengerMm ?? null,
+    clearanceDriverMm: values.clearanceDriverMm ?? null,
+  };
+  /* eslint-enable unicorn/no-null */
 }
 
 /**
@@ -53,6 +67,29 @@ interface FormFields {
   year: string;
   nickname: string;
   distance: string;
+  travelHeight: string;
+  length: string;
+  combinedLength: string;
+  clearancePassenger: string;
+  clearanceDriver: string;
+}
+
+// Dimensions are stored in millimetres but entered metric (CONTEXT.md,
+// issue #139): heights and lengths as decimal metres, side clearances as
+// whole centimetres — matching how a tape measure and a Canadian clearance
+// sign read.
+function metersField(mm: number | undefined): string {
+  return mm === undefined ? '' : String(mm / 1000);
+}
+
+function centimetersField(mm: number | undefined): string {
+  return mm === undefined ? '' : String(mm / 10);
+}
+
+/** A blank entry is unset; anything else scales to integer millimetres. */
+function toMm(field: string, mmPerUnit: number): number | undefined {
+  const trimmed = field.trim();
+  return trimmed ? Math.round(Number(trimmed) * mmPerUnit) : undefined;
 }
 
 function toFields(initial: CreateRig | undefined): FormFields {
@@ -64,6 +101,11 @@ function toFields(initial: CreateRig | undefined): FormFields {
     nickname: initial?.nickname ?? '',
     distance:
       initial?.distanceKm === undefined ? '' : String(initial.distanceKm),
+    travelHeight: metersField(initial?.travelHeightMm),
+    length: metersField(initial?.lengthMm),
+    combinedLength: metersField(initial?.combinedLengthMm),
+    clearancePassenger: centimetersField(initial?.clearancePassengerMm),
+    clearanceDriver: centimetersField(initial?.clearanceDriverMm),
   };
 }
 
@@ -98,6 +140,12 @@ export function RigForm({
       year: year ? Number(year) : undefined,
       // The rig's current Distance (issue #32) — blank means unset.
       distanceKm: distance ? Number(distance) : undefined,
+      // Dimensions (issue #139): metres and centimetres entered, mm stored.
+      travelHeightMm: toMm(fields.travelHeight, 1000),
+      lengthMm: toMm(fields.length, 1000),
+      combinedLengthMm: toMm(fields.combinedLength, 1000),
+      clearancePassengerMm: toMm(fields.clearancePassenger, 10),
+      clearanceDriverMm: toMm(fields.clearanceDriver, 10),
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Please check the details.');
@@ -173,6 +221,64 @@ export function RigForm({
           Optional — tracks distance-based maintenance.
         </span>
       </Label>
+      <fieldset className="flex flex-col gap-3 border-t border-hairline pt-3">
+        <legend className="pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Dimensions
+        </legend>
+        <div className="flex gap-3">
+          <Label className={`${labelClass} flex-1`}>
+            Travel height (m)
+            <Input
+              value={fields.travelHeight}
+              onChange={set('travelHeight')}
+              inputMode="decimal"
+              placeholder="4.11"
+            />
+          </Label>
+          <Label className={`${labelClass} flex-1`}>
+            Length (m)
+            <Input
+              value={fields.length}
+              onChange={set('length')}
+              inputMode="decimal"
+              placeholder="8.53"
+            />
+          </Label>
+          <Label className={`${labelClass} flex-1`}>
+            Combined length (m)
+            <Input
+              value={fields.combinedLength}
+              onChange={set('combinedLength')}
+              inputMode="decimal"
+              placeholder="16.15"
+            />
+          </Label>
+        </div>
+        <div className="flex gap-3">
+          <Label className={`${labelClass} flex-1`}>
+            Passenger side clearance (cm)
+            <Input
+              value={fields.clearancePassenger}
+              onChange={set('clearancePassenger')}
+              inputMode="numeric"
+              placeholder="90"
+            />
+          </Label>
+          <Label className={`${labelClass} flex-1`}>
+            Driver side clearance (cm)
+            <Input
+              value={fields.clearanceDriver}
+              onChange={set('clearanceDriver')}
+              inputMode="numeric"
+              placeholder="15"
+            />
+          </Label>
+        </div>
+        <span className="text-xs font-normal text-muted-foreground">
+          Optional — measured figures, no margin. Side clearances are how far
+          the slide or awning reaches when deployed. Shown on the trip screen.
+        </span>
+      </fieldset>
       {error ? (
         <p className="text-sm text-destructive" role="alert">
           {error}

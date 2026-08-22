@@ -170,6 +170,30 @@ describe('RigService', () => {
 
       expect(updated.distanceKm).toBe(38_200);
     });
+
+    // The rig's Dimensions (issue #139) carry the same null-clears marker.
+    it('sets and clears a Dimension with the null marker', async () => {
+      const { service } = makeService();
+      const created = await service.create(alice, {
+        ...airstream,
+        travelHeightMm: 4110,
+      });
+
+      const updated = await service.update(alice, created.id, {
+        clearancePassengerMm: 900,
+      });
+      expect(updated).toMatchObject({
+        travelHeightMm: 4110,
+        clearancePassengerMm: 900,
+      });
+
+      const cleared = await service.update(alice, created.id, {
+        // eslint-disable-next-line unicorn/no-null -- `null` is the wire's removal marker
+        travelHeightMm: null,
+      });
+      expect(cleared.travelHeightMm).toBeUndefined();
+      expect(cleared.clearancePassengerMm).toBe(900);
+    });
   });
 
   describe('delete', () => {

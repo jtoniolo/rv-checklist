@@ -4,6 +4,7 @@ import {
   runProgress,
   type Checklist,
   type Id,
+  type Rig,
   type Run,
   type StopRead,
   type TripRead,
@@ -11,6 +12,7 @@ import {
 import {
   useCreateRunMutation,
   useListChecklistsQuery,
+  useListRigsQuery,
   useListRunsByTripQuery,
   useListTripsByRigQuery,
   useSetStopArrivedMutation,
@@ -21,6 +23,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type JSX, type ReactNode } from 'react';
 import { formatIsoDate } from './dates';
+import { formatCentimeters, formatMeters } from './dimensions';
 import { CampgroundMapLink, StopAttachments } from './stop-attachments';
 
 // ── Derivations ─────────────────────────────────────────────────────────────
@@ -113,6 +116,8 @@ export function TripScreen({
 }): JSX.Element {
   const router = useRouter();
   const { data: trips, isLoading, isError } = useListTripsByRigQuery(rigId);
+  // Seeded for every rig-scoped route by the layout, so this never refetches.
+  const { data: rigs } = useListRigsQuery();
   const { data: checklists } = useListChecklistsQuery(rigId);
   const { data: runs } = useListRunsByTripQuery(tripId);
   const [setStopArrived, { isLoading: isArriving }] =
@@ -190,6 +195,8 @@ export function TripScreen({
         </Link>
       </header>
 
+      <DimensionsStrip rigId={rigId} rig={rigs?.find((r) => r.id === rigId)} />
+
       {nextStop === undefined ? (
         <>
           {stops.length === 0 ? (
@@ -229,6 +236,81 @@ export function TripScreen({
         }}
       />
     </div>
+  );
+}
+
+// ── Dimensions strip ────────────────────────────────────────────────────────
+
+/**
+ * The rig's **Dimensions** (CONTEXT.md, issue #139) as an always-visible strip
+ * under the trip header — the numbers needed while driving ("can I clear
+ * this?") and parking ("can the slide and awning deploy?"). Values are stored
+ * on the rig and merely displayed here. An unmeasured value shows an em-dash
+ * rather than hiding, and the strip links to the rig settings where the
+ * measurements are entered.
+ */
+function DimensionsStrip({
+  rigId,
+  rig,
+}: {
+  readonly rigId: Id;
+  readonly rig: Rig | undefined;
+}): JSX.Element | undefined {
+  if (rig === undefined) {
+    return undefined;
+  }
+  const meters = (mm: number | undefined): string | undefined =>
+    mm === undefined ? undefined : formatMeters(mm);
+  const centimeters = (mm: number | undefined): string | undefined =>
+    mm === undefined ? undefined : formatCentimeters(mm);
+  return (
+    <section
+      aria-label="Rig dimensions"
+      className="flex flex-col gap-1 rounded-xl border border-hairline px-4 py-2.5 text-sm"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="flex flex-wrap gap-x-4 gap-y-1">
+          <DimensionFact label="Height" value={meters(rig.travelHeightMm)} />
+          <DimensionFact label="Length" value={meters(rig.lengthMm)} />
+          <DimensionFact
+            label="Combined"
+            value={meters(rig.combinedLengthMm)}
+          />
+        </p>
+        <Link
+          href={`/rig/${rigId}/settings`}
+          className="shrink-0 text-xs text-brand-muted underline hover:text-brand dark:hover:text-ink-inverted"
+        >
+          Edit
+        </Link>
+      </div>
+      <p className="flex flex-wrap gap-x-4 gap-y-1">
+        <DimensionFact
+          label="Passenger side"
+          value={centimeters(rig.clearancePassengerMm)}
+        />
+        <DimensionFact
+          label="Driver side"
+          value={centimeters(rig.clearanceDriverMm)}
+        />
+      </p>
+    </section>
+  );
+}
+
+/** One labelled dimension — an em-dash marks an unmeasured value. */
+function DimensionFact({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string | undefined;
+}): JSX.Element {
+  return (
+    <span>
+      <span className="text-brand-muted">{label} </span>
+      <span className="font-medium">{value ?? '—'}</span>
+    </span>
   );
 }
 
