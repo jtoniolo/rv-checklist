@@ -8,6 +8,9 @@ Accepted
 
 Refines [ADR-0002](0002-authentication-google-sso.md) (Google SSO with bearer JWT).
 Amended by [ADR-0019](0019-cookie-token-transport.md).
+Amended by [ADR-0028](0028-offline-first-pwa-powersync.md): rotation gains a ~2-minute
+reuse interval — the replaced refresh token stays valid briefly so a lost rotation
+response on an unreliable network self-heals instead of ending the session.
 
 ## Context
 

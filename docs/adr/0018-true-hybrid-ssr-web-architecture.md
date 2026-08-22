@@ -8,6 +8,9 @@ Accepted
 
 Supersedes [ADR-0001](0001-deployment-and-connectivity.md) (web-tier and data-path decisions).
 Amends [ADR-0011](0011-redux-rtk-state.md).
+Amended by [ADR-0028](0028-offline-first-pwa-powersync.md): SSR governs online use
+only — offline, a service worker serves runtime-cached pages and the hooks-only
+components re-render from the local PowerSync store.
 
 ## Context
 

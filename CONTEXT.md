@@ -76,6 +76,54 @@ _Avoid_: category (tags are flat, not hierarchical), label (reserved for UI text
 The record that a maintenance task was performed on a date. Carries its own copy of the task's fields as they were when recorded, with the recorded values — so later edits to the task don't alter it — and, optionally, the rig's **Distance** reading (km) at the time, the anchor a distance interval's next due is measured from, and/or the **Cost** of the work (entered in dollars and cents, stored as integer cents `costCents` so totals stay exact), and/or a short free-text **Comment** (`comment`, multi-line, max 500 characters) — findings, an unusual observation, or the method used. Like everything else, it stays editable; the user can correct past entries.
 _Avoid_: completion (as a noun for the record), history item
 
+## Offline
+
+The app works fully off grid ([ADR-0028](docs/adr/0028-offline-first-pwa-powersync.md)):
+everything writable online is writable offline, and sync is automatic — there is
+no sync button. Terms the offline architecture introduced:
+
+**Local store**:
+The on-device copy of the owner's data (a PowerSync SQLite database) that the UI
+always reads from, online and offline. The sync engine keeps it current; the
+server remains the source of truth.
+_Avoid_: cache (the local store is authoritative for rendering, not a copy that may be dropped), offline database (it is used online too)
+
+**Sync**:
+The background exchange that keeps the local store and the server aligned:
+downloads stream in continuously while connected, and queued writes replay
+through the API automatically on app open and on reconnect. Never a user
+action.
+_Avoid_: backup, refresh (reserved for tokens), manual sync (does not exist)
+
+**Newest wins**:
+The collision rule: when two devices edit the same record, the later edit (by
+client edit time, clamped to server time) is kept, enforced server-side. Delta
+operations — Distance additions — are exempt and always apply. There is no
+merge screen. Run steps merge per step so two devices completing different
+steps both count.
+_Avoid_: conflict resolution UI, merge (nothing merges except run steps)
+
+**Pending**:
+A queued offline write — most visibly a **pending attachment**: captured
+offline, held in the device outbox with a "waiting to upload" badge, uploaded
+by the browser even if the app is closed. Pending things exist only on the
+device that created them until they upload.
+_Avoid_: draft (it will send itself; a draft waits for the user), unsynced (pending is the user-facing word)
+
+**Warming**:
+Pre-caching the current trip's pages and attachments — campground maps first —
+onto the device while connectivity lasts, so arrival works off grid. Triggered
+when a trip becomes current, when a new attachment appears on the current trip,
+and on app open while online.
+_Avoid_: preload, download manager (there is no user-visible download control)
+
+**Offline indicator**:
+The app-wide header signal that the device is offline, driven by the sync
+engine's connection state. Degraded-by-nature functions (place autocomplete,
+automatic leg distances, attachment viewing for uncached files) say
+"available online" rather than erroring.
+_Avoid_: error banner (offline is a mode, not a failure)
+
 ## Deployment contract
 
 The Helm chart in `charts/api` is part of any change that touches runtime

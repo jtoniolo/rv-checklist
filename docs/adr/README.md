@@ -34,6 +34,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0025](0025-google-maps-leg-distances.md) | Google Maps for leg distances — Routes API + Places (New), place IDs stored, automatic fetch fills the editable leg with manual override (amended in place, issue #121) |
 | [0026](0026-stop-attachments-shared-garage-bucket.md) | Stop attachments — shared Garage bucket, API-proxied, campground-map flag, hard-delete cascade (extends 0007) |
 | [0027](0027-mcp-trips-and-stops-tools.md) | MCP trips and stops tools — full CRUD incl. `mark_stop_arrived`; arrival writes the rig's Distance as a service-owned side effect (amends 0023) |
+| [0028](0028-offline-first-pwa-powersync.md) | Offline-first PWA — PowerSync local store, operation-queue writes through the API, per-record LWW, Serwist-runtime service worker, offline attachments (amends 0018, 0012, 0011; extends 0026) |
 
 ## Archived prototypes
 
