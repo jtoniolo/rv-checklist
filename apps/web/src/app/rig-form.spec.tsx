@@ -27,6 +27,35 @@ describe('RigForm', () => {
     });
   });
 
+  it('converts metric dimension entries to integer millimetres', () => {
+    const onSubmit = jest.fn();
+    render(
+      <RigForm
+        submitLabel="Add rig"
+        pending={false}
+        onSubmit={onSubmit}
+        onCancel={jest.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Nickname'), {
+      target: { value: 'Silver Bullet' },
+    });
+    fireEvent.change(screen.getByLabelText('Travel height (m)'), {
+      target: { value: '4.11' },
+    });
+    fireEvent.change(screen.getByLabelText('Passenger side clearance (cm)'), {
+      target: { value: '90' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add rig' }));
+
+    expect(onSubmit).toHaveBeenCalledWith({
+      nickname: 'Silver Bullet',
+      travelHeightMm: 4110,
+      clearancePassengerMm: 900,
+    });
+  });
+
   it('shows a validation error instead of submitting a blank nickname', () => {
     const onSubmit = jest.fn();
     render(

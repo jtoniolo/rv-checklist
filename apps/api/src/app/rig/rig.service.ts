@@ -80,18 +80,52 @@ export class RigService {
   }
 
   /**
-   * Apply a partial edit to one of the owner's rigs. `distanceKm` carries the
-   * removal marker the other optional fields lack: an explicit `null` clears the
-   * rig's current Distance (issue #32), an omitted key leaves it unchanged.
+   * Apply a partial edit to one of the owner's rigs. `distanceKm` (issue #32)
+   * and the Dimensions fields (issue #139) carry the removal marker the other
+   * optional fields lack: an explicit `null` clears the value, an omitted key
+   * leaves it unchanged.
    */
   async update(ownerId: Id, id: Id, changes: UpdateRig): Promise<Rig> {
     const rig = await this.findOwned(ownerId, id);
-    const { distanceKm, ...rest } = changes;
+    const {
+      distanceKm,
+      travelHeightMm,
+      lengthMm,
+      combinedLengthMm,
+      clearancePassengerMm,
+      clearanceDriverMm,
+      ...rest
+    } = changes;
     const next = applyDefined(rig, rest);
     if (distanceKm === null) {
       delete next.distanceKm;
     } else if (distanceKm !== undefined) {
       next.distanceKm = distanceKm;
+    }
+    if (travelHeightMm === null) {
+      delete next.travelHeightMm;
+    } else if (travelHeightMm !== undefined) {
+      next.travelHeightMm = travelHeightMm;
+    }
+    if (lengthMm === null) {
+      delete next.lengthMm;
+    } else if (lengthMm !== undefined) {
+      next.lengthMm = lengthMm;
+    }
+    if (combinedLengthMm === null) {
+      delete next.combinedLengthMm;
+    } else if (combinedLengthMm !== undefined) {
+      next.combinedLengthMm = combinedLengthMm;
+    }
+    if (clearancePassengerMm === null) {
+      delete next.clearancePassengerMm;
+    } else if (clearancePassengerMm !== undefined) {
+      next.clearancePassengerMm = clearancePassengerMm;
+    }
+    if (clearanceDriverMm === null) {
+      delete next.clearanceDriverMm;
+    } else if (clearanceDriverMm !== undefined) {
+      next.clearanceDriverMm = clearanceDriverMm;
     }
     return this.rigs.save(next);
   }

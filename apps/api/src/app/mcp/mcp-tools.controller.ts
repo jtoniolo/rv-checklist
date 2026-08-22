@@ -85,7 +85,7 @@ export class McpToolsController {
   @Tool({
     name: 'get_rig',
     description:
-      'Get a single rig by id. Returns nickname, VIN, make, model, year, current Distance (km), and the equipment list. Equipment is context-only inventory; the purchase date anchors warranty status; cost is integer cents.',
+      'Get a single rig by id. Returns nickname, VIN, make, model, year, current Distance (km), Dimensions (integer millimetres: travelHeightMm, lengthMm, combinedLengthMm, clearancePassengerMm, clearanceDriverMm — measured figures, no safety margin), and the equipment list. Equipment is context-only inventory; the purchase date anchors warranty status; cost is integer cents.',
     parameters: z.object({ id: IdSchema }),
     annotations: { readOnlyHint: true },
   })
