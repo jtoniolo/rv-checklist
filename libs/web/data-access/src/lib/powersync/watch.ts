@@ -37,6 +37,30 @@ export interface WatchIntoCacheOptions<Result> {
   readonly open?: () => Promise<LocalDatabase | undefined>;
 }
 
+/**
+ * Say once, per page, that the local store could not be opened. Falling back to
+ * the network is the right behaviour for a transient failure, but two very
+ * different things arrive here: an access cookie that expired between page
+ * loads, which fixes itself, and a deployment whose `/@powersync/worker.js`
+ * never shipped, which fails for every visitor on every entry forever. A silent
+ * fallback makes the second look exactly like the first — the app works, only
+ * offline never does. Reported once because the same failure repeats for each
+ * of the eleven watched entries, and never rethrown.
+ */
+const reportFailedOpen = createFailedOpenReporter();
+
+function createFailedOpenReporter(): (error: unknown) => void {
+  let hasReported = false;
+  return (error) => {
+    if (hasReported) return;
+    hasReported = true;
+    console.warn(
+      'PowerSync: the local store could not be opened; reading from the network. Offline reads are unavailable on this page.',
+      error,
+    );
+  };
+}
+
 export async function watchIntoCache<Result>({
   query,
   emit,
@@ -54,13 +78,15 @@ export async function watchIntoCache<Result>({
   let database: LocalDatabase | undefined;
   try {
     database = await open();
-  } catch {
+  } catch (error) {
     // A failed open is a missing local store, not a failed watch. It rejects
     // for reasons outside this path — the worker fetch answered with a
     // redirect once the access cookie has expired, a CSP that blocks wasm,
     // OPFS unavailable — and the rejection would otherwise leave
     // `onCacheEntryAdded` with a rejected promise that RTK Query rethrows:
     // one unhandled rejection per watched entry, for the life of the page.
+    // Swallowed, but not in silence — see `reportFailedOpen`.
+    reportFailedOpen(error);
   }
   if (database === undefined || isTornDown()) return;
 

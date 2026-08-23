@@ -66,11 +66,19 @@ emits immediately.
 
 ### 4. Precedence: local store > network response > SSR seed
 
-Once a watch has emitted for an entry, it is the authority for that entry.
-`seed-cache.ts` is **not modified**: its `isSuccess` guard (#134) already
-produces this outcome, because an emission leaves a fulfilled entry that a
-later Pattern C seed skips. Needing to edit the seeder is the signal that a
-change to this read path has gone wrong.
+A watch emission outranks the SSR seed, and that half is absolute:
+`seed-cache.ts` is **not modified**, because its `isSuccess` guard (#134)
+already makes a later Pattern C seed skip an entry a watch has filled. Needing
+to edit the seeder is the signal that a change to this read path has gone
+wrong.
+
+Against the entry's **own network response** the ordering is weaker, and holds
+in one direction only: an already-open watch cannot clobber a fresh response,
+because emissions are change-triggered. A watch that opens inside the response's
+window can, and the reverse happens too — on a returning device `hasSynced` is
+already true, so the first emission often lands *before* the fetch it raced and
+the fetch then overwrites it. Both orderings are accepted: the two values differ
+only by replication lag, and the later one is the fresher.
 
 ### 5. This ticket writes nothing to the local SQLite
 
@@ -116,9 +124,25 @@ value meaning "gone", so the entry is left to the network or the seed.
 
 `powersync-web copy-assets` writes the SDK's worker bundle and its wasm into
 `apps/web/public/@powersync/`, and both the database worker and the shared sync
-worker are opened by URL from there. The copy is an Nx target that `dev`,
-`build`, `build:worker` and `preview:worker` depend on; the copied files are
-gitignored.
+worker are opened by URL from there. The copied files are gitignored, so the
+copy has to be wired into something every deployment runs.
+
+It is wired in twice, deliberately:
+
+- **`apps/web`'s `postinstall`** — the assets belong to the installed SDK
+  version, so an install is the honest place to produce them, and it is the one
+  step no deployment can skip. This is what covers `npx opennextjs-cloudflare
+  build` (the build [docs/deployment.md](../deployment.md) documents), which
+  never goes through Nx and so cannot inherit an Nx dependency.
+- **An Nx target** that `dev`, `build`, `build:worker` and `preview:worker`
+  depend on — this is what restores the files *without* a reinstall, after a
+  clean checkout of an existing tree or a `git clean`, and it is cached on the
+  installed `@powersync/web` version.
+
+`apps/web/src/powersync-assets-contract.spec.tsx` fails the gate if either
+wiring is dropped, because the symptom is invisible in this repo: the assets
+are gitignored, `dev` copies them anyway, and the app falls back to the network
+rather than breaking.
 
 The alternative — letting the SDK resolve `new URL('./worker.js',
 import.meta.url)` and having the bundler trace the wasm — would have to be
@@ -139,9 +163,11 @@ The local store is persisted SQLite that outlives the session that filled it,
 and PowerSync keeps `hasSynced` inside it. Decision 3 then works against us on
 a shared browser: a store one owner has synced answers `waitForFirstSync`
 immediately, so the first watch a *second* owner opens over it emits the
-previous owner's rows — and by decision 4 that emission leaves a fulfilled
-entry, which outranks the new owner's own correct network response. Two rules,
-and the second holds when the first never ran:
+previous owner's rows — and by decision 4 that emission outranks the seed and
+can outlive the new owner's own correct network response. The property to hold
+is one sentence: **a store belonging to one owner is never opened for, and
+never connected with the token of, a different owner — including offline.**
+Four rules, each holding where the one before it did not run:
 
 - **Sign-out clears.** The logout mutation calls `disconnectAndClear()` then
   `close()` and drops the memoised store, so a later sign-in opens a fresh one
@@ -151,8 +177,21 @@ and the second holds when the first never ran:
   is owner-scoped (`rv-checklist-<owner>.sqlite`), and the owner is resolved
   *before* the store is handed to any watch — a window between opening and
   knowing whose it is is a window in which watches emit the wrong owner's rows.
-  A store left behind by someone who closed the tab without signing out is
-  simply never opened by anyone else.
+  A store left behind by someone who closed the tab without signing out is only
+  ever opened again by that same owner.
+- **Every session change forgets the remembered owner**, a sign-in as much as a
+  sign-out. The remembered owner exists for one purpose — the offline fallback
+  below — and a sign-in that leaves the previous owner remembered turns a single
+  failed token request into that owner's store being opened for the new one.
+  Forgetting costs nothing a fresh sign-in cannot pay: signing in is online by
+  construction, so the incoming owner is resolved from the server anyway.
+- **The connector refuses a token that is not its store's owner's.** It is
+  built for one owner and returns `null` (the SDK's "no credentials") for any
+  other `sub`. Who is signed in is memoised per page and the cookies can change
+  under it — a sign-in in a second tab — and replication writes into whichever
+  file the store was opened over, so without this check owner B's rows can land
+  in owner A's file and the owner-scoped filename stops describing its
+  contents.
 
 The owner comes from the sync token itself: `GET /auth/powersync-token` mints a
 JWT whose `sub` is the user the sync rules scope to, so the store is keyed by
@@ -160,8 +199,9 @@ exactly the identity that filled it. The connector already reads that token
 into JS — it has to hand it to the SDK — so reading its own `sub` adds no
 exposure, and the httpOnly session cookies stay invisible either way
 (ADR-0019). Only a transport failure (genuinely offline) falls back to the
-owner remembered in `localStorage`; any answer the server did give that is not
-a readable token means "no local store", because a remembered value that
+owner remembered in `localStorage`, which rule 3 keeps meaning "the owner whose
+session this browser still holds"; any answer the server did give that is not a
+readable token means "no local store", because a remembered value that
 disagrees with a reachable server is the stale one.
 
 ## Consequences
@@ -205,7 +245,17 @@ disagrees with a reachable server is the stale one.
   one unhandled rejection per watched entry for the life of the page. The watch
   treats it as "no local store" and the network answers. The failure is not
   memoised either, so a later subscription retries rather than inheriting a
-  dead store.
+  dead store. It is swallowed but not silenced: the first failure on a page is
+  reported to the console, because the same catch covers an expired cookie that
+  fixes itself and a deployment that shipped without `/@powersync/` and never
+  will, and a silent fallback makes the second indistinguishable from a working
+  app.
+- **A sign-in whose first token request fails has no local store until the page
+  reloads.** Forgetting the remembered owner (decision 10, rule 3) means the
+  offline fallback has nothing to fall back to for the rest of that page, and
+  the resolved "nobody" is memoised per page like any other answer. The trade is
+  deliberate: the alternative is a stale remembered owner, and one bad request
+  is a reload, while a stale owner is another person's data on the screen.
 - **Signing out does not reach a store this page never opened.** Clearing needs
   an open handle, so an owner who reloads onto a page with no watched endpoint
   and signs out there leaves their rows on disk. Owner-scoped filenames mean

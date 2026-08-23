@@ -6,7 +6,7 @@ import type { LocalDatabase } from './local-store.js';
  * keeps `hasSynced` inside it — so binding it to an owner is what stops the
  * next person to sign in on this browser from reading the previous one's rows.
  *
- * Two rules, and the second is the one that holds when the first never ran:
+ * Three rules, and each one holds where the one before it never ran:
  *
  * 1. **Sign-out clears.** `disconnectAndClear()` then `close()`, and the
  *    memoised store is dropped so the next sign-in opens a fresh one and
@@ -14,7 +14,15 @@ import type { LocalDatabase } from './local-store.js';
  * 2. **A store belonging to a different owner is never adopted.** Every open
  *    resolves who is signed in first and opens that owner's own store file. A
  *    store left behind by an owner who closed the tab without signing out is
- *    simply never opened again by anyone else.
+ *    only ever opened again by that same owner.
+ * 3. **Any session change forgets who was here.** `reset` drops the remembered
+ *    owner whether or not it clears, because the remembered owner is what
+ *    `resolveOwner` falls back to when it cannot reach the server. Leaving the
+ *    previous owner remembered across a sign-in turns one failed token request
+ *    into the previous owner's store being opened for — and connected with the
+ *    token of — the new one. A fresh sign-in is online by construction, so the
+ *    incoming owner is resolved from the server anyway; the cost of forgetting
+ *    is at worst no local store until the next reload.
  *
  * The owner is resolved before the store is handed out, not alongside it: a
  * store that has already synced answers `waitForFirstSync` immediately, so any
@@ -30,7 +38,7 @@ export interface LocalStoreSessionDeps {
   readonly resolveOwner: () => Promise<string | undefined>;
   /** Open (creating if absent) the store belonging to `owner`. */
   readonly openStore: (owner: string) => Promise<LocalDatabase>;
-  /** Drop the remembered owner. Called when the session ends. */
+  /** Drop the remembered owner. Called on every session change. */
   readonly forgetOwner: () => void;
 }
 
@@ -44,7 +52,8 @@ export interface LocalStoreSession {
   /**
    * End the session's hold on the store. `clear: true` (sign-out) deletes the
    * rows as well as closing it; `clear: false` (a fresh sign-in) only closes,
-   * because the incoming owner's store is a different file anyway.
+   * because the incoming owner's store is a different file anyway. Either way
+   * the remembered owner is forgotten — see rule 3 above.
    */
   reset(options: { clear: boolean }): Promise<void>;
 }
@@ -107,7 +116,10 @@ export function createLocalStoreSession(
     const opened = current;
     current = undefined;
     owner = undefined;
-    if (clear) deps.forgetOwner();
+    // Unconditional, not `if (clear)`: the signed-in identity has changed by
+    // the time this runs, so whoever is remembered is the wrong answer for the
+    // next offline resolve (rule 3).
+    deps.forgetOwner();
     await disposeOf(opened, { clear });
   };
 

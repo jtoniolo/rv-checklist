@@ -3,15 +3,32 @@ import type {
   PowerSyncCredentials,
 } from '@powersync/web';
 import { config } from '../config.js';
+import { subjectOf } from './owner.js';
 
 /**
  * How the sync engine authenticates against the PowerSync service (ADR-0028).
  * `GET /auth/powersync-token` returns exactly `{ token, endpoint }` — the API
  * mints the short-lived HS256 JWT whose `sub` the sync rules read as
  * `token_parameters.user_id` — and it is authenticated by the same httpOnly
- * cookies as every other call (ADR-0019), so no token is ever read into JS.
+ * cookies as every other call (ADR-0019), so the session cookies are never read
+ * into JS.
+ *
+ * The connector is built for one owner and refuses to hand the engine a token
+ * belonging to anyone else (ADR-0029, decision 10). Replication writes into the
+ * store it was opened over, so connecting owner A's file with owner B's token
+ * would put B's rows in A's file and the owner-scoped filename would stop
+ * describing its contents. The page memoises who is signed in, and the cookies
+ * can change under it — a sign-in in a second tab — so the token is the last
+ * place that mismatch can still be caught.
  */
 export class RvSyncConnector implements PowerSyncBackendConnector {
+  /** The owner whose store this connector replicates into. */
+  private readonly owner: string;
+
+  constructor(owner: string) {
+    this.owner = owner;
+  }
+
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
     const response = await fetch(`${config.apiBaseUrl}/auth/powersync-token`, {
       credentials: 'include',
@@ -33,6 +50,13 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
     }
 
     const credentials = (await response.json()) as PowerSyncCredentials;
+
+    // Someone else is signed in now. Stopping is the only safe answer: this
+    // store is not theirs to fill, and the next page load opens the store the
+    // token names. Same `null` contract as the 401 above.
+    // eslint-disable-next-line unicorn/no-null
+    if (subjectOf(credentials.token) !== this.owner) return null;
+
     return { token: credentials.token, endpoint: credentials.endpoint };
   }
 

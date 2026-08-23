@@ -1,6 +1,10 @@
 import type { Rig } from '@rv-checklist/domain';
 import type { LocalDatabase } from './local-store.js';
-import { storeFilenameFor } from './owner.js';
+import {
+  forgetStoreOwner,
+  resolveStoreOwner,
+  storeFilenameFor,
+} from './owner.js';
 import { rigsQuery } from './queries.js';
 import { createLocalStoreSession } from './session.js';
 import type { LocalRow } from './tables.js';
@@ -200,10 +204,11 @@ describe('local store ownership', () => {
     disk.seed(OWNER_B, [rigRow(OWNER_B, 'Other Rig')]);
 
     let signedIn: string | undefined = OWNER_A;
+    const forgetOwner = jest.fn();
     const session = createLocalStoreSession({
       resolveOwner: () => Promise.resolve(signedIn),
       openStore: disk.openStore,
-      forgetOwner: jest.fn(),
+      forgetOwner,
     });
 
     await expect(session.open()).resolves.toBeDefined();
@@ -212,6 +217,10 @@ describe('local store ownership', () => {
     // expired in the tab, then a different person signing in.
     signedIn = OWNER_B;
     await session.reset({ clear: false });
+
+    // Forgotten even though nothing was cleared: the remembered owner is the
+    // offline fallback, and owner A is now the wrong answer for it.
+    expect(forgetOwner).toHaveBeenCalled();
     const second = await session.open();
 
     expect(disk.opened).toEqual([
@@ -262,6 +271,19 @@ describe('local store ownership', () => {
     expect(resolveOwner).toHaveBeenCalledTimes(1);
   });
 
+  it('forgets the remembered owner on a sign-out too', async () => {
+    const forgetOwner = jest.fn();
+    const session = createLocalStoreSession({
+      resolveOwner: () => Promise.resolve<string | undefined>(OWNER_A),
+      openStore: originStorage().openStore,
+      forgetOwner,
+    });
+
+    await session.reset({ clear: true });
+
+    expect(forgetOwner).toHaveBeenCalled();
+  });
+
   it('does not memoise a failed open, so a later subscription retries', async () => {
     let attempts = 0;
     const session = createLocalStoreSession({
@@ -285,5 +307,155 @@ describe('local store ownership', () => {
     await expect(session.open()).rejects.toThrow('Failed to construct Worker');
     await expect(session.open()).resolves.toBeDefined();
     expect(attempts).toBe(2);
+  });
+});
+
+/** The key `owner.ts` remembers the last synced owner under. */
+const OWNER_KEY = 'rv.sync-owner';
+
+/** An unsigned JWT-shaped token carrying `sub`. Only the payload is read. */
+function tokenFor(sub: string): string {
+  const payload = Buffer.from(JSON.stringify({ sub }))
+    .toString('base64')
+    .replaceAll('=', '')
+    .replaceAll('+', '-')
+    .replaceAll('/', '_');
+  return `header.${payload}.signature`;
+}
+
+function tokenResponse(sub: string): Response {
+  return Response.json({
+    token: tokenFor(sub),
+    endpoint: 'https://sync.example',
+  });
+}
+
+/** A localStorage stand-in — the lib's specs run under `testEnvironment: node`. */
+function installStorage(): Map<string, string> {
+  const entries = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => entries.get(key) ?? null, // eslint-disable-line unicorn/no-null
+      setItem: (key: string, value: string) => entries.set(key, value),
+      removeItem: (key: string) => entries.delete(key),
+    },
+  });
+  return entries;
+}
+
+/**
+ * A user switch that meets a dead network (ADR-0029, decision 10, rule 3).
+ *
+ * The rest of this file fakes `resolveOwner`; this block cannot, because the
+ * bug it guards against lived entirely in the seam between the session and
+ * `owner.ts` — each was defensible alone. Owner A synced on this browser, so
+ * their id sits in `localStorage` and their store sits on disk. Owner B signs
+ * in, which reaches the session as `reset({ clear: false })` and nothing else,
+ * and B's first token request then fails at the transport level: one blocked
+ * cross-origin request, a captive portal, an API blip. Falling back to the
+ * remembered owner there opened A's store for B — emitting A's rows into B's
+ * cache, where by decision 4 they outlived B's own correct network response —
+ * and connected A's file with B's token, so B's rows replicated into it.
+ *
+ * So the real `resolveStoreOwner` and `forgetStoreOwner` run here, over a
+ * stubbed `fetch` and `localStorage`. What is still approximated is wa-sqlite
+ * and the replication itself: the fake disk shows which *file* was opened, not
+ * what a real connect would have written into it. The token-side half of that
+ * (a connector refusing a token that is not its owner's) is `connector.spec.ts`.
+ */
+describe('a user switch with no network', () => {
+  let fetchSpy: jest.SpyInstance<
+    ReturnType<typeof fetch>,
+    Parameters<typeof fetch>
+  >;
+  let entries: Map<string, string>;
+  let disk: ReturnType<typeof originStorage>;
+
+  beforeEach(() => {
+    fetchSpy = jest.spyOn(globalThis, 'fetch');
+    entries = installStorage();
+    disk = originStorage();
+    disk.seed(OWNER_A, [rigRow(OWNER_A, 'Alice Rig')]);
+    disk.seed(OWNER_B, [rigRow(OWNER_B, 'Bob Rig')]);
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    Reflect.deleteProperty(globalThis, 'localStorage');
+  });
+
+  /** A session wired to the real owner resolution, over the fake disk. */
+  function realOwnerSession() {
+    return createLocalStoreSession({
+      resolveOwner: resolveStoreOwner,
+      openStore: disk.openStore,
+      forgetOwner: forgetStoreOwner,
+    });
+  }
+
+  it('opens no store for the new owner when their first token request never lands', async () => {
+    const session = realOwnerSession();
+
+    // Owner A is signed in and reading their own store.
+    fetchSpy.mockResolvedValue(tokenResponse(OWNER_A));
+    const forA = watchRigs(() => session.open());
+    await settle();
+    expect(forA.at(-1)?.map((rig) => rig.nickname)).toEqual(['Alice Rig']);
+    expect(entries.get(OWNER_KEY)).toBe(OWNER_A);
+
+    // Owner B signs in: `loginWithGoogle` resets without clearing, because A
+    // never signed out and B's store is a different file anyway.
+    await session.reset({ clear: false });
+    expect(entries.has(OWNER_KEY)).toBe(false);
+
+    // B's first token request dies in transport.
+    fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
+    const forB = watchRigs(() => session.open());
+    await settle();
+
+    expect(forB).toEqual([]);
+    await expect(session.open()).resolves.toBeUndefined();
+    // A's file was opened once, before the switch, and never again.
+    expect(disk.opened).toEqual([storeFilenameFor(OWNER_A)]);
+    // Nothing was cleared: A did not sign out, so A's rows stand for A.
+    expect(disk.rowsFor(OWNER_A)).toHaveLength(1);
+  });
+
+  it('opens the new owner’s own store as soon as a token does land', async () => {
+    const session = realOwnerSession();
+
+    fetchSpy.mockResolvedValue(tokenResponse(OWNER_A));
+    await session.open();
+    await session.reset({ clear: false });
+
+    fetchSpy.mockResolvedValue(tokenResponse(OWNER_B));
+    const forB = watchRigs(() => session.open());
+    await settle();
+
+    expect(disk.opened).toEqual([
+      storeFilenameFor(OWNER_A),
+      storeFilenameFor(OWNER_B),
+    ]);
+    expect(forB).toEqual([
+      [expect.objectContaining({ ownerId: OWNER_B, nickname: 'Bob Rig' })],
+    ]);
+    expect(entries.get(OWNER_KEY)).toBe(OWNER_B);
+  });
+
+  it('still reads the signed-in owner’s own store offline', async () => {
+    // The fallback exists for this: A reloads off grid, resolves nothing from
+    // the server, and reads what they synced. Nobody else signed in since.
+    fetchSpy.mockResolvedValue(tokenResponse(OWNER_A));
+    await realOwnerSession().open();
+
+    fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'));
+    const offline = realOwnerSession();
+    const emissions = watchRigs(() => offline.open());
+    await settle();
+
+    expect(emissions).toEqual([
+      [expect.objectContaining({ ownerId: OWNER_A, nickname: 'Alice Rig' })],
+    ]);
   });
 });

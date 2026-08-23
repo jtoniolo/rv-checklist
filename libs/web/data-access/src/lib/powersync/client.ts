@@ -62,8 +62,10 @@ async function open(owner: string): Promise<LocalDatabase> {
 
   // Resolves once the sync client has started, not once it has connected, so
   // an offline boot falls straight through to reading the persisted store.
-  // Reconnect and backoff are the SDK's defaults from here on.
-  void database.connect(new RvSyncConnector()).catch(() => {
+  // Reconnect and backoff are the SDK's defaults from here on. The connector
+  // is bound to `owner`, so what replicates into this file can only ever be
+  // what that owner's own token authorises.
+  void database.connect(new RvSyncConnector(owner)).catch(() => {
     // Failing to start replication must not take the local read path with it:
     // whatever synced before is still readable.
   });

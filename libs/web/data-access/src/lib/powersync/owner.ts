@@ -24,8 +24,13 @@ const OWNER_KEY = 'rv.sync-owner';
  * falls back to the network.
  *
  * Only a transport failure (genuinely offline) falls back to the remembered
- * owner. Any answer the server did give that is not a readable token — 401,
- * 5xx, a middleware redirect to `/welcome`, an unparseable body — resolves to
+ * owner. That fallback is safe only because the remembered value is dropped on
+ * every session change — sign-out, a fresh sign-in and a 401 all forget it
+ * (`LocalStoreSession`, rule 3) — so it names the owner this browser resolved
+ * from a token under the cookies it still holds, or nobody.
+ *
+ * Any answer the server did give that is not a readable token — 401, 5xx, a
+ * middleware redirect to `/welcome`, an unparseable body — resolves to
  * `undefined` rather than to whoever was here last: the server was reachable,
  * so a remembered value that disagrees with it is exactly the stale value that
  * would leak a previous owner's rows.
@@ -37,8 +42,9 @@ export async function resolveStoreOwner(): Promise<string | undefined> {
       credentials: 'include',
     });
   } catch {
-    // Offline. The device can only be showing the owner it last synced as, so
-    // reading their persisted store is both safe and the whole point.
+    // Offline, or the request never reached the API. Nothing has signed in on
+    // this browser since the remembered owner did, so reading their persisted
+    // store is both safe and the whole point of the offline path.
     return rememberedStoreOwner();
   }
 
@@ -56,7 +62,7 @@ export async function resolveStoreOwner(): Promise<string | undefined> {
   return owner;
 }
 
-/** Drop the remembered owner. Called when the session ends. */
+/** Drop the remembered owner. Called on every session change. */
 export function forgetStoreOwner(): void {
   storage()?.removeItem(OWNER_KEY);
 }

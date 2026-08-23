@@ -34,9 +34,20 @@ Build and deploy, with the deployer supplying every environment-specific value
 via CI variables and its own wrangler config:
 
 ```sh
+pnpm install --frozen-lockfile
 npx opennextjs-cloudflare build
 npx wrangler deploy --config apps/web/<deployer-config>.jsonc
 ```
+
+The install is part of the build, not setup that happens to come first: `apps/web`
+copies the PowerSync SDK's worker and wasm into `apps/web/public/@powersync/`
+from its `postinstall` (they are gitignored, and they belong to the installed
+SDK version — ADR-0029, decision 8). OpenNext deploys `public/` as
+`.open-next/assets`, and the browser loads the worker from `/@powersync/worker.js`
+at runtime. Installing with `--ignore-scripts` therefore ships a worker-less
+bundle: every page still renders and every read still reaches the API, but the
+local store never opens and offline reads do not work — the browser console
+carries one warning per page saying so.
 
 The worker name fits on the command line (`--name`), but routes and custom
 domains have no wrangler CLI flag — they can only come from a config file. The

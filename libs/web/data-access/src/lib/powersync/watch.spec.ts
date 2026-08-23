@@ -268,6 +268,9 @@ describe('watchIntoCache', () => {
   it('does not propagate a failed open — it would be an unhandled rejection per entry', async () => {
     const emit = jest.fn();
     const unhandled = jest.fn();
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {
+      // Silent under test; the assertion below is what it is here for.
+    });
     process.on('unhandledRejection', unhandled);
 
     // The real failures: the SDK's worker fetch answered with a redirect once
@@ -275,14 +278,14 @@ describe('watchIntoCache', () => {
     // RTK Query rethrows whatever `onCacheEntryAdded` rejects with, so a
     // rejection here becomes one unhandled rejection for every watched entry,
     // for the life of the page.
+    const failure = new Error(
+      'Failed to construct Worker: /@powersync/worker.js',
+    );
     const watching = watchIntoCache({
       query: countingQuery({ value: ['one'] }),
       emit,
       removed: neverRemoved(),
-      open: () =>
-        Promise.reject(
-          new Error('Failed to construct Worker: /@powersync/worker.js'),
-        ),
+      open: () => Promise.reject(failure),
     });
 
     await expect(watching).resolves.toBeUndefined();
@@ -291,6 +294,22 @@ describe('watchIntoCache', () => {
 
     expect(emit).not.toHaveBeenCalled();
     expect(unhandled).not.toHaveBeenCalled();
+
+    // Swallowed, but not silenced: a deployment whose `/@powersync/` assets
+    // never shipped fails here for every visitor, and a silent fallback makes
+    // that look exactly like an expired cookie fixing itself.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.any(String), failure);
+
+    // Once per page, not once per watched entry — there are eleven of them.
+    await watchIntoCache({
+      query: countingQuery({ value: ['one'] }),
+      emit,
+      removed: neverRemoved(),
+      open: () => Promise.reject(failure),
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   it('keeps watching after a failed read rather than killing the entry', async () => {
