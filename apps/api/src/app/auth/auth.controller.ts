@@ -1,21 +1,27 @@
 import {
   BadRequestException,
   Controller,
+  Get,
   Headers,
   HttpCode,
   Post,
   Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Owner } from '@rv-checklist/domain';
 import type { Response } from 'express';
 import { AuthService } from './auth.service.js';
-import { CurrentGoogleProfile } from './current-user.decorator.js';
+import {
+  CurrentGoogleProfile,
+  CurrentOwner,
+} from './current-user.decorator.js';
 import type { GoogleProfile } from './google-verifier.js';
-import { GoogleAuthGuard } from './guards.js';
+import { GoogleAuthGuard, JwtAuthGuard } from './guards.js';
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   TokenService,
+  type PowerSyncCredentials,
 } from './token.service.js';
 
 /**
@@ -76,6 +82,17 @@ export class AuthController {
       pair.refreshToken,
       this.tokens.refreshCookieOptions(),
     );
+  }
+
+  /**
+   * Mint PowerSync credentials for the signed-in user (ADR-0028): a short-lived
+   * HS256 JWT the sync service validates, plus the endpoint to connect to —
+   * the exact shape the PowerSync connector's `fetchCredentials` returns.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('powersync-token')
+  powersyncToken(@CurrentOwner() owner: Owner): PowerSyncCredentials {
+    return this.tokens.signPowerSyncToken(owner.id);
   }
 
   /** Clear auth cookies and revoke the refresh token. */

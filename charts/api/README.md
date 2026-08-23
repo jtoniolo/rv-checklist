@@ -23,7 +23,8 @@ The two can never disagree, and both trace back to the git tag `vX.Y.Z`.
 ## Required secret
 
 The chart does not create a Secret. Point `existingSecret` at one the cluster
-materialises (e.g. via HashiCorp Vault). It must supply exactly these keys:
+materialises (e.g. via HashiCorp Vault). It must supply exactly these keys
+(plus two more when `powersync.enabled` — see below):
 
 | Key                    | What it is                                                        |
 | ---------------------- | ----------------------------------------------------------------- |
@@ -34,6 +35,7 @@ materialises (e.g. via HashiCorp Vault). It must supply exactly these keys:
 | `GOOGLE_MAPS_API_KEY`  | Google Maps Platform API key for leg-distance fetches (ADR-0025). Scoped to Routes API + Places API (New); daily quotas capped in the free tier. |
 | `S3_ACCESS_KEY_ID`     | Garage key id for the attachment bucket (ADR-0026, provisioned by ticket #110). |
 | `S3_SECRET_ACCESS_KEY` | Garage secret key paired with `S3_ACCESS_KEY_ID`.                   |
+| `POWERSYNC_JWT_SECRET` | Shared HS256 key for PowerSync client JWTs (ADR-0028), **base64url-encoded** (`A-Za-z0-9_-`, 43+ chars — `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`). The API signs with the decoded bytes; the sync service verifies with the same string as the `k` of an inline JWKS key. Required even with `powersync.enabled: false`. |
 
 **Vault mapping (deploy note):** the Vault keys (the KV path is in the
 operator's private deployment config, per ADR-0020) are lowercase, and one of
@@ -73,6 +75,31 @@ chart can only hash what it renders itself — it cannot see into a Secret it di
 not create. Rotating `JWT_SECRET` or `DATABASE_URL` therefore will not restart
 the pods on its own. Drive that from wherever the Secret comes from: with Vault
 Secrets Operator, set `rolloutRestartTargets` to this Deployment.
+
+## PowerSync sync service (ADR-0028)
+
+Set `powersync.enabled: true` to run the self-hosted PowerSync sync service in
+the same release: a single-replica Deployment (`journeyapps/powersync-service`,
+unified role), a ClusterIP Service on 8080, and a daily bucket-compact CronJob
+(`powersync.compactSchedule`, default `0 2 * * *`). Sync rules ship inside the
+chart (`files/sync-rules.yaml`, rendered into the PowerSync ConfigMap); a
+config change rolls the pod, which is also how new sync rules take effect.
+
+When enabled, `existingSecret` must supply two more keys:
+
+| Key                         | What it is                                                    |
+| --------------------------- | ------------------------------------------------------------- |
+| `POWERSYNC_DATA_SOURCE_URI` | Postgres connection string the service replicates from: the app database, as a role with `REPLICATION` and `SELECT` on the published tables (role SQL in `docs/deployment.md`). |
+| `POWERSYNC_STORAGE_URI`     | Postgres connection string for sync bucket storage: a separate database (same server is fine on Postgres 14+) owned by a dedicated role; the service creates its own schema there. |
+
+The `powersync` publication is **not** the deployer's job — the API's TypeORM
+migrations create it at startup, so it always tracks the schema. The deployer
+provides `wal_level=logical`, the two roles/databases above, and a route from
+`config.POWERSYNC_URL` (the public origin `GET /auth/powersync-token` hands to
+clients) to the powersync Service. Client JWTs are validated against
+`POWERSYNC_JWT_SECRET` with `kid` and audience pinned to `powersync` on both
+sides. `powersync.sslmode` (default `verify-full`) applies to both Postgres
+connections.
 
 ## Notable values
 

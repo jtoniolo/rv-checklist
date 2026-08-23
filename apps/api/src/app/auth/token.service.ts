@@ -15,6 +15,21 @@ export const ACCESS_COOKIE = 'rv.access';
 export const REFRESH_COOKIE = 'rv.refresh';
 
 /**
+ * Fixed `kid`/`aud` for PowerSync client JWTs (ADR-0028). Both are baked into
+ * the sync service's auth config (inline JWKS key id and accepted audience) in
+ * `tools/dev/powersync/powersync.yaml` and the chart's PowerSync ConfigMap —
+ * change them together or the service rejects every token.
+ */
+export const POWERSYNC_KID = 'powersync';
+export const POWERSYNC_AUDIENCE = 'powersync';
+
+/** What the PowerSync connector's `fetchCredentials` expects (ADR-0028). */
+export interface PowerSyncCredentials {
+  readonly token: string;
+  readonly endpoint: string;
+}
+
+/**
  * Mints and hashes the two token kinds (ADR-0002). The access token is a signed,
  * short-lived JWT the API validates statelessly. The refresh token is a
  * high-entropy opaque secret — never a JWT — stored only as a SHA-256 hash, so a
@@ -52,6 +67,37 @@ export class TokenService {
     const claims: Pick<AccessTokenClaims, 'email'> = { email: user.email };
     const token = this.jwt.sign(claims, { subject: user.id, expiresIn });
     return { token, expiresIn };
+  }
+
+  /**
+   * Mint the credentials the PowerSync web SDK connects with (ADR-0028). The
+   * sync service validates the JWT against its inline JWKS: HS256 with the
+   * base64url-decoded POWERSYNC_JWT_SECRET, a matching `kid`, and the
+   * `powersync` audience. `sub` is the user id — the sync rules read it as
+   * `token_parameters.user_id` to pick the user's buckets. Reuses the access
+   * TTL: short (PowerSync wants ≤ 60 min), and the SDK re-fetches on expiry.
+   */
+  signPowerSyncToken(userId: string): PowerSyncCredentials {
+    const key = Buffer.from(
+      this.config.get('POWERSYNC_JWT_SECRET', { infer: true }),
+      'base64url',
+    );
+    const expiresIn = this.config.get('JWT_ACCESS_TTL', { infer: true });
+    const token = this.jwt.sign(
+      {},
+      {
+        secret: key,
+        algorithm: 'HS256',
+        keyid: POWERSYNC_KID,
+        subject: userId,
+        audience: POWERSYNC_AUDIENCE,
+        expiresIn,
+      },
+    );
+    return {
+      token,
+      endpoint: this.config.get('POWERSYNC_URL', { infer: true }),
+    };
   }
 
   /** A fresh opaque refresh-token secret, safe to hand to the client. */

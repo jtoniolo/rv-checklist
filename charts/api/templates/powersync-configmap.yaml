@@ -1,0 +1,44 @@
+{{- if .Values.powersync.enabled }}
+{{- if not .Values.existingSecret }}
+{{- fail "powersync.enabled requires existingSecret: the sync service reads POWERSYNC_JWT_SECRET, POWERSYNC_DATA_SOURCE_URI and POWERSYNC_STORAGE_URI from it." }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "rv-checklist-api.fullname" . }}-powersync
+  labels:
+    {{- include "rv-checklist-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: powersync
+data:
+  # Service config (ADR-0028). `!env` pulls the PS_-prefixed variables the
+  # Deployment/CronJob inject from existingSecret. kid and audience are pinned
+  # to `powersync` — the API's TokenService mints tokens with exactly these.
+  powersync.yaml: |
+    replication:
+      connections:
+        - type: postgresql
+          uri: !env PS_DATA_SOURCE_URI
+          sslmode: {{ .Values.powersync.sslmode }}
+    storage:
+      type: postgresql
+      uri: !env PS_STORAGE_SOURCE_URI
+      sslmode: {{ .Values.powersync.sslmode }}
+    port: 8080
+    sync_config:
+      path: /config/sync-rules.yaml
+    client_auth:
+      jwks:
+        keys:
+          - kty: oct
+            alg: HS256
+            kid: powersync
+            k: !env PS_JWT_K
+      audience: ['powersync']
+    telemetry:
+      disable_telemetry_sharing: true
+  # The one copy of the sync rules, shared with the dev compose stack. A test
+  # in the api (powersync-sync-rules.spec.ts) validates it and pins the table
+  # list to the publication's.
+  sync-rules.yaml: |
+{{ .Files.Get "files/sync-rules.yaml" | indent 4 }}
+{{- end }}

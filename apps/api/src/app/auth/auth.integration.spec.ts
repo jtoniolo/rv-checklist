@@ -34,6 +34,9 @@ import { TokenService } from './token.service.js';
 // ---------------------------------------------------------------------------
 
 const JWT_SECRET = 'test-secret-that-is-long-enough';
+// Base64url charset, like the real POWERSYNC_JWT_SECRET contract (ADR-0028).
+const POWERSYNC_JWT_SECRET = 'test-powersync-secret-in-base64url-chars-0000';
+const POWERSYNC_URL = 'http://localhost:8080';
 
 const CANNED_PROFILE: GoogleProfile = {
   sub: 'google-456',
@@ -256,6 +259,12 @@ function accessCookieHeader(cookies: Record<string, string>): string {
   return 'rv.access=' + (cookies['rv.access'] ?? '');
 }
 
+function decodeSegment(segment: string): Record<string, unknown> {
+  return JSON.parse(
+    Buffer.from(segment, 'base64url').toString('utf8'),
+  ) as Record<string, unknown>;
+}
+
 // ---------------------------------------------------------------------------
 // Test suite
 // ---------------------------------------------------------------------------
@@ -275,6 +284,8 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
           load: [
             () => ({
               JWT_SECRET,
+              POWERSYNC_JWT_SECRET,
+              POWERSYNC_URL,
               JWT_ACCESS_TTL: 900,
               REFRESH_TTL_DAYS: 30,
               REFRESH_REUSE_INTERVAL_SECONDS: 120,
@@ -452,6 +463,58 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
 
     it('returns 204 even with no cookie (silent no-op)', async () => {
       await request(server).post('/auth/logout').expect(204);
+    });
+  });
+
+  // -- GET /auth/powersync-token (ADR-0028) ---------------------------------
+
+  describe('GET /auth/powersync-token', () => {
+    it('mints a JWT the sync service accepts, plus the endpoint', async () => {
+      const { cookies } = await signIn();
+
+      const res = await request(server)
+        .get('/auth/powersync-token')
+        .set('Cookie', accessCookieHeader(cookies))
+        .expect(200);
+
+      const body = res.body as { token: string; endpoint: string };
+      expect(body.endpoint).toBe(POWERSYNC_URL);
+
+      const [header = '', payload = '', signature = ''] = body.token.split(
+        '.',
+        3,
+      );
+      // The service config pins kid `powersync` and audience `powersync`;
+      // sub is the user id the sync rules read as token_parameters.user_id.
+      expect(decodeSegment(header)).toMatchObject({
+        alg: 'HS256',
+        kid: 'powersync',
+      });
+      const claims = decodeSegment(payload);
+      expect(claims['aud']).toBe('powersync');
+      expect(claims['exp']).toBeDefined();
+      expect(claims['iat']).toBeDefined();
+
+      const me = await request(server)
+        .get('/me')
+        .set('Cookie', accessCookieHeader(cookies))
+        .expect(200);
+      expect(claims['sub']).toBe((me.body as { id: string }).id);
+
+      // Verify the HS256 signature with the base64url-decoded shared key —
+      // exactly what the sync service's inline JWKS (`kty: oct`) does.
+      const { createHmac } = await import('node:crypto');
+      const expected = createHmac(
+        'sha256',
+        Buffer.from(POWERSYNC_JWT_SECRET, 'base64url'),
+      )
+        .update(header + '.' + payload)
+        .digest('base64url');
+      expect(signature).toBe(expected);
+    });
+
+    it('rejects an unauthenticated request', async () => {
+      await request(server).get('/auth/powersync-token').expect(401);
     });
   });
 

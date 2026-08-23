@@ -23,6 +23,7 @@
     "@nx/react": "23.1.0",
     "@nx/web": "23.1.0",
     "@nx/webpack": "23.1.0",
+    "@powersync/service-sync-rules": "^0.40.0",
     "@swc-node/register": "1.11.1",
     "@swc/cli": "~0.8.1",
     "@swc/core": "1.15.8",

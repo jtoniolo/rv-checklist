@@ -7,6 +7,12 @@
 #
 # Credentials match DATABASE_URL in .env.example.
 #
+# The PowerSync sync service (issue #145, ADR-0028) rides along: it tails the
+# `powersync` publication (created by the API's migrations — run the API once
+# against a fresh database before expecting sync) and serves clients on :8080.
+# Postgres runs with wal_level=logical for it — a flag on an existing volume,
+# not a re-init; pre-existing dev volumes keep working after a restart.
+#
 # `name` pins the Compose project so it never collides with another project that
 # happens to live in a `dev/` directory.
 name: rv-checklist
@@ -16,6 +22,7 @@ services:
     image: postgres:16-alpine
     container_name: rv-checklist-postgres
     restart: unless-stopped
+    command: ['postgres', '-c', 'wal_level=logical']
     environment:
       POSTGRES_USER: rv
       POSTGRES_PASSWORD: rv
@@ -29,6 +36,60 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # One-shot bootstrap for the PowerSync roles and its bucket-storage database.
+  # Runs on every `up` and is idempotent — an entrypoint-initdb.d script would
+  # only fire on a fresh volume, and existing dev volumes predate PowerSync.
+  powersync-init:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: rv
+      PGPASSWORD: rv
+      PGDATABASE: rv_checklist
+    entrypoint: ['/bin/sh', '/powersync/init.sh']
+    volumes:
+      - ./powersync/init.sh:/powersync/init.sh:ro
+
+  # Self-hosted sync service (ADR-0028): streams the publication into
+  # per-client SQLite, Postgres bucket storage (no MongoDB — needs >= 1.3.8).
+  # Restarts until the publication exists (first API boot creates it).
+  powersync:
+    image: journeyapps/powersync-service:1.24.0
+    container_name: rv-checklist-powersync
+    restart: unless-stopped
+    command: ['start', '-r', 'unified']
+    depends_on:
+      powersync-init:
+        condition: service_completed_successfully
+    environment:
+      POWERSYNC_CONFIG_PATH: /config/powersync.yaml
+      PS_DATA_SOURCE_URI: postgresql://powersync_role:powersync@postgres:5432/rv_checklist
+      PS_STORAGE_SOURCE_URI: postgresql://powersync_storage:powersync@postgres:5432/powersync_storage
+      # Must equal POWERSYNC_JWT_SECRET in `.env` (the API signs, this side
+      # verifies). The fallback matches .env.example; if you generated your
+      # own, export it (or pass --env-file .env) so compose substitutes it.
+      PS_JWT_K: ${POWERSYNC_JWT_SECRET:-local-dev-powersync-jwt-secret-not-for-production-000000}
+    ports:
+      - '8080:8080'
+    volumes:
+      - ./powersync/powersync.yaml:/config/powersync.yaml:ro
+      # Same sync rules the chart ships — one copy, no drift (issue #145).
+      - ../../charts/api/files/sync-rules.yaml:/config/sync-rules.yaml:ro
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:8080/probes/liveness').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 2s
+      retries: 15
 
 volumes:
   rv-checklist-pgdata:

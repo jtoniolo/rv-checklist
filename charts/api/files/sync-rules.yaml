@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://unpkg.com/@powersync/service-sync-rules@latest/schema/sync_rules.json
+#
+# PowerSync sync rules (issue #145, ADR-0028) — the one copy both deployments
+# use: the chart embeds this file into the PowerSync ConfigMap (.Files.Get) and
+# the dev compose stack mounts it into the sync-service container. A validation
+# test (apps/api/src/app/config/powersync-sync-rules.spec.ts) parses it with
+# the real sync-rules engine and pins the table list to the ten synced tables.
+#
+# Full history, no windowing (ADR-0028): due status needs the newest log entry
+# per task, and past trips are the product's memory. `SELECT *` on purpose —
+# it carries `created_at` (the server breaks same-day ordering ties with it)
+# and automatically picks up columns future migrations add. Auth/token tables
+# and the idempotency ledger never sync; attachment bytes never sync (rows
+# here are metadata only).
+bucket_definitions:
+  # The signed-in user's own row. token_parameters.user_id is the JWT `sub`
+  # minted by GET /auth/powersync-token.
+  user:
+    parameters: SELECT token_parameters.user_id AS user_id
+    data:
+      - SELECT * FROM users WHERE id = bucket.user_id
+
+  # One bucket per rig the user owns. Sync-rule queries cannot join, so every
+  # rig-scoped table carries a denormalized rig_id (#140).
+  rig:
+    parameters: SELECT id AS rig_id FROM rigs WHERE owner_id = token_parameters.user_id
+    data:
+      - SELECT * FROM rigs WHERE id = bucket.rig_id
+      - SELECT * FROM equipment_items WHERE rig_id = bucket.rig_id
+      - SELECT * FROM checklists WHERE rig_id = bucket.rig_id
+      - SELECT * FROM runs WHERE rig_id = bucket.rig_id
+      - SELECT * FROM maintenance_tasks WHERE rig_id = bucket.rig_id
+      - SELECT * FROM log_entries WHERE rig_id = bucket.rig_id
+      - SELECT * FROM trips WHERE rig_id = bucket.rig_id
+      - SELECT * FROM stops WHERE rig_id = bucket.rig_id
+      - SELECT * FROM attachments WHERE rig_id = bucket.rig_id

@@ -1,0 +1,14 @@
+{
+  "name": "powersync-smoke",
+  "private": true,
+  "type": "module",
+  "description": "Replication smoke test for the dev PowerSync stack (issue #145). Standalone on purpose: outside the pnpm workspace so the native PowerSync SDK is only installed when someone actually runs it.",
+  "scripts": {
+    "smoke": "node index.mjs"
+  },
+  "dependencies": {
+    "@powersync/node": "^0.21.0",
+    "better-sqlite3": "^12.11.1",
+    "pg": "^8.16.0"
+  }
+}
