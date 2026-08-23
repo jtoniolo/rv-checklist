@@ -1,0 +1,96 @@
+{{- if .Values.powersync.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "rv-checklist-api.fullname" . }}-powersync
+  labels:
+    {{- include "rv-checklist-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: powersync
+spec:
+  # Single replica: the replication worker tails one logical-replication slot;
+  # the unified role runs API server and worker in one container.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "rv-checklist-api.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: powersync
+  template:
+    metadata:
+      annotations:
+        # Rolls the pod when the config (including the sync rules) changes —
+        # the service only re-reads sync rules on restart.
+        checksum/config: {{ include (print $.Template.BasePath "/powersync-configmap.yaml") . | sha256sum }}
+      labels:
+        {{- include "rv-checklist-api.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: powersync
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: powersync
+          image: "{{ .Values.powersync.image.repository }}:{{ .Values.powersync.image.tag }}"
+          imagePullPolicy: {{ .Values.powersync.image.pullPolicy }}
+          command: ['start', '-r', 'unified']
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: POWERSYNC_CONFIG_PATH
+              value: /config/powersync.yaml
+            # Keep the Node heap inside whatever memory limit is set.
+            - name: NODE_OPTIONS
+              value: --max-old-space-size-percentage=80
+            - name: PS_DATA_SOURCE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: POWERSYNC_DATA_SOURCE_URI
+            - name: PS_STORAGE_SOURCE_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: POWERSYNC_STORAGE_URI
+            - name: PS_JWT_K
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.existingSecret }}
+                  key: POWERSYNC_JWT_SECRET
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /probes/liveness
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /probes/liveness
+              port: http
+            periodSeconds: 5
+          {{- with .Values.powersync.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "rv-checklist-api.fullname" . }}-powersync
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

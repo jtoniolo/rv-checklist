@@ -111,6 +111,28 @@ export const EnvSchema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().min(1),
 
   /**
+   * Shared HS256 key for PowerSync client JWTs (ADR-0028), **base64url**
+   * encoded so the API and the sync service derive identical key bytes: the
+   * API signs with the decoded bytes, and the same string goes verbatim into
+   * the service's inline JWKS as `k` (which JWKS defines as base64url).
+   * Generate with:
+   * `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`.
+   * Separate from JWT_SECRET / MCP_JWT_SECRET so each rotates independently.
+   */
+  POWERSYNC_JWT_SECRET: z.string().regex(/^[\w-]{43,}$/, {
+    message:
+      'POWERSYNC_JWT_SECRET must be base64url (A-Za-z0-9_-), at least 43 chars (~32 bytes)',
+  }),
+
+  /**
+   * Public origin clients reach the PowerSync sync service at (ADR-0028).
+   * `GET /auth/powersync-token` hands it to the client alongside the token
+   * (the PowerSync connector's `fetchCredentials` shape). The default matches
+   * the dev compose stack.
+   */
+  POWERSYNC_URL: z.url().default('http://localhost:8080'),
+
+  /**
    * Comma-separated allowlist of redirect URIs accepted during dynamic
    * client registration (ADR-0024). Loopback URIs (`http://localhost` and
    * `http://127.0.0.1`, any port, any path) are always accepted regardless

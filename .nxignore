@@ -1,0 +1,4 @@
+# Standalone on purpose: the PowerSync replication smoke test (issue #145)
+# carries a native SDK dependency and only runs by hand against the dev
+# compose stack — it is not a workspace project and must not join the CI gate.
+tools/dev/powersync-smoke

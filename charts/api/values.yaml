@@ -47,11 +47,17 @@ config:
   # Required — rendering fails without it. The app's single attachment bucket
   # (ADR-0026): `rv-checklist` in production.
   S3_BUCKET: ""
+  # Public origin browsers reach the PowerSync sync service at (ADR-0028).
+  # GET /auth/powersync-token hands it to clients, so when powersync.enabled
+  # this must be the externally reachable URL the deployer routes to the
+  # powersync Service (port 8080). The default only works in local dev.
+  POWERSYNC_URL: "http://localhost:8080"
 
 # Name of a pre-existing Secret. The chart does not create a Secret — the
 # cluster materialises one (e.g. via HashiCorp Vault) and you reference it here.
 #
-# It must supply exactly these seven keys:
+# It must supply exactly these eight keys (plus two more when
+# powersync.enabled — see the powersync section below):
 #   JWT_SECRET           — signing key for the first-party access JWT (long
 #                          and random)
 #   MCP_JWT_SECRET       — signing key for MCP OAuth JWTs (v0.2.9+), at least
@@ -72,6 +78,12 @@ config:
 #                          In Vault, same KV path, as
 #                          `s3_access_key` — NOT `s3_secret_access_key`; the
 #                          Vault key name differs from the env var name.
+#   POWERSYNC_JWT_SECRET — shared HS256 key for PowerSync client JWTs
+#                          (ADR-0028), base64url-encoded (A-Za-z0-9_-, 43+
+#                          chars). The API signs with its decoded bytes; the
+#                          sync service verifies with the same string as the
+#                          `k` of an inline JWKS key. Required by the API even
+#                          when powersync.enabled is false.
 #
 # The Deployment injects the Secret with `envFrom`, so new keys added to the
 # Secret reach the pod without any chart change.
@@ -96,10 +108,42 @@ secretKeys:
   - GOOGLE_MAPS_API_KEY
   - S3_ACCESS_KEY_ID
   - S3_SECRET_ACCESS_KEY
+  - POWERSYNC_JWT_SECRET
 
 service:
   type: ClusterIP
   port: 3000
+
+# PowerSync sync service (issue #145, ADR-0028): a second Deployment in this
+# release that streams the `powersync` publication (created by the API's
+# migrations) into per-client SQLite, with Postgres bucket storage — no
+# MongoDB. Off by default; the API runs fine without it.
+#
+# When enabled, existingSecret must also supply:
+#   POWERSYNC_DATA_SOURCE_URI — Postgres connection string the service
+#                          replicates from: the app database, as a role with
+#                          REPLICATION and SELECT on the ten published tables
+#                          (see docs/deployment.md for the role SQL).
+#   POWERSYNC_STORAGE_URI  — Postgres connection string for sync bucket
+#                          storage: a separate database (same server is fine
+#                          on Postgres 14+) owned by a dedicated role; the
+#                          service creates its own schema there.
+# The sync rules ship in this chart (files/sync-rules.yaml → ConfigMap); kid
+# and audience for client JWTs are pinned to `powersync` to match the API.
+powersync:
+  enabled: false
+  image:
+    repository: journeyapps/powersync-service
+    # Postgres bucket storage needs >= 1.3.8.
+    tag: "1.24.0"
+    pullPolicy: IfNotPresent
+  # sslmode for both Postgres connections: verify-full, verify-ca, or disable.
+  sslmode: verify-full
+  # Daily bucket compact (PowerSync recommends one); standard cron syntax.
+  compactSchedule: "0 2 * * *"
+  # PowerSync sizing guidance: ~1 GB / 1 vCPU. The compact CronJob reuses
+  # these. The pods set NODE_OPTIONS so the Node heap tracks the limit.
+  resources: {}
 
 resources: {}
 

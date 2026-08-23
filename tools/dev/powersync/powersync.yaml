@@ -1,0 +1,37 @@
+# PowerSync service config for the dev compose stack (issue #145, ADR-0028).
+# `!env` substitutes container environment variables (PS_-prefixed only);
+# docker-compose.yml supplies them. Production runs the same shape from the
+# chart's PowerSync ConfigMap (charts/api).
+replication:
+  connections:
+    - type: postgresql
+      uri: !env PS_DATA_SOURCE_URI
+      sslmode: disable
+
+# Sync bucket storage on Postgres (service >= 1.3.8) — no MongoDB. A separate
+# database on the same dev server; the module creates its own schema there.
+storage:
+  type: postgresql
+  uri: !env PS_STORAGE_SOURCE_URI
+  sslmode: disable
+
+port: 8080
+
+sync_config:
+  path: /config/sync-rules.yaml
+
+# Shared-key HS256 client auth: an inline JWKS with the symmetric key (`kty:
+# oct`, base64url `k`). kid and audience are pinned to `powersync` — the API's
+# TokenService mints tokens with exactly these (POWERSYNC_KID /
+# POWERSYNC_AUDIENCE in apps/api/src/app/auth/token.service.ts).
+client_auth:
+  jwks:
+    keys:
+      - kty: oct
+        alg: HS256
+        kid: powersync
+        k: !env PS_JWT_K
+  audience: ['powersync']
+
+telemetry:
+  disable_telemetry_sharing: true

@@ -1,0 +1,19 @@
+{{- if .Values.powersync.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "rv-checklist-api.fullname" . }}-powersync
+  labels:
+    {{- include "rv-checklist-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: powersync
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "rv-checklist-api.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: powersync
+{{- end }}

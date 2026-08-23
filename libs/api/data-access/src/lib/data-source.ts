@@ -44,6 +44,7 @@ import { RigDimensions1721002800000 } from './migrations/1721002800000-rig-dimen
 import { StopAttachmentRigId1721002900000 } from './migrations/1721002900000-stop-attachment-rig-id.js';
 import { IdempotencyKeys1721003000000 } from './migrations/1721003000000-idempotency-keys.js';
 import { EditedAt1721003100000 } from './migrations/1721003100000-edited-at.js';
+import { PowersyncPublication1721003200000 } from './migrations/1721003200000-powersync-publication.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -107,6 +108,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       StopAttachmentRigId1721002900000,
       IdempotencyKeys1721003000000,
       EditedAt1721003100000,
+      PowersyncPublication1721003200000,
     ],
     migrationsRun: true,
     synchronize: false,

@@ -1,0 +1,67 @@
+{{- if .Values.powersync.enabled }}
+# Daily sync-bucket compact (ADR-0028) — PowerSync recommends a daily compact
+# job. Same image and config as the service; `compact` runs once and exits.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "rv-checklist-api.fullname" . }}-powersync-compact
+  labels:
+    {{- include "rv-checklist-api.labels" . | nindent 4 }}
+    app.kubernetes.io/component: powersync-compact
+spec:
+  schedule: {{ .Values.powersync.compactSchedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "rv-checklist-api.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: powersync-compact
+        spec:
+          restartPolicy: OnFailure
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: compact
+              image: "{{ .Values.powersync.image.repository }}:{{ .Values.powersync.image.tag }}"
+              imagePullPolicy: {{ .Values.powersync.image.pullPolicy }}
+              command: ['compact']
+              env:
+                - name: POWERSYNC_CONFIG_PATH
+                  value: /config/powersync.yaml
+                # Compacting can use up to ~1 GB; keep the heap inside the limit.
+                - name: NODE_OPTIONS
+                  value: --max-old-space-size-percentage=80
+                - name: PS_DATA_SOURCE_URI
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.existingSecret }}
+                      key: POWERSYNC_DATA_SOURCE_URI
+                - name: PS_STORAGE_SOURCE_URI
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.existingSecret }}
+                      key: POWERSYNC_STORAGE_URI
+                - name: PS_JWT_K
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.existingSecret }}
+                      key: POWERSYNC_JWT_SECRET
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+                  readOnly: true
+              {{- with .Values.powersync.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          volumes:
+            - name: config
+              configMap:
+                name: {{ include "rv-checklist-api.fullname" . }}-powersync
+{{- end }}
