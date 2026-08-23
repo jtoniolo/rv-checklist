@@ -11,7 +11,9 @@ import {
  * signed in for months without re-authenticating. Only the SHA-256 `tokenHash`
  * is stored, never the raw value, so a database leak can't be replayed. Tokens
  * rotate on use: refreshing revokes the presented token (`revokedAt`) and
- * records the id that replaced it (`replacedById`), enforcing single-use.
+ * records the id that replaced it (`replacedById`), enforcing single-use —
+ * except within the short reuse interval after rotation (ADR-0028), which
+ * lets a client that lost the rotation response try again.
  *
  * Issue #98 adds session tracking: `sessionId` groups a rotation chain so the
  * owner can list and revoke web sessions from the connected-apps page.

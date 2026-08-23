@@ -3,6 +3,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import {
   RefreshTokenStore,
   UserStore,
+  type RefreshTokenRecord,
   type UserRecord,
   type WebSessionRecord,
 } from '@rv-checklist/api-data-access';
@@ -68,6 +69,44 @@ export class AuthService {
   }
 
   /**
+   * Whether a revoked token is a legitimate in-window rotation replay
+   * (ADR-0028). Requires all of:
+   * - it was rotated out (`replacedById` set — logout and session revocation
+   *   leave it unset),
+   * - the reuse interval since its revocation has not elapsed,
+   * - the rotation chain it started still ends in a live token. Logout and
+   *   session revocation revoke the chain tip without a replacement, so after
+   *   either the walk hits a dead end and the replay is rejected — revocation
+   *   stays final (#98) even inside the window.
+   */
+  private async isReplayableRotation(
+    stored: RefreshTokenRecord,
+    now: Date,
+  ): Promise<boolean> {
+    if (stored.revokedAt === undefined || stored.replacedById === undefined) {
+      return false;
+    }
+    const isInWindow =
+      now.getTime() - stored.revokedAt.getTime() <=
+      this.tokens.refreshReuseWindowMs();
+    if (!isInWindow) {
+      return false;
+    }
+    let nextId: string | undefined = stored.replacedById;
+    while (nextId !== undefined) {
+      const next = await this.refreshTokens.findById(nextId);
+      if (!next) {
+        return false;
+      }
+      if (next.revokedAt === undefined) {
+        return true;
+      }
+      nextId = next.replacedById;
+    }
+    return false;
+  }
+
+  /**
    * Sign in with a verified Google profile: upsert the owner, issue tokens.
    * A brand-new owner also gets the starter rig seeded (issue #19), so day
    * one is never an empty app. Each login starts a new session (issue #98).
@@ -104,6 +143,16 @@ export class AuthService {
    * Exchange a valid refresh token for a fresh pair, rotating the old one out.
    * The session_id propagates from the old token so the rotation chain stays
    * grouped (issue #98).
+   *
+   * A rotated-out token is still accepted for a short reuse interval
+   * (ADR-0028 amending ADR-0012): on an unreliable network the rotation
+   * response can be lost, leaving the client holding the spent token; inside
+   * the window it gets a fresh sibling pair in the same session instead of a
+   * dead session. Only rotation qualifies — logout and session revocation
+   * leave `replacedById` unset and stay final. A replay is also honored only
+   * while its rotation chain still ends in a live token, so revoking the
+   * successor (logout or session revocation) closes the predecessor's window
+   * too instead of resurrecting a dead session.
    */
   async refresh(
     rawToken: string,
@@ -115,8 +164,12 @@ export class AuthService {
     if (!stored) {
       throw new UnauthorizedException('Invalid refresh token');
     }
-    const isExpired = stored.expiresAt.getTime() <= this.clock.now().getTime();
-    if (isExpired || stored.revokedAt !== undefined) {
+    const now = this.clock.now();
+    if (stored.expiresAt.getTime() <= now.getTime()) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    const isRevoked = stored.revokedAt !== undefined;
+    if (isRevoked && !(await this.isReplayableRotation(stored, now))) {
       throw new UnauthorizedException('Invalid refresh token');
     }
     const user = await this.users.findById(stored.userId);
@@ -127,7 +180,11 @@ export class AuthService {
       sessionId: stored.sessionId,
       userAgent,
     });
-    await this.refreshTokens.revoke(stored.id, refreshId);
+    if (!isRevoked) {
+      // An in-window replay must not re-revoke: that would refresh
+      // `revokedAt` and slide the reuse window open indefinitely.
+      await this.refreshTokens.revoke(stored.id, refreshId);
+    }
     if (stored.sessionId) {
       await this.refreshTokens.updateLastUsed(refreshId);
     }

@@ -84,6 +84,7 @@ interface StoredToken {
   tokenHash: string;
   expiresAt: Date;
   revokedAt: Date | undefined;
+  replacedById: string | undefined;
   sessionId: string | undefined;
   userAgent: string | undefined;
   lastUsedAt: Date | undefined;
@@ -93,6 +94,10 @@ class FakeRefreshStore extends RefreshTokenStore {
   private seq = 0;
   private readonly rows: StoredToken[] = [];
 
+  constructor(private readonly clock: Clock) {
+    super();
+  }
+
   create(input: CreateRefreshTokenInput): Promise<RefreshTokenRecord> {
     const record: StoredToken = {
       id: `rt-${String(++this.seq)}`,
@@ -100,6 +105,7 @@ class FakeRefreshStore extends RefreshTokenStore {
       tokenHash: input.tokenHash,
       expiresAt: input.expiresAt,
       revokedAt: undefined,
+      replacedById: undefined,
       sessionId: input.sessionId,
       userAgent: input.userAgent,
       lastUsedAt: undefined,
@@ -110,6 +116,7 @@ class FakeRefreshStore extends RefreshTokenStore {
       userId: record.userId,
       expiresAt: record.expiresAt,
       revokedAt: record.revokedAt,
+      replacedById: record.replacedById,
       sessionId: record.sessionId,
     });
   }
@@ -122,14 +129,30 @@ class FakeRefreshStore extends RefreshTokenStore {
       userId: found.userId,
       expiresAt: found.expiresAt,
       revokedAt: found.revokedAt,
+      replacedById: found.replacedById,
+      sessionId: found.sessionId,
+    });
+  }
+
+  findById(id: string): Promise<RefreshTokenRecord | undefined> {
+    const found = this.rows.find((t) => t.id === id);
+    if (!found) return Promise.resolve(undefined);
+    return Promise.resolve({
+      id: found.id,
+      userId: found.userId,
+      expiresAt: found.expiresAt,
+      revokedAt: found.revokedAt,
+      replacedById: found.replacedById,
       sessionId: found.sessionId,
     });
   }
 
   revoke(id: string, replacedById: string | undefined): Promise<void> {
-    void replacedById;
     const found = this.rows.find((t) => t.id === id);
-    if (found) found.revokedAt = new Date();
+    if (found) {
+      found.revokedAt = this.clock.now();
+      found.replacedById = replacedById;
+    }
     return Promise.resolve();
   }
 
@@ -181,9 +204,12 @@ class FakeRefreshStore extends RefreshTokenStore {
   }
 }
 
+/** Real time plus a test-driven offset, so tests can jump past the reuse window. */
 class FakeClock extends Clock {
+  offsetMs = 0;
+
   now(): Date {
-    return new Date();
+    return new Date(Date.now() + this.offsetMs);
   }
 }
 
@@ -237,8 +263,10 @@ function accessCookieHeader(cookies: Record<string, string>): string {
 describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
   let app: INestApplication;
   let server: App;
+  let clock: FakeClock;
 
   beforeAll(async () => {
+    clock = new FakeClock();
     const module = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
@@ -249,6 +277,7 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
               JWT_SECRET,
               JWT_ACCESS_TTL: 900,
               REFRESH_TTL_DAYS: 30,
+              REFRESH_REUSE_INTERVAL_SECONDS: 120,
               GOOGLE_CLIENT_ID: 'fake-client-id',
               DATABASE_URL: 'postgres://unused',
               WEB_ORIGIN: 'http://localhost:4200',
@@ -264,10 +293,10 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
         TokenService,
         JwtStrategy,
         GoogleIdTokenStrategy,
-        { provide: Clock, useClass: FakeClock },
+        { provide: Clock, useValue: clock },
         { provide: GoogleIdTokenVerifier, useClass: FakeGoogleVerifier },
         { provide: UserStore, useClass: FakeUserStore },
-        { provide: RefreshTokenStore, useClass: FakeRefreshStore },
+        { provide: RefreshTokenStore, useValue: new FakeRefreshStore(clock) },
         { provide: StarterContentSeeder, useClass: FakeSeeder },
       ],
     }).compile();
@@ -341,13 +370,53 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
       assertHttpOnlyCookie(refreshRes, 'rv.refresh');
     });
 
-    it('rejects a spent refresh cookie (rotation)', async () => {
+    it('accepts a just-spent refresh cookie inside the reuse interval (ADR-0028)', async () => {
       const { cookies: first } = await signIn();
 
       await request(server)
         .post('/auth/refresh')
         .set('Cookie', cookieHeader(first))
         .expect(200);
+
+      const replayRes = await request(server)
+        .post('/auth/refresh')
+        .set('Cookie', cookieHeader(first))
+        .expect(200);
+      expect(parseCookies(replayRes)['rv.refresh']).toBeDefined();
+    });
+
+    it('rejects a spent refresh cookie after the reuse interval (rotation)', async () => {
+      const { cookies: first } = await signIn();
+
+      await request(server)
+        .post('/auth/refresh')
+        .set('Cookie', cookieHeader(first))
+        .expect(200);
+
+      clock.offsetMs = 3 * 60_000;
+      try {
+        await request(server)
+          .post('/auth/refresh')
+          .set('Cookie', cookieHeader(first))
+          .expect(401);
+      } finally {
+        clock.offsetMs = 0;
+      }
+    });
+
+    it('rejects a spent refresh cookie inside the reuse interval once the successor is logged out', async () => {
+      const { cookies: first } = await signIn();
+
+      const refreshRes = await request(server)
+        .post('/auth/refresh')
+        .set('Cookie', cookieHeader(first))
+        .expect(200);
+      const second = parseCookies(refreshRes);
+
+      await request(server)
+        .post('/auth/logout')
+        .set('Cookie', cookieHeader(second))
+        .expect(204);
 
       await request(server)
         .post('/auth/refresh')

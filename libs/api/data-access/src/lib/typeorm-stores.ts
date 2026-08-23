@@ -34,6 +34,7 @@ function toRefreshRecord(entity: RefreshTokenEntity): RefreshTokenRecord {
     userId: entity.userId,
     expiresAt: entity.expiresAt,
     revokedAt: entity.revokedAt ?? undefined,
+    replacedById: entity.replacedById ?? undefined,
     sessionId: entity.sessionId ?? undefined,
   };
 }
@@ -102,6 +103,11 @@ export class TypeOrmRefreshTokenStore extends RefreshTokenStore {
 
   async findByHash(tokenHash: string): Promise<RefreshTokenRecord | undefined> {
     const found = await this.repo.findOne({ where: { tokenHash } });
+    return found ? toRefreshRecord(found) : undefined;
+  }
+
+  async findById(id: string): Promise<RefreshTokenRecord | undefined> {
+    const found = await this.repo.findOne({ where: { id } });
     return found ? toRefreshRecord(found) : undefined;
   }
 

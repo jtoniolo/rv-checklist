@@ -70,6 +70,14 @@ export class TokenService {
     return new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
   }
 
+  /** How long a rotated-out refresh token may still be replayed (ADR-0028). */
+  refreshReuseWindowMs(): number {
+    const seconds = this.config.get('REFRESH_REUSE_INTERVAL_SECONDS', {
+      infer: true,
+    });
+    return seconds * 1000;
+  }
+
   accessCookieOptions(): CookieOptions {
     const expiresIn = this.config.get('JWT_ACCESS_TTL', { infer: true });
     return { ...this.baseCookieOptions(), maxAge: expiresIn * 1000 };
