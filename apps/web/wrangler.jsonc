@@ -1,6 +1,6 @@
 // Environment-blind wrangler config (ADR-0020).
 // No account IDs, hostnames, routes, or env values belong here.
-// The home lab IaC repo's CI job supplies those at deploy time via
+// The external CI job supplies those at deploy time via
 // --name, --route, and environment variables.
 //
 // External CI must provide at build time:
