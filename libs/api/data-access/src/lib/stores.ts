@@ -77,6 +77,8 @@ export abstract class RefreshTokenStore {
   abstract findByHash(
     tokenHash: string,
   ): Promise<RefreshTokenRecord | undefined>;
+  /** Look up a token by id — used to walk a rotation chain (ADR-0028). */
+  abstract findById(id: string): Promise<RefreshTokenRecord | undefined>;
   /** Revoke a token, recording the token that replaced it (rotation), if any. */
   abstract revoke(id: string, replacedById: string | undefined): Promise<void>;
   /** Touch `last_used_at` on the token row. */

@@ -120,6 +120,19 @@ class FakeRefreshStore extends RefreshTokenStore {
     });
   }
 
+  findById(id: string): Promise<RefreshTokenRecord | undefined> {
+    const found = this.rows.find((t) => t.id === id);
+    if (!found) return Promise.resolve(undefined);
+    return Promise.resolve({
+      id: found.id,
+      userId: found.userId,
+      expiresAt: found.expiresAt,
+      revokedAt: found.revokedAt,
+      replacedById: found.replacedById,
+      sessionId: found.sessionId,
+    });
+  }
+
   revoke(id: string, replacedById: string | undefined): Promise<void> {
     const found = this.rows.find((t) => t.id === id);
     if (found) {
@@ -386,6 +399,70 @@ describe('AuthService.refresh', () => {
       await expect(service.refresh(pair.refreshToken)).rejects.toBeInstanceOf(
         UnauthorizedException,
       );
+    });
+
+    it('rejects an in-window replay after the session is revoked (revocation stays final)', async () => {
+      const { service, refresh, clock } = build();
+      const { pair: first } = await service.loginWithGoogle(profile);
+      await service.refresh(first.refreshToken);
+      const sessionId = refresh.sessionIdOf('rt-1');
+      expect(sessionId).toBeDefined();
+      await service.revokeSession(sessionId ?? '', 'user-1');
+
+      clock.current = new Date(clock.current.getTime() + 10_000);
+      await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('rejects an in-window replay after the successor is logged out (logout stays final)', async () => {
+      const { service, clock } = build();
+      const { pair: first } = await service.loginWithGoogle(profile);
+      const { pair: second } = await service.refresh(first.refreshToken);
+      await service.logout(second.refreshToken);
+
+      clock.current = new Date(clock.current.getTime() + 10_000);
+      await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('a rejected replay does not resurrect the revoked session in listSessions', async () => {
+      const { service, refresh, clock } = build();
+      const { pair: first } = await service.loginWithGoogle(profile);
+      await service.refresh(first.refreshToken);
+      const sessionId = refresh.sessionIdOf('rt-1');
+      await service.revokeSession(sessionId ?? '', 'user-1');
+
+      clock.current = new Date(clock.current.getTime() + 10_000);
+      await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      await expect(service.listSessions('user-1')).resolves.toHaveLength(0);
+    });
+
+    it('rejects an in-window replay when a longer chain was session-revoked', async () => {
+      const { service, refresh, clock } = build();
+      const { pair: first } = await service.loginWithGoogle(profile);
+      const { pair: second } = await service.refresh(first.refreshToken);
+      await service.refresh(second.refreshToken);
+      const sessionId = refresh.sessionIdOf('rt-1');
+      await service.revokeSession(sessionId ?? '', 'user-1');
+
+      clock.current = new Date(clock.current.getTime() + 10_000);
+      await expect(service.refresh(first.refreshToken)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it('accepts a replay whose successor was itself rotated onward (chain still live)', async () => {
+      const { service, clock } = build();
+      const { pair: first } = await service.loginWithGoogle(profile);
+      const { pair: second } = await service.refresh(first.refreshToken);
+      await service.refresh(second.refreshToken);
+
+      clock.current = new Date(clock.current.getTime() + 10_000);
+      await expect(service.refresh(first.refreshToken)).resolves.toBeDefined();
     });
 
     it('an in-window replay does not slide the window open', async () => {

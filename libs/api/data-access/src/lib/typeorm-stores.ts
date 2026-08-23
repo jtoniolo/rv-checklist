@@ -106,6 +106,11 @@ export class TypeOrmRefreshTokenStore extends RefreshTokenStore {
     return found ? toRefreshRecord(found) : undefined;
   }
 
+  async findById(id: string): Promise<RefreshTokenRecord | undefined> {
+    const found = await this.repo.findOne({ where: { id } });
+    return found ? toRefreshRecord(found) : undefined;
+  }
+
   async revoke(id: string, replacedById: string | undefined): Promise<void> {
     await this.repo.update(id, { revokedAt: new Date(), replacedById });
   }

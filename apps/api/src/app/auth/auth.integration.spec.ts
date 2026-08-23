@@ -134,6 +134,19 @@ class FakeRefreshStore extends RefreshTokenStore {
     });
   }
 
+  findById(id: string): Promise<RefreshTokenRecord | undefined> {
+    const found = this.rows.find((t) => t.id === id);
+    if (!found) return Promise.resolve(undefined);
+    return Promise.resolve({
+      id: found.id,
+      userId: found.userId,
+      expiresAt: found.expiresAt,
+      revokedAt: found.revokedAt,
+      replacedById: found.replacedById,
+      sessionId: found.sessionId,
+    });
+  }
+
   revoke(id: string, replacedById: string | undefined): Promise<void> {
     const found = this.rows.find((t) => t.id === id);
     if (found) {
@@ -389,6 +402,26 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
       } finally {
         clock.offsetMs = 0;
       }
+    });
+
+    it('rejects a spent refresh cookie inside the reuse interval once the successor is logged out', async () => {
+      const { cookies: first } = await signIn();
+
+      const refreshRes = await request(server)
+        .post('/auth/refresh')
+        .set('Cookie', cookieHeader(first))
+        .expect(200);
+      const second = parseCookies(refreshRes);
+
+      await request(server)
+        .post('/auth/logout')
+        .set('Cookie', cookieHeader(second))
+        .expect(204);
+
+      await request(server)
+        .post('/auth/refresh')
+        .set('Cookie', cookieHeader(first))
+        .expect(401);
     });
 
     it('rejects a request with no refresh cookie', async () => {
