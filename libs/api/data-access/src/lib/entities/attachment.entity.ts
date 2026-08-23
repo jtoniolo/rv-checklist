@@ -25,6 +25,14 @@ export class AttachmentEntity {
   @Column({ name: 'stop_id', type: 'uuid' })
   stopId!: string;
 
+  // The owning rig, denormalized from the stop's trip (ADR-0028): PowerSync
+  // sync-rule queries cannot join, so the per-rig bucket key rides on the row
+  // itself. Set on create, immutable after — attachments never change stops.
+  // Indexed because it is the sync buckets' filter column.
+  @Index()
+  @Column({ name: 'rig_id', type: 'uuid' })
+  rigId!: string;
+
   @Column({ type: 'text' })
   filename!: string;
 

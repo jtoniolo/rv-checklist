@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
   Id,
-  Stop,
+  StoredStop,
   Trip,
   TripRepository as TripRepositoryPort,
 } from '@rv-checklist/domain';
@@ -25,7 +25,7 @@ export abstract class TripRepository implements TripRepositoryPort {
   abstract save(trip: Trip): Promise<Trip>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<Trip[]>;
-  abstract createWithStops(trip: Trip, stops: Stop[]): Promise<Trip>;
+  abstract createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip>;
 }
 
 /** The persisted row (with its timestamps) narrowed to the {@link Trip} wire model. */
@@ -86,7 +86,7 @@ export class TypeOrmTripRepository extends TripRepository {
     return rows.map((row) => toTrip(row));
   }
 
-  async createWithStops(trip: Trip, stops: Stop[]): Promise<Trip> {
+  async createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip> {
     // One transaction (issue #120): stops carry a trip FK, so the trip row is
     // written first and everything rolls back together — a mid-save failure
     // can never strand a stopless trip.

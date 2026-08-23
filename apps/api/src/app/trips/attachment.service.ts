@@ -19,7 +19,8 @@ import {
   maxAttachmentSizeBytes,
   type Attachment,
   type Id,
-  type Stop,
+  type StoredAttachment,
+  type StoredStop,
 } from '@rv-checklist/domain';
 import { ObjectStorage } from '../storage/object-storage.js';
 import { attachmentObjectKey } from './attachment-keys.js';
@@ -60,6 +61,18 @@ export class AttachmentService {
     private readonly storage: ObjectStorage,
   ) {}
 
+  /**
+   * The stored row narrowed to the wire {@link Attachment}: the denormalized
+   * rig_id (ADR-0028) is sync plumbing, never wire data — dropped here so no
+   * read path carries it out.
+   */
+  private toWire({
+    rigId: _rigId,
+    ...attachment
+  }: StoredAttachment): Attachment {
+    return attachment;
+  }
+
   /** Whether the rig exists and belongs to the owner — the single ownership gate. */
   private async ownsRig(ownerId: Id, rigId: Id): Promise<boolean> {
     return (
@@ -68,7 +81,7 @@ export class AttachmentService {
   }
 
   /** The stop if the owner owns it (via its trip's rig), else `NotFound`. */
-  private async ownedStop(ownerId: Id, stopId: Id): Promise<Stop> {
+  private async ownedStop(ownerId: Id, stopId: Id): Promise<StoredStop> {
     const stop = await this.stops.findById(stopId);
     if (stop) {
       const trip = await this.trips.findById(stop.tripId);
@@ -80,7 +93,10 @@ export class AttachmentService {
   }
 
   /** The attachment if the owner owns it (via its stop's trip's rig), else `NotFound`. */
-  private async ownedAttachment(ownerId: Id, id: Id): Promise<Attachment> {
+  private async ownedAttachment(
+    ownerId: Id,
+    id: Id,
+  ): Promise<StoredAttachment> {
     const attachment = await this.attachments.findById(id);
     if (attachment) {
       const stop = await this.stops.findById(attachment.stopId);
@@ -123,9 +139,13 @@ export class AttachmentService {
         `Attachment exceeds the ${String(maxAttachmentSizeBytes)}-byte (15 MB) cap`,
       );
     }
-    const attachment: Attachment = {
+    const attachment: StoredAttachment = {
       id: randomUUID(),
       stopId: stop.id,
+      // The owning rig's id, denormalized for sync (ADR-0028) — the stop
+      // already carries it, so the ownership chain is walked only once;
+      // never client input, immutable after create.
+      rigId: stop.rigId,
       filename: file.filename,
       mimeType: mimeType.data,
       sizeBytes: file.content.byteLength,
@@ -138,7 +158,7 @@ export class AttachmentService {
       file.content,
       attachment.mimeType,
     );
-    return this.attachments.save(attachment);
+    return this.toWire(await this.attachments.save(attachment));
   }
 
   /** The original bytes, streamed, plus the row whose metadata sets the response headers. */
@@ -147,7 +167,7 @@ export class AttachmentService {
     const stored = await this.storage.get(
       attachmentObjectKey(attachment.stopId, attachment.id),
     );
-    return { attachment, body: stored.body };
+    return { attachment: this.toWire(attachment), body: stored.body };
   }
 
   /**
@@ -171,9 +191,11 @@ export class AttachmentService {
       );
     }
     if (attachment.isCampgroundMap === isCampgroundMap) {
-      return attachment;
+      return this.toWire(attachment);
     }
-    return this.attachments.save({ ...attachment, isCampgroundMap });
+    return this.toWire(
+      await this.attachments.save({ ...attachment, isCampgroundMap }),
+    );
   }
 
   /** Hard-delete one attachment: its object goes first, then its row — no orphans either way. */

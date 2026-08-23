@@ -110,6 +110,15 @@ describe('AttachmentService', () => {
       expect(storage.keys()).toEqual([`stops/${aliceStopId}/${attachment.id}`]);
     });
 
+    it("persists the owning rig's id on the stored row, via the stop's own denormalized copy (ADR-0028)", async () => {
+      const { service, attachments, aliceStopId } = await makeServices();
+
+      const attachment = await service.upload(alice, aliceStopId, png());
+
+      const stored = await attachments.findById(attachment.id);
+      expect(stored?.rigId).toBe(aliceRigId);
+    });
+
     it('rejects a type outside the accepted set (ADR-0026)', async () => {
       const { service, storage, aliceStopId } = await makeServices();
 

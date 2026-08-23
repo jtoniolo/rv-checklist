@@ -12,8 +12,8 @@ import {
   tripStatus,
   type CreateTrip,
   type Id,
-  type Stop,
   type StopRead,
+  type StoredStop,
   type Trip,
   type TripRead,
   type UpdateTrip,
@@ -69,8 +69,17 @@ export class TripService {
   }
 
   /** A stored stop widened to the read shape: its attachments' metadata embedded (ADR-0026). */
-  private async toStopRead(stop: Stop): Promise<StopRead> {
-    return { ...stop, attachments: await this.attachments.listByStop(stop.id) };
+  private async toStopRead(stop: StoredStop): Promise<StopRead> {
+    // The denormalized rig_id (ADR-0028) is sync plumbing, never wire data —
+    // dropped here so no read path (REST or MCP) carries it out.
+    const { rigId: _rigId, ...wireStop } = stop;
+    const attachments = await this.attachments.listByStop(stop.id);
+    return {
+      ...wireStop,
+      attachments: attachments.map(
+        ({ rigId: _attachmentRigId, ...attachment }) => attachment,
+      ),
+    };
   }
 
   /** A stored trip widened to the read shape: ordered stops (with attachments), derived status, live checklist ids. */
@@ -107,10 +116,13 @@ export class TripService {
     }
     const { stops, ...tripFields } = input;
     const trip: Trip = { id: randomUUID(), ...tripFields };
-    const initialStops: Stop[] = stops.map((stop, position) => ({
+    const initialStops: StoredStop[] = stops.map((stop, position) => ({
       ...stop,
       id: randomUUID(),
       tripId: trip.id,
+      // The owning rig's id, denormalized for sync (ADR-0028) — always the
+      // trip's own, never client input; immutable after create.
+      rigId: trip.rigId,
       position,
       arrived: false,
     }));

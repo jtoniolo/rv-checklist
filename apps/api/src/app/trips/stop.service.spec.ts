@@ -86,6 +86,16 @@ describe('StopService', () => {
       expect(second.id).not.toBe(first.id);
     });
 
+    it("persists the owning rig's id on the stored stop but keeps it off the read (ADR-0028)", async () => {
+      const { service, stops } = await makeService();
+
+      const created = await service.create(alice, { tripId: aliceTripId });
+
+      const stored = await stops.findById(created.id);
+      expect(stored?.rigId).toBe(aliceRigId);
+      expect(created).not.toHaveProperty('rigId');
+    });
+
     it('refuses to create a stop on a trip the owner does not own', async () => {
       const { service } = await makeService();
 
