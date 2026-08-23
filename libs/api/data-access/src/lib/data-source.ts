@@ -2,6 +2,7 @@ import { type DataSourceOptions } from 'typeorm';
 import { AttachmentEntity } from './entities/attachment.entity.js';
 import { ChecklistEntity } from './entities/checklist.entity.js';
 import { EquipmentItemEntity } from './entities/equipment-item.entity.js';
+import { IdempotencyKeyEntity } from './entities/idempotency-key.entity.js';
 import { LogEntryEntity } from './entities/log-entry.entity.js';
 import { MaintenanceTaskEntity } from './entities/maintenance-task.entity.js';
 import { McpTokenEntity } from './entities/mcp-token.entity.js';
@@ -41,6 +42,7 @@ import { Attachments1721002600000 } from './migrations/1721002600000-attachments
 import { StopLegKmManual1721002700000 } from './migrations/1721002700000-stop-leg-km-manual.js';
 import { RigDimensions1721002800000 } from './migrations/1721002800000-rig-dimensions.js';
 import { StopAttachmentRigId1721002900000 } from './migrations/1721002900000-stop-attachment-rig-id.js';
+import { IdempotencyKeys1721003000000 } from './migrations/1721003000000-idempotency-keys.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -69,6 +71,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       TripEntity,
       StopEntity,
       AttachmentEntity,
+      IdempotencyKeyEntity,
     ],
     migrations: [
       Baseline1721000000000,
@@ -101,6 +104,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       StopLegKmManual1721002700000,
       RigDimensions1721002800000,
       StopAttachmentRigId1721002900000,
+      IdempotencyKeys1721003000000,
     ],
     migrationsRun: true,
     synchronize: false,

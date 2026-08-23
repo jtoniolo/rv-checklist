@@ -23,3 +23,5 @@ export * from './lib/entities/trip.entity.js';
 export * from './lib/entities/stop.entity.js';
 export * from './lib/attachment.repository.js';
 export * from './lib/entities/attachment.entity.js';
+export * from './lib/idempotency-key.repository.js';
+export * from './lib/entities/idempotency-key.entity.js';
