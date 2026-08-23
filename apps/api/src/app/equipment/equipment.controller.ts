@@ -15,6 +15,7 @@ import type { EquipmentItem, Owner } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import {
   CreateEquipmentItemDto,
   EquipmentItemDto,
@@ -56,8 +57,9 @@ export class EquipmentController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateEquipmentItemDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<EquipmentItem> {
-    return this.equipment.update(owner.id, id, body);
+    return this.equipment.update(owner.id, id, body, editedAt);
   }
 
   @Delete(':id')

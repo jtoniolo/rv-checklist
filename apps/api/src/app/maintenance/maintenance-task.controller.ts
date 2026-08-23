@@ -15,6 +15,7 @@ import type { MaintenanceTask, Owner } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import { MaintenanceTaskService } from './maintenance-task.service.js';
 import {
   CreateMaintenanceTaskDto,
@@ -76,8 +77,9 @@ export class MaintenanceTaskController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateMaintenanceTaskDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<MaintenanceTask> {
-    return this.tasks.update(owner.id, id, body);
+    return this.tasks.update(owner.id, id, body, editedAt);
   }
 
   /** Delete one of the owner's tasks. */

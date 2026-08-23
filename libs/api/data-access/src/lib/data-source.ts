@@ -43,6 +43,7 @@ import { StopLegKmManual1721002700000 } from './migrations/1721002700000-stop-le
 import { RigDimensions1721002800000 } from './migrations/1721002800000-rig-dimensions.js';
 import { StopAttachmentRigId1721002900000 } from './migrations/1721002900000-stop-attachment-rig-id.js';
 import { IdempotencyKeys1721003000000 } from './migrations/1721003000000-idempotency-keys.js';
+import { EditedAt1721003100000 } from './migrations/1721003100000-edited-at.js';
 
 /**
  * TypeORM wiring (issue #13; ADR-0009 — persistence lives in this lib). One
@@ -105,6 +106,7 @@ export function buildDataSourceOptions(databaseUrl: string): DataSourceOptions {
       RigDimensions1721002800000,
       StopAttachmentRigId1721002900000,
       IdempotencyKeys1721003000000,
+      EditedAt1721003100000,
     ],
     migrationsRun: true,
     synchronize: false,

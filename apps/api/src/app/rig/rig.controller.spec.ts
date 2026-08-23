@@ -22,6 +22,34 @@ const owner: Owner = {
   picture: undefined,
 };
 
+const createRig = async (
+  baseUrl: string,
+  nickname: string,
+): Promise<{ id: string }> => {
+  const created = await fetch(`${baseUrl}/rigs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ nickname }),
+  });
+  expect(created.status).toBe(201);
+  return (await created.json()) as { id: string };
+};
+
+const patchRig = (
+  baseUrl: string,
+  id: string,
+  nickname: string,
+  editedAt?: string,
+): Promise<Response> =>
+  fetch(`${baseUrl}/rigs/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      ...(editedAt !== undefined && { 'x-edited-at': editedAt }),
+    },
+    body: JSON.stringify({ nickname }),
+  });
+
 /**
  * Exercises the rig HTTP surface through the *real* global `ZodSerializerInterceptor`
  * and `ZodValidationPipe`, exactly as `app.module.ts` wires them — the seam the
@@ -80,5 +108,55 @@ describe('RigController over HTTP (through the Zod serializer)', () => {
     expect(body).toEqual([
       expect.objectContaining({ nickname: 'Silver Bullet', ownerId: owner.id }),
     ]);
+  });
+
+  // The X-Edited-At header contract over real HTTP (ADR-0028, issue #141).
+  describe('PATCH under LWW — the X-Edited-At header', () => {
+    it('rejects a malformed header with 400 before the handler runs', async () => {
+      const rig = await createRig(baseUrl, 'Header Guinea Pig');
+
+      const response = await patchRig(
+        baseUrl,
+        rig.id,
+        'Never lands',
+        'yesterday',
+      );
+
+      expect(response.status).toBe(400);
+      const kept = await fetch(`${baseUrl}/rigs/${rig.id}`);
+      expect(await kept.json()).toMatchObject({
+        nickname: 'Header Guinea Pig',
+      });
+    });
+
+    it('no-ops a stale stamp with a normal 200 carrying the current record', async () => {
+      const rig = await createRig(baseUrl, 'Current Name');
+
+      const response = await patchRig(
+        baseUrl,
+        rig.id,
+        'Stale rename',
+        new Date(Date.now() - 60_000).toISOString(),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        nickname: 'Current Name',
+      });
+    });
+
+    it('applies a newer stamp', async () => {
+      const rig = await createRig(baseUrl, 'Old Name');
+
+      const response = await patchRig(
+        baseUrl,
+        rig.id,
+        'New Name',
+        new Date(Date.now() + 60_000).toISOString(),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ nickname: 'New Name' });
+    });
   });
 });

@@ -15,6 +15,7 @@ import type { Owner, TripRead } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import { TripService } from './trip.service.js';
 import { CreateTripDto, TripDto, UpdateTripDto } from './trips.dto.js';
 
@@ -67,8 +68,9 @@ export class TripController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateTripDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<TripRead> {
-    return this.trips.update(owner.id, id, body);
+    return this.trips.update(owner.id, id, body, editedAt);
   }
 
   /** Delete a trip — its stops go with it; its runs are unlinked, never deleted. */

@@ -66,6 +66,7 @@ export class EquipmentService {
     ownerId: Id,
     id: Id,
     changes: UpdateEquipmentItem,
+    editedAt?: Date,
   ): Promise<EquipmentItem> {
     const next: EquipmentItem = { ...(await this.get(ownerId, id)) };
     if (changes.name !== undefined) next.name = changes.name;
@@ -81,7 +82,13 @@ export class EquipmentService {
     if (changes.costCents === null) next.costCents = undefined;
     else if (changes.costCents !== undefined)
       next.costCents = changes.costCents;
-    return this.items.save(next);
+    if (editedAt === undefined) {
+      return this.items.save(next);
+    }
+    // Per-record LWW (ADR-0028, issue #141): a stale stamp no-ops to the
+    // current record.
+    const { record } = await this.items.saveIfNewer(next, editedAt);
+    return record;
   }
 
   async remove(ownerId: Id, id: Id): Promise<void> {

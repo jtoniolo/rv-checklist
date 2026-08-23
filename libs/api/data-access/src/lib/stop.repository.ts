@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
+  ConditionalWrite,
   Id,
   StoredStop,
   StopRepository as StopRepositoryPort,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { StopEntity } from './entities/stop.entity.js';
 
 /**
@@ -18,6 +19,10 @@ import { StopEntity } from './entities/stop.entity.js';
 export abstract class StopRepository implements StopRepositoryPort {
   abstract findById(id: Id): Promise<StoredStop | undefined>;
   abstract save(stop: StoredStop): Promise<StoredStop>;
+  abstract saveIfNewer(
+    stop: StoredStop,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<StoredStop>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByTrip(tripId: Id): Promise<StoredStop[]>;
 }
@@ -98,8 +103,26 @@ export class TypeOrmStopRepository extends StopRepository {
   }
 
   async save(stop: StoredStop): Promise<StoredStop> {
-    const saved = await this.repo.save(this.repo.create(stopToRow(stop)));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...stopToRow(stop), editedAt: new Date() }),
+    );
     return toStop(saved);
+  }
+
+  async saveIfNewer(
+    stop: StoredStop,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<StoredStop>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = stopToRow(stop);
+    const result = await this.repo.update(
+      { id: stop.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: stop.id });
+    return { applied: (result.affected ?? 0) > 0, record: toStop(current) };
   }
 
   async delete(id: Id): Promise<void> {

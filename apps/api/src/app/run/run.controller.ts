@@ -16,6 +16,7 @@ import type { Owner, Run } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import { CreateRunDto, RunDto, UpdateRunDto } from './run.dto.js';
 import { RunService } from './run.service.js';
 
@@ -92,8 +93,9 @@ export class RunController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateRunDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<Run> {
-    return this.runs.update(owner.id, id, body);
+    return this.runs.update(owner.id, id, body, editedAt);
   }
 
   /** Delete one of the owner's runs (e.g. one started by mistake). */

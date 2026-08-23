@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
+  ConditionalWrite,
   EquipmentItem,
   EquipmentItemRepository as EquipmentItemRepositoryPort,
   Id,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { EquipmentItemEntity } from './entities/equipment-item.entity.js';
 
 /**
@@ -19,6 +20,10 @@ import { EquipmentItemEntity } from './entities/equipment-item.entity.js';
 export abstract class EquipmentItemRepository implements EquipmentItemRepositoryPort {
   abstract findById(id: Id): Promise<EquipmentItem | undefined>;
   abstract save(item: EquipmentItem): Promise<EquipmentItem>;
+  abstract saveIfNewer(
+    item: EquipmentItem,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<EquipmentItem>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<EquipmentItem[]>;
 }
@@ -75,8 +80,29 @@ export class TypeOrmEquipmentItemRepository extends EquipmentItemRepository {
   }
 
   async save(item: EquipmentItem): Promise<EquipmentItem> {
-    const saved = await this.repo.save(this.repo.create(toRow(item)));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...toRow(item), editedAt: new Date() }),
+    );
     return toEquipmentItem(saved);
+  }
+
+  async saveIfNewer(
+    item: EquipmentItem,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<EquipmentItem>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = toRow(item);
+    const result = await this.repo.update(
+      { id: item.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: item.id });
+    return {
+      applied: (result.affected ?? 0) > 0,
+      record: toEquipmentItem(current),
+    };
   }
 
   async delete(id: Id): Promise<void> {

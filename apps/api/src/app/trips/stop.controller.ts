@@ -13,6 +13,7 @@ import type { Owner, StopRead } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import { StopService } from './stop.service.js';
 import {
   CreateStopDto,
@@ -51,8 +52,9 @@ export class StopController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateStopDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<StopRead> {
-    return this.stops.update(owner.id, id, body);
+    return this.stops.update(owner.id, id, body, editedAt);
   }
 
   /** Arrive (or un-arrive) a stop — the operation that maintains the rig's Distance. */

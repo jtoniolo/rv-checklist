@@ -7,6 +7,7 @@ import type { MaintenanceTask } from '../lib/maintenance-task.js';
 import type {
   AttachmentRepository,
   ChecklistRepository,
+  ConditionalWrite,
   EquipmentItemRepository,
   LogEntryRepository,
   MaintenanceTaskRepository,
@@ -31,6 +32,10 @@ function clone<T>(value: T): T {
 }
 
 abstract class InMemoryRepository<T extends { readonly id: Id }> {
+  // Per-record LWW edit times (ADR-0028) — persistence-side bookkeeping the
+  // domain model never carries, mirrored here so `saveIfNewer` behaves as the
+  // TypeORM implementations do.
+  private readonly editTimes = new Map<Id, Date>();
   protected readonly store = new Map<Id, T>();
 
   findById(id: Id): Promise<T | undefined> {
@@ -40,11 +45,30 @@ abstract class InMemoryRepository<T extends { readonly id: Id }> {
 
   save(entity: T): Promise<T> {
     this.store.set(entity.id, clone(entity));
+    this.editTimes.set(entity.id, new Date());
     return Promise.resolve(clone(entity));
+  }
+
+  /** Conditional LWW write — applies only a strictly newer stamp (issue #141). */
+  saveIfNewer(entity: T, editedAt: Date): Promise<ConditionalWrite<T>> {
+    const current = this.store.get(entity.id);
+    if (current === undefined) {
+      return Promise.reject(
+        new Error(`saveIfNewer: no stored record ${entity.id}`),
+      );
+    }
+    const stored = this.editTimes.get(entity.id);
+    if (stored !== undefined && editedAt.getTime() <= stored.getTime()) {
+      return Promise.resolve({ applied: false, record: clone(current) });
+    }
+    this.store.set(entity.id, clone(entity));
+    this.editTimes.set(entity.id, editedAt);
+    return Promise.resolve({ applied: true, record: clone(entity) });
   }
 
   delete(id: Id): Promise<void> {
     this.store.delete(id);
+    this.editTimes.delete(id);
     return Promise.resolve();
   }
 

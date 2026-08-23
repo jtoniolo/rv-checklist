@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
+  ConditionalWrite,
   Id,
   LogEntry,
   LogEntryRepository as LogEntryRepositoryPort,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { LogEntryEntity } from './entities/log-entry.entity.js';
 
 /**
@@ -19,6 +20,10 @@ import { LogEntryEntity } from './entities/log-entry.entity.js';
 export abstract class LogEntryRepository implements LogEntryRepositoryPort {
   abstract findById(id: Id): Promise<LogEntry | undefined>;
   abstract save(entry: LogEntry): Promise<LogEntry>;
+  abstract saveIfNewer(
+    entry: LogEntry,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<LogEntry>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<LogEntry[]>;
   abstract listByTask(taskId: Id): Promise<LogEntry[]>;
@@ -79,8 +84,26 @@ export class TypeOrmLogEntryRepository extends LogEntryRepository {
   }
 
   async save(entry: LogEntry): Promise<LogEntry> {
-    const saved = await this.repo.save(this.repo.create(toRow(entry)));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...toRow(entry), editedAt: new Date() }),
+    );
     return toLogEntry(saved);
+  }
+
+  async saveIfNewer(
+    entry: LogEntry,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<LogEntry>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = toRow(entry);
+    const result = await this.repo.update(
+      { id: entry.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: entry.id });
+    return { applied: (result.affected ?? 0) > 0, record: toLogEntry(current) };
   }
 
   async delete(id: Id): Promise<void> {

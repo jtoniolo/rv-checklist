@@ -90,16 +90,24 @@ export class ChecklistService {
     ownerId: Id,
     id: Id,
     changes: UpdateChecklist,
+    editedAt?: Date,
   ): Promise<Checklist> {
     const existing = await this.get(ownerId, id);
-    return this.checklists.save({
+    const next: Checklist = {
       ...existing,
       ...(changes.name !== undefined && { name: changes.name }),
       ...(changes.tags !== undefined && { tags: changes.tags }),
       ...(changes.steps !== undefined && {
         steps: withStepIds(changes.steps),
       }),
-    });
+    };
+    if (editedAt === undefined) {
+      return this.checklists.save(next);
+    }
+    // Per-record LWW (ADR-0028, issue #141): a stale stamp no-ops to the
+    // current record.
+    const { record } = await this.checklists.saveIfNewer(next, editedAt);
+    return record;
   }
 
   /** Delete one of the owner's checklists. */
