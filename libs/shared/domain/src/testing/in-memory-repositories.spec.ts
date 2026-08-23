@@ -1,4 +1,5 @@
 import type { Checklist } from '../lib/checklist.js';
+import { DuplicateIdError } from '../lib/ports.js';
 import type { Rig } from '../lib/rig.js';
 import { createInMemoryRepositories } from './in-memory-repositories.js';
 
@@ -391,9 +392,11 @@ describe('in-memory repositories', () => {
       const { trips, stops } = createInMemoryRepositories();
       await trips.createWithStops(trip('t1'), [stop('s1', 't1')]);
 
+      // The same DuplicateIdError the SQL repository maps its unique violation
+      // to, so a service catching it behaves the same against either binding.
       await expect(
         trips.createWithStops(trip('t2'), [stop('s1', 't2')]),
-      ).rejects.toThrow('s1');
+      ).rejects.toBeInstanceOf(DuplicateIdError);
       await expect(trips.findById('t2')).resolves.toBeUndefined();
       await expect(stops.listByTrip('t1')).resolves.toHaveLength(1);
     });

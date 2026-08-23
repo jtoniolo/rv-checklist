@@ -43,6 +43,27 @@ export interface InsertResult<T> {
   readonly record: T;
 }
 
+/**
+ * A create carried a client-generated id that is already in use by a row it
+ * cannot adopt as its own replay — today only a reused *stop* id inside a trip
+ * create (ADR-0028, issue #143), where the trip id was free so the write is a
+ * genuine new create naming a stop that exists. The write rolls back whole;
+ * nothing partial lands.
+ *
+ * Distinct from an ordinary {@link Repository.insert} collision, which *is* a
+ * replay and comes back as `created: false`. This one has no outcome but
+ * rejection, and the caller must map it to a **client** error: the offline
+ * upload queue retries a 5xx without cap and only marks an operation
+ * permanently failed on a 4xx, so letting the driver's failure surface as a
+ * 500 would turn a request that can never succeed into an endless retry.
+ */
+export class DuplicateIdError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DuplicateIdError';
+  }
+}
+
 export interface Repository<T> {
   findById(id: Id): Promise<T | undefined>;
   /**
@@ -133,7 +154,7 @@ export interface TripRepository extends Repository<Trip> {
    * {@link Repository.insert} for the pair: a trip id already in use leaves
    * everything untouched and comes back as `created: false`. A *stop* id in
    * use under an otherwise-new trip is not a replay — the client reused an id
-   * — and rejects the whole write.
+   * — and rejects the whole write with {@link DuplicateIdError}.
    */
   createWithStops(
     trip: Trip,

@@ -67,30 +67,81 @@ export class LogEntryService {
   }
 
   /**
-   * The task if the owner owns it (via its rig, ADR-0006), else reject — the
-   * gate for both logging a completion and listing a task's history. A foreign
-   * or missing task is indistinguishable: both are "not found".
+   * The task if the owner owns it (via its rig, ADR-0006), else `undefined` —
+   * a foreign task and a missing one are the same answer.
+   */
+  private async ownedTaskOrUndefined(
+    ownerId: Id,
+    taskId: Id,
+  ): Promise<MaintenanceTask | undefined> {
+    const task = await this.tasks.findById(taskId);
+    return task && (await this.ownsRig(ownerId, task.rigId)) ? task : undefined;
+  }
+
+  /**
+   * The task if the owner owns it, else reject — the gate for both logging a
+   * completion and listing a task's history. A foreign or missing task is
+   * indistinguishable: both are "not found".
    */
   private async ownedTask(ownerId: Id, taskId: Id): Promise<MaintenanceTask> {
-    const task = await this.tasks.findById(taskId);
-    if (!task || !(await this.ownsRig(ownerId, task.rigId))) {
+    const task = await this.ownedTaskOrUndefined(ownerId, taskId);
+    if (!task) {
       throw new NotFoundException('Maintenance task not found');
     }
     return task;
   }
 
   /**
+   * The entry a create already wrote, for a create whose task no longer exists
+   * — the replay of a completed one-time task (ADR-0028's named trap). The task
+   * is gone *because* the first call deleted it, so there is nothing left to
+   * resolve the create against; the stored entry is the proof it succeeded.
+   *
+   * Ownership resolves through the entry's own rig, exactly as {@link get}
+   * does, because the id is client input: a row belonging to someone else is
+   * never handed back and stays indistinguishable from the missing task it
+   * would otherwise have reported. An orphan (`taskId` null — the task was
+   * deleted under ON DELETE SET NULL, issue #28) is the shape this trap leaves
+   * behind, and an orphan no longer records *which* task it was, so ownership
+   * is the whole of the check there; an entry still naming some other, living
+   * task is visibly not this create's and is refused.
+   */
+  private async replayedEntry(
+    ownerId: Id,
+    input: CreateLogEntryWithId,
+  ): Promise<LogEntry> {
+    const entry =
+      input.id === undefined
+        ? undefined
+        : await this.logEntries.findById(input.id);
+    if (
+      entry &&
+      (entry.taskId === null || entry.taskId === input.taskId) &&
+      (await this.ownsRig(ownerId, entry.rigId))
+    ) {
+      return entry;
+    }
+    throw new NotFoundException('Maintenance task not found');
+  }
+
+  /**
    * Record that one of the owner's tasks was performed — the rig comes from
-   * the task. `id` may be the client's own (issue #143); a replayed create
-   * returns the entry already stored and, having written nothing, leaves the
-   * one-time task deletion below to the call that really did the work.
+   * the task. `id` may be the client's own (issue #143): a replayed create
+   * writes nothing and returns the entry already stored, edit time included.
+   * The task is resolved first, but a *missing* task is not the end of the
+   * road — a one-time task deletes itself on completion (below), so the replay
+   * of that very create arrives to find no task, and {@link replayedEntry}
+   * answers it from the entry instead.
    */
   async create(
     ownerId: Id,
     input: CreateLogEntryWithId,
     editedAt?: Date,
   ): Promise<LogEntry> {
-    const task = await this.ownedTask(ownerId, input.taskId);
+    const task = await this.ownedTaskOrUndefined(ownerId, input.taskId);
+    if (task === undefined) {
+      return this.replayedEntry(ownerId, input);
+    }
     assertRequiredValues(input.fields);
     const inserted = await this.logEntries.insert(
       {
@@ -121,6 +172,8 @@ export class LogEntryService {
     // then the task deletes itself. The entry is the permanent record — it
     // outlives the task, kept and orphaned via ON DELETE SET NULL (issue #28),
     // still owned through its rig and labeled by its snapshotted taskName.
+    // Only a call that really wrote deletes: a replay that still finds its task
+    // (the owner re-created it in between) wrote nothing, so it undoes nothing.
     if (inserted.created && task.oneTime) {
       await this.tasks.delete(task.id);
     }

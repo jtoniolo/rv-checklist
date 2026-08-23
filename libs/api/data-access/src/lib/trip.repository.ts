@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type {
-  ConditionalWrite,
-  Id,
-  InsertResult,
-  StoredStop,
-  Trip,
-  TripRepository as TripRepositoryPort,
+import {
+  DuplicateIdError,
+  type ConditionalWrite,
+  type Id,
+  type InsertResult,
+  type StoredStop,
+  type Trip,
+  type TripRepository as TripRepositoryPort,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { StopEntity } from './entities/stop.entity.js';
@@ -170,9 +171,12 @@ export class TypeOrmTripRepository extends TripRepository {
       if (!existing) {
         // The trip id was free, so the collision was a *stop* id: the client
         // reused one, which is not a replay of this create. The transaction
-        // already rolled the whole plan back; surface the violation rather
-        // than inventing an outcome for it.
-        throw error;
+        // already rolled the whole plan back; report it as the client error it
+        // is, so the caller answers 4xx. A raw QueryFailedError would leave the
+        // handler at 500, which the offline upload queue retries forever.
+        throw new DuplicateIdError(
+          'createWithStops: a stop id is already in use',
+        );
       }
       return { created: false, record: toTrip(existing) };
     }

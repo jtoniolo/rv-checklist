@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AttachmentRepository,
   ChecklistRepository,
@@ -9,9 +13,11 @@ import {
   TripRepository,
 } from '@rv-checklist/api-data-access';
 import {
+  DuplicateIdError,
   tripStatus,
   type CreateTripWithId,
   type Id,
+  type InsertResult,
   type StopRead,
   type StoredStop,
   type Trip,
@@ -105,6 +111,30 @@ export class TripService {
   }
 
   /**
+   * {@link TripRepository.createWithStops} with its one rejection turned into
+   * the client error it is. A reused stop id can never be made to work by
+   * sending the same request again, and the offline upload queue (ADR-0028)
+   * retries a 5xx without cap while a 4xx marks the operation failed — so the
+   * status is what stops a doomed create from looping forever. The message
+   * names no id: the caller already supplied it, and confirming which one is
+   * taken would answer a question about a row it may not own.
+   */
+  private async createWithStops(
+    trip: Trip,
+    stops: StoredStop[],
+    editedAt?: Date,
+  ): Promise<InsertResult<Trip>> {
+    try {
+      return await this.trips.createWithStops(trip, stops, editedAt);
+    } catch (error) {
+      if (error instanceof DuplicateIdError) {
+        throw new ConflictException('A stop id is already in use');
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Create a trip — with any initial stops — on one of the owner's rigs, in
    * one atomic save (issue #120). The server positions the stops 0..n-1 in
    * array order and starts each un-arrived (arrival is an explicit operation
@@ -114,7 +144,9 @@ export class TripService {
    * The trip and each initial stop may carry a client-generated id (issue
    * #143), so an offline trip create produces stops the operation queue can
    * name straight away. A re-post of the same trip id returns the stored trip
-   * untouched — one trip, one set of stops, no second copy.
+   * untouched — one trip, one set of stops, no second copy. A *stop* id reused
+   * under a new trip id is no replay, so the whole write is rejected: 409, a
+   * client error, because no retry of it can ever succeed.
    */
   async create(
     ownerId: Id,
@@ -140,7 +172,7 @@ export class TripService {
     );
     return this.toRead(
       adoptCreated(
-        await this.trips.createWithStops(trip, initialStops, editedAt),
+        await this.createWithStops(trip, initialStops, editedAt),
         (stored) => stored.rigId === input.rigId,
         'Trip not found',
       ),

@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import type { Rig } from '@rv-checklist/domain';
 import {
   InMemoryAttachmentRepository,
@@ -19,6 +19,7 @@ const goneChecklistId = '550e8400-e29b-41d4-a716-446655440021';
 // Ids a client minted offline, before the rows ever reached the server.
 const clientTripId = '550e8400-e29b-41d4-a716-446655440077';
 const clientStopId = '550e8400-e29b-41d4-a716-446655440078';
+const secondClientTripId = '550e8400-e29b-41d4-a716-446655440079';
 
 const aliceRig: Rig = {
   id: aliceRigId,
@@ -475,6 +476,62 @@ describe('TripService', () => {
       await service.create(alice, body, new Date(Date.now() - 10_000));
 
       expect(trips.editedAtOf(clientTripId)).toEqual(createdAt);
+    });
+
+    /**
+     * A stop id reused under a *new* trip id replays nothing — the whole write
+     * is refused. The status is the point: the offline upload queue (ADR-0028)
+     * retries a 5xx without cap and only a 4xx marks an operation permanently
+     * failed, so surfacing the database's unique violation as a 500 would loop
+     * a create that can never succeed.
+     */
+    it('rejects a reused stop id as a client error, not a server one', async () => {
+      const { service } = await makeService();
+      await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'First trip',
+        checklistIds: [],
+        id: clientTripId,
+        stops: [{ id: clientStopId, campground: 'Pine Hollow' }],
+      });
+
+      const rejected = service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Second trip, stop id reused',
+        checklistIds: [],
+        id: secondClientTripId,
+        stops: [{ id: clientStopId, campground: 'Elsewhere' }],
+      });
+
+      await expect(rejected).rejects.toBeInstanceOf(ConflictException);
+      await expect(rejected).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('lands no part of a trip whose stop id was reused', async () => {
+      const { service, stops } = await makeService();
+      await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'First trip',
+        checklistIds: [],
+        id: clientTripId,
+        stops: [{ id: clientStopId, campground: 'Pine Hollow' }],
+      });
+
+      await expect(
+        service.create(alice, {
+          rigId: aliceRigId,
+          name: 'Second trip, stop id reused',
+          checklistIds: [],
+          id: secondClientTripId,
+          stops: [{ id: clientStopId, campground: 'Elsewhere' }],
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      await expect(service.list(alice, aliceRigId)).resolves.toHaveLength(1);
+      await expect(stops.findById(clientStopId)).resolves.toMatchObject({
+        tripId: clientTripId,
+        campground: 'Pine Hollow',
+      });
     });
   });
 });

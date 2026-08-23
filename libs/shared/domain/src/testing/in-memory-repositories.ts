@@ -4,18 +4,19 @@ import type { Id } from '../lib/common.js';
 import type { EquipmentItem } from '../lib/equipment.js';
 import type { LogEntry } from '../lib/log-entry.js';
 import type { MaintenanceTask } from '../lib/maintenance-task.js';
-import type {
-  AttachmentRepository,
-  ChecklistRepository,
-  ConditionalWrite,
-  EquipmentItemRepository,
-  InsertResult,
-  LogEntryRepository,
-  MaintenanceTaskRepository,
-  RigRepository,
-  RunRepository,
-  StopRepository,
-  TripRepository,
+import {
+  DuplicateIdError,
+  type AttachmentRepository,
+  type ChecklistRepository,
+  type ConditionalWrite,
+  type EquipmentItemRepository,
+  type InsertResult,
+  type LogEntryRepository,
+  type MaintenanceTaskRepository,
+  type RigRepository,
+  type RunRepository,
+  type StopRepository,
+  type TripRepository,
 } from '../lib/ports.js';
 import type { Rig } from '../lib/rig.js';
 import type { Run } from '../lib/run.js';
@@ -240,11 +241,14 @@ export class InMemoryTripRepository
     }
     // A stop id already in use under a brand-new trip is a reused client id,
     // not a replay — the SQL transaction rolls the whole write back, so the
-    // double refuses it before writing anything either.
+    // double refuses it before writing anything either, raising the same
+    // DuplicateIdError the unique violation is mapped to there.
     for (const stop of stops) {
       if ((await this.stopRepository.findById(stop.id)) !== undefined) {
         await this.delete(trip.id);
-        throw new Error(`createWithStops: stop id ${stop.id} already in use`);
+        throw new DuplicateIdError(
+          'createWithStops: a stop id is already in use',
+        );
       }
     }
     for (const stop of stops) {
