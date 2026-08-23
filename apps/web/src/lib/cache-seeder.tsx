@@ -31,6 +31,11 @@ import { useRef, type JSX, type ReactNode } from 'react';
  * Dispatched synchronously during the first render so child hooks read
  * populated cache entries on both server (SSR) and client (hydration).
  * Each prop is optional — omit what the current page doesn't need.
+ *
+ * On Back/Forward navigation Next.js remounts the page from a cached RSC
+ * payload, so these props can be staler than the RTK Query cache. The seed
+ * helpers guard against that (issue #134): each one no-ops when a fulfilled
+ * entry already exists for its endpoint + argument.
  */
 export interface CacheSeedProps {
   readonly me?: Owner;

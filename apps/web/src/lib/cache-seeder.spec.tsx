@@ -208,6 +208,35 @@ describe('CacheSeeder', () => {
     });
   });
 
+  // Back/Forward navigation remounts the page from a cached (stale) RSC
+  // payload; the seed guard (issue #134) must keep the fresher cache entry.
+  it('does not overwrite a fulfilled entry on remount', async () => {
+    const store = trackedStore();
+    const fresh = { ...rig, nickname: 'Fresh Bullet' };
+    const { unmount } = render(
+      <Provider store={store}>
+        <CacheSeeder rigs={[fresh]}>
+          <span>child</span>
+        </CacheSeeder>
+      </Provider>,
+    );
+    await waitFor(() => {
+      expect(queryData(store, 'listRigs(')).toEqual([fresh]);
+    });
+    unmount();
+
+    render(
+      <Provider store={store}>
+        <CacheSeeder rigs={[rig]}>
+          <span>child</span>
+        </CacheSeeder>
+      </Provider>,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(queryData(store, 'listRigs(')).toEqual([fresh]);
+  });
+
   it('seeds runs by rig', async () => {
     const store = trackedStore();
     const run: Run = {
