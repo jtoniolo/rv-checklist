@@ -1,5 +1,11 @@
-import type { Run } from '@rv-checklist/domain';
-import { api, makeStore, seedSignedIn } from '@rv-checklist/web-data-access';
+import type { Checklist, Run } from '@rv-checklist/domain';
+import {
+  api,
+  makeStore,
+  seedChecklists,
+  seedRun,
+  seedSignedIn,
+} from '@rv-checklist/web-data-access';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { RunDetailView } from './run-detail-view';
@@ -42,18 +48,22 @@ function trackedStore(): ReturnType<typeof makeStore> {
   return store;
 }
 
-function renderView(initialRun: Run = run): void {
+const checklist: Checklist = {
+  id: CHECKLIST_ID,
+  rigId: RIG_ID,
+  name: 'Pre-departure',
+  tags: [],
+  steps: [],
+};
+
+function renderView(seededRun: Run = run): void {
   const store = trackedStore();
   seedSignedIn(store);
+  seedRun(store, seededRun.id, seededRun);
+  seedChecklists(store, RIG_ID, [checklist]);
   render(
     <Provider store={store}>
-      <RunDetailView
-        rigId={RIG_ID}
-        runId={run.id}
-        checklistId={CHECKLIST_ID}
-        title="Pre-departure"
-        initialRun={initialRun}
-      />
+      <RunDetailView rigId={RIG_ID} runId={run.id} />
     </Provider>,
   );
 }
@@ -75,25 +85,27 @@ describe('RunDetailView (issue #58)', () => {
     mockPush.mockClear();
   });
 
-  it('renders step rows from the initial run', () => {
+  it('renders step rows from the seeded run', async () => {
     renderView();
 
-    expect(screen.getByLabelText('Close roof vents')).toBeTruthy();
+    expect(await screen.findByLabelText('Close roof vents')).toBeTruthy();
     expect(screen.getByLabelText('Hitch the sway bars')).toBeTruthy();
   });
 
-  it('shows progress and title', () => {
+  it('shows progress and title', async () => {
     renderView();
 
-    expect(screen.getByRole('heading', { name: 'Pre-departure' })).toBeTruthy();
+    expect(
+      await screen.findByRole('heading', { name: 'Pre-departure' }),
+    ).toBeTruthy();
     expect(screen.getByText('1 of 2')).toBeTruthy();
   });
 
-  it('navigates to the checklist route when the back button is clicked', () => {
+  it('navigates to the checklist route when the back button is clicked', async () => {
     renderView();
 
     fireEvent.click(
-      screen.getByRole('button', { name: '← Back to checklist' }),
+      await screen.findByRole('button', { name: '← Back to checklist' }),
     );
 
     expect(mockPush).toHaveBeenCalledWith(
@@ -101,7 +113,7 @@ describe('RunDetailView (issue #58)', () => {
     );
   });
 
-  it('renders a deep-linked run with all step rows visible', () => {
+  it('renders a deep-linked run with all step rows visible', async () => {
     const deepLinkedRun: Run = {
       ...run,
       steps: [
@@ -115,7 +127,7 @@ describe('RunDetailView (issue #58)', () => {
     };
     renderView(deepLinkedRun);
 
-    expect(screen.getByLabelText('Close roof vents')).toBeTruthy();
+    expect(await screen.findByLabelText('Close roof vents')).toBeTruthy();
     expect(screen.getByLabelText('Hitch the sway bars')).toBeTruthy();
     expect(screen.getByLabelText('Check tire pressure')).toBeTruthy();
     expect(screen.getByText('1 of 3')).toBeTruthy();

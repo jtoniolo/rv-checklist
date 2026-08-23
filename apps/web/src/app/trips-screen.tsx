@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  currentTrip,
+  findCurrentTrip,
   type Id,
   type TripRead,
   type TripStatus,
@@ -58,24 +58,6 @@ function dateRange(trip: TripRead): string {
 }
 
 // ── The fixed order (issue #108 resolution) ─────────────────────────────────
-
-/**
- * The domain's `currentTrip` over `TripRead`s. The adapter only narrows each
- * stop to the fields the helper reads (`exactOptionalPropertyTypes` rejects
- * the wider Zod-inferred stop shape directly).
- */
-function findCurrentTrip(trips: readonly TripRead[]): TripRead | undefined {
-  return currentTrip(
-    trips.map((trip) => ({
-      trip,
-      stops: trip.stops.map((s) => ({
-        position: s.position,
-        arrived: s.arrived,
-        ...(s.arrivalDate !== undefined && { arrivalDate: s.arrivalDate }),
-      })),
-    })),
-  )?.trip;
-}
 
 /**
  * One fixed order, no sort control: the current trip pinned on top (domain

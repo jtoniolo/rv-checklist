@@ -20,22 +20,13 @@ export default async function RunDetailPage({
     notFound();
   }
 
-  const checklist = checklists.find((c) => c.id === run.checklistId);
-  const title = checklist?.name ?? 'Run';
-
   return (
     <CacheSeeder
       run={{ runId, data: run }}
       checklists={{ rigId, data: checklists }}
       tasks={{ rigId, data: tasks }}
     >
-      <RunDetailView
-        rigId={rigId}
-        runId={runId}
-        checklistId={run.checklistId}
-        title={title}
-        initialRun={run}
-      />
+      <RunDetailView rigId={rigId} runId={runId} />
     </CacheSeeder>
   );
 }

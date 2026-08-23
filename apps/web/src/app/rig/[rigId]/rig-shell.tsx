@@ -1,7 +1,12 @@
 'use client';
 
-import type { Id, Owner, Rig } from '@rv-checklist/domain';
-import { selectThemeKey, useAppSelector } from '@rv-checklist/web-data-access';
+import type { Id, Rig } from '@rv-checklist/domain';
+import {
+  selectThemeKey,
+  useAppSelector,
+  useListRigsQuery,
+  useMeQuery,
+} from '@rv-checklist/web-data-access';
 import {
   Select,
   SelectContent,
@@ -34,20 +39,20 @@ const frameClass = 'mx-auto w-full max-w-5xl px-4 lg:px-6';
  * The signed-in shell for rig-scoped routes (ADR-0018). Same visual design
  * as the original AppShell (issue #22): sticky header with brand, inline
  * nav, rig selector, and avatar on desktop; rig pill and bottom tab bar on
- * mobile. Receives owner and rigs as props from the server layout so the
- * header renders in the SSR HTML. Navigations use Next.js Link/router.
+ * mobile. Reads the owner and rigs from RTK Query hooks (issue #135) — the
+ * server layout seeds both, so the header still renders in the SSR HTML,
+ * and a rig rename updates the pill and selector via tag invalidation with
+ * no navigation. Navigations use Next.js Link/router.
  */
 export function RigShell({
   rigId,
-  owner,
-  rigs,
   children,
 }: {
   readonly rigId: Id;
-  readonly owner: Owner;
-  readonly rigs: readonly Rig[];
   readonly children: ReactNode;
 }): JSX.Element {
+  const { data: owner } = useMeQuery();
+  const { data: rigs = [] } = useListRigsQuery();
   const themeKey = useAppSelector(selectThemeKey);
   const vars = useMemo(() => themeFor(themeKey).vars, [themeKey]);
   const activeRig = rigs.find((r) => r.id === rigId);
@@ -123,7 +128,7 @@ export function RigShell({
                   />
                 </div>
               ) : undefined}
-              <AvatarMenu owner={owner} />
+              {owner ? <AvatarMenu owner={owner} /> : undefined}
             </div>
           </div>
         </header>

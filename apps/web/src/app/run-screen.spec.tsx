@@ -59,21 +59,6 @@ function resetStores(): void {
   stores.length = 0;
 }
 
-function renderWithInitialRun(initialRun: Run = run): void {
-  const store = trackedStore();
-  seedSignedIn(store);
-  render(
-    <Provider store={store}>
-      <RunScreen
-        runId={initialRun.id}
-        title="Pre-departure"
-        initialRun={initialRun}
-        onExit={mockExit}
-      />
-    </Provider>,
-  );
-}
-
 function renderWithSeededCache(seedData: Run = run): void {
   const store = trackedStore();
   seedSignedIn(store);
@@ -85,7 +70,7 @@ function renderWithSeededCache(seedData: Run = run): void {
   );
 }
 
-describe('RunScreen — initialRun (SSR path)', () => {
+describe('RunScreen — seeded cache (ADR-0018 Pattern C, issue #135)', () => {
   let fetchSpy: jest.SpyInstance;
 
   beforeEach(() => {
@@ -101,82 +86,7 @@ describe('RunScreen — initialRun (SSR path)', () => {
     mockExit.mockClear();
   });
 
-  it('renders step rows from the server-provided initialRun', () => {
-    renderWithInitialRun();
-
-    expect(screen.getByLabelText('Close roof vents')).toBeTruthy();
-    expect(screen.getByLabelText('Hitch the sway bars')).toBeTruthy();
-    expect(screen.getByText(/Check tire pressure/)).toBeTruthy();
-  });
-
-  it('shows the progress counter', () => {
-    renderWithInitialRun();
-
-    expect(screen.getByText('2 of 3')).toBeTruthy();
-  });
-
-  it('shows the checklist title', () => {
-    renderWithInitialRun();
-
-    expect(screen.getByRole('heading', { name: 'Pre-departure' })).toBeTruthy();
-  });
-
-  it('shows the started-on date', () => {
-    renderWithInitialRun();
-
-    expect(screen.getByText(/Jul 20, 2026/)).toBeTruthy();
-  });
-
-  it('does not show the loading message when initialRun is provided', () => {
-    renderWithInitialRun();
-
-    expect(screen.queryByText('Loading run…')).toBeNull();
-  });
-
-  it('navigates back when the exit button is clicked', () => {
-    renderWithInitialRun();
-
-    fireEvent.click(
-      screen.getByRole('button', { name: '← Back to checklist' }),
-    );
-
-    expect(mockExit).toHaveBeenCalledTimes(1);
-  });
-
-  it('renders a completed run as "All done"', () => {
-    const doneRun: Run = {
-      ...run,
-      steps: run.steps.map((s) => ({ ...s, state: 'complete' as const })),
-    };
-    renderWithInitialRun(doneRun);
-
-    expect(screen.getByText('All done ✓')).toBeTruthy();
-  });
-
-  it('renders skipped steps with the "skipped" label', () => {
-    renderWithInitialRun();
-
-    expect(screen.getByText(/Check tire pressure — skipped/)).toBeTruthy();
-  });
-});
-
-describe('RunScreen — seeded cache (no initialRun)', () => {
-  let fetchSpy: jest.SpyInstance;
-
-  beforeEach(() => {
-    fetchSpy = jest
-      .spyOn(globalThis, 'fetch')
-      .mockRejectedValue(new Error('No network'));
-  });
-
-  afterEach(() => {
-    resetStores();
-    fetchSpy.mockRestore();
-    localStorage.clear();
-    mockExit.mockClear();
-  });
-
-  it('renders steps from the seeded RTK Query cache', async () => {
+  it('renders step rows from the seeded RTK Query cache', async () => {
     renderWithSeededCache();
 
     expect(await screen.findByLabelText('Close roof vents')).toBeTruthy();
@@ -184,9 +94,51 @@ describe('RunScreen — seeded cache (no initialRun)', () => {
     expect(screen.getByText(/Check tire pressure/)).toBeTruthy();
   });
 
-  it('shows progress from the seeded cache', async () => {
+  it('shows the progress counter', async () => {
     renderWithSeededCache();
 
     expect(await screen.findByText('2 of 3')).toBeTruthy();
+  });
+
+  it('shows the checklist title', async () => {
+    renderWithSeededCache();
+
+    expect(
+      await screen.findByRole('heading', { name: 'Pre-departure' }),
+    ).toBeTruthy();
+  });
+
+  it('shows the started-on date', async () => {
+    renderWithSeededCache();
+
+    expect(await screen.findByText(/Jul 20, 2026/)).toBeTruthy();
+  });
+
+  it('navigates back when the exit button is clicked', async () => {
+    renderWithSeededCache();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '← Back to checklist' }),
+    );
+
+    expect(mockExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a completed run as "All done"', async () => {
+    const doneRun: Run = {
+      ...run,
+      steps: run.steps.map((s) => ({ ...s, state: 'complete' as const })),
+    };
+    renderWithSeededCache(doneRun);
+
+    expect(await screen.findByText('All done ✓')).toBeTruthy();
+  });
+
+  it('renders skipped steps with the "skipped" label', async () => {
+    renderWithSeededCache();
+
+    expect(
+      await screen.findByText(/Check tire pressure — skipped/),
+    ).toBeTruthy();
   });
 });

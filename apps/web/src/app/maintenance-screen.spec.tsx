@@ -170,6 +170,7 @@ function fakeApi(request: Request): Response {
   const url = new URL(request.url);
   const route = `${request.method} ${url.pathname}`;
 
+  if (route === 'GET /rigs') return jsonResponse([rig]);
   if (route === 'GET /tasks') return jsonResponse(tasks);
   if (route === 'GET /log-entries') {
     const taskId = url.searchParams.get('taskId');
@@ -206,12 +207,7 @@ function renderScreen(openTaskId?: string, view?: string): void {
   mockPush.mockClear();
   render(
     <StoreProvider>
-      <MaintenanceScreen
-        activeRig={rig}
-        rigId={rig.id}
-        openTaskId={openTaskId}
-        view={view}
-      />
+      <MaintenanceScreen rigId={rig.id} openTaskId={openTaskId} view={view} />
     </StoreProvider>,
   );
 }

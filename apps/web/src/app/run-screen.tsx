@@ -45,28 +45,25 @@ import { formatIsoDate } from './dates';
  * number fields save on blur to avoid a request per keystroke. The run is loaded
  * fresh on open so resuming always shows the server's truth.
  *
- * When rendered inside a server-component page, pass `initialRun` so the first
- * synchronous render already contains steps and progress in the HTML. The RTK
- * Query hook takes over once the seeded cache resolves after hydration; until
- * then `initialRun` is the source of truth (the `currentData ?? initialRun`
- * pattern avoids a "Loading run…" flash during SSR).
+ * The run comes from {@link useGetRunQuery} alone (ADR-0018, issue #135) —
+ * a server-component page seeds the cache so the first render already
+ * contains steps and progress in the SSR HTML, with no initial-vs-live prop
+ * dance.
  */
 export function RunScreen({
   runId,
   title,
-  initialRun,
   exitLabel = '← Back to checklist',
   onExit,
 }: {
   readonly runId: Id;
   /** The checklist's name — the run itself holds only ids. */
   readonly title: string;
-  readonly initialRun?: Run;
   readonly exitLabel?: string;
   readonly onExit: () => void;
 }): JSX.Element {
   const query = useGetRunQuery(runId);
-  const run = query.currentData ?? initialRun;
+  const run = query.data;
 
   if (run) {
     return (

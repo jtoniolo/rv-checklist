@@ -6,7 +6,7 @@ import type {
   Run,
 } from '@rv-checklist/domain';
 import { api, makeStore } from '@rv-checklist/web-data-access';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { CacheSeeder } from './cache-seeder';
 
@@ -68,7 +68,9 @@ describe('CacheSeeder', () => {
     localStorage.clear();
   });
 
-  it('seeds the me data into the RTK Query cache', async () => {
+  // Seeding dispatches a plain synchronous action, so the cache must hold
+  // the data as soon as the seeding render returns — no flushing needed.
+  it('seeds the me data into the RTK Query cache', () => {
     const store = trackedStore();
     render(
       <Provider store={store}>
@@ -78,14 +80,10 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      expect((queryData(store, 'me(') as Owner).email).toBe(
-        'owner@example.com',
-      );
-    });
+    expect((queryData(store, 'me(') as Owner).email).toBe('owner@example.com');
   });
 
-  it('seeds rigs into the RTK Query cache', async () => {
+  it('seeds rigs into the RTK Query cache', () => {
     const store = trackedStore();
     render(
       <Provider store={store}>
@@ -95,14 +93,12 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      const data = queryData(store, 'listRigs(') as Rig[];
-      expect(data).toHaveLength(1);
-      expect(data[0]?.nickname).toBe('Silver Bullet');
-    });
+    const data = queryData(store, 'listRigs(') as Rig[];
+    expect(data).toHaveLength(1);
+    expect(data[0]?.nickname).toBe('Silver Bullet');
   });
 
-  it('seeds tasks keyed by rig id', async () => {
+  it('seeds tasks keyed by rig id', () => {
     const store = trackedStore();
     render(
       <Provider store={store}>
@@ -112,14 +108,12 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      const data = queryData(store, 'listTasks(') as MaintenanceTask[];
-      expect(data).toHaveLength(1);
-      expect(data[0]?.name).toBe('Change oil');
-    });
+    const data = queryData(store, 'listTasks(') as MaintenanceTask[];
+    expect(data).toHaveLength(1);
+    expect(data[0]?.name).toBe('Change oil');
   });
 
-  it('seeds log entries keyed by rig id', async () => {
+  it('seeds log entries keyed by rig id', () => {
     const store = trackedStore();
     render(
       <Provider store={store}>
@@ -129,9 +123,7 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      expect(queryData(store, 'listLogEntriesByRig(')).toEqual([]);
-    });
+    expect(queryData(store, 'listLogEntriesByRig(')).toEqual([]);
   });
 
   it('renders its children', () => {
@@ -160,7 +152,7 @@ describe('CacheSeeder', () => {
     expect(store.getState().auth.isAuthenticated).toBe(true);
   });
 
-  it('seeds checklists keyed by rig id', async () => {
+  it('seeds checklists keyed by rig id', () => {
     const store = trackedStore();
     const checklist: Checklist = {
       id: '550e8400-e29b-41d4-a716-446655440020',
@@ -177,14 +169,12 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      const data = queryData(store, 'listChecklists(') as Checklist[];
-      expect(data).toHaveLength(1);
-      expect(data[0]?.name).toBe('Pre-departure');
-    });
+    const data = queryData(store, 'listChecklists(') as Checklist[];
+    expect(data).toHaveLength(1);
+    expect(data[0]?.name).toBe('Pre-departure');
   });
 
-  it('seeds a single run by id', async () => {
+  it('seeds a single run by id', () => {
     const store = trackedStore();
     const run: Run = {
       id: '550e8400-e29b-41d4-a716-446655440040',
@@ -201,16 +191,14 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      const data = queryData(store, 'getRun(') as Run;
-      expect(data.id).toBe(run.id);
-      expect(data.startedOn).toBe('2026-07-20');
-    });
+    const data = queryData(store, 'getRun(') as Run;
+    expect(data.id).toBe(run.id);
+    expect(data.startedOn).toBe('2026-07-20');
   });
 
   // Back/Forward navigation remounts the page from a cached (stale) RSC
   // payload; the seed guard (issue #134) must keep the fresher cache entry.
-  it('does not overwrite a fulfilled entry on remount', async () => {
+  it('does not overwrite a fulfilled entry on remount', () => {
     const store = trackedStore();
     const fresh = { ...rig, nickname: 'Fresh Bullet' };
     const { unmount } = render(
@@ -220,9 +208,7 @@ describe('CacheSeeder', () => {
         </CacheSeeder>
       </Provider>,
     );
-    await waitFor(() => {
-      expect(queryData(store, 'listRigs(')).toEqual([fresh]);
-    });
+    expect(queryData(store, 'listRigs(')).toEqual([fresh]);
     unmount();
 
     render(
@@ -233,11 +219,10 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(queryData(store, 'listRigs(')).toEqual([fresh]);
   });
 
-  it('seeds runs by rig', async () => {
+  it('seeds runs by rig', () => {
     const store = trackedStore();
     const run: Run = {
       id: '550e8400-e29b-41d4-a716-446655440040',
@@ -254,10 +239,8 @@ describe('CacheSeeder', () => {
       </Provider>,
     );
 
-    await waitFor(() => {
-      const data = queryData(store, 'listRunsByRig(') as Run[];
-      expect(data).toHaveLength(1);
-      expect(data[0]?.startedOn).toBe('2026-07-20');
-    });
+    const data = queryData(store, 'listRunsByRig(') as Run[];
+    expect(data).toHaveLength(1);
+    expect(data[0]?.startedOn).toBe('2026-07-20');
   });
 });
