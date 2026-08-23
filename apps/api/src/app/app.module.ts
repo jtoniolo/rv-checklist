@@ -3,13 +3,19 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { buildDataSourceOptions } from '@rv-checklist/api-data-access';
+import {
+  buildDataSourceOptions,
+  IdempotencyKeyEntity,
+  IdempotencyKeyRepository,
+  TypeOrmIdempotencyKeyRepository,
+} from '@rv-checklist/api-data-access';
 import { ZodSerializerInterceptor, ZodValidationPipe } from 'nestjs-zod';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ChecklistModule } from './checklist/checklist.module.js';
 import { HttpExceptionFilter } from './common/http-exception.filter.js';
+import { IdempotencyInterceptor } from './common/idempotency.interceptor.js';
 import { validateEnv, type Env } from './config/env.js';
 import { EquipmentModule } from './equipment/equipment.module.js';
 import { MaintenanceModule } from './maintenance/maintenance.module.js';
@@ -46,6 +52,9 @@ import { TripsModule } from './trips/trips.module.js';
         buildDataSourceOptions(config.get('DATABASE_URL', { infer: true })),
     }),
     ScheduleModule.forRoot(),
+    // The idempotency interceptor's dedup ledger (issue #142) — global, so it
+    // is wired here rather than in a feature module.
+    TypeOrmModule.forFeature([IdempotencyKeyEntity]),
     AuthModule,
     RigModule,
     ChecklistModule,
@@ -64,7 +73,15 @@ import { TripsModule } from './trips/trips.module.js';
   providers: [
     AppService,
     { provide: APP_PIPE, useClass: ZodValidationPipe },
+    // Registered before the Zod serializer so it is the *outermost*
+    // interceptor (issue #142): it records the serialized wire body, and a
+    // replayed Idempotency-Key short-circuits serialization entirely.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ZodSerializerInterceptor },
+    {
+      provide: IdempotencyKeyRepository,
+      useClass: TypeOrmIdempotencyKeyRepository,
+    },
     // Logs the detail behind server-side failures (nestjs-zod serialization
     // errors and other 5xx) that Nest's default filter otherwise swallows.
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
