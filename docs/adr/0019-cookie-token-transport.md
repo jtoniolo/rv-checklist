@@ -17,7 +17,7 @@ being phased out). ADR-0012 placed both the access JWT and the refresh token
 in the browser as bearer credentials, noting that the "marginal XSS hardening
 of an httpOnly-cookie BFF was judged not worth a proxy tier."
 
-The deployment topology has since been confirmed against the home lab IaC: the
+The deployment topology has since been confirmed against the private deployment configuration (ADR-0020): the
 API is a subdomain of the web host (`api.rv.<apex>` under `rv.<apex>`). They
 share a common parent domain. Cookies scoped to `Domain=.rv.<apex>` are
 first-party on both hosts, dissolving the cross-origin objection. With that

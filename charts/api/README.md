@@ -36,7 +36,7 @@ materialises (e.g. via HashiCorp Vault). It must supply exactly these keys:
 | `S3_SECRET_ACCESS_KEY` | Garage secret key paired with `S3_ACCESS_KEY_ID`.                   |
 
 **Vault mapping (deploy note):** the Vault keys (the KV path is in the
-operator's private home lab config, per ADR-0020) are lowercase, and one of
+operator's private deployment config, per ADR-0020) are lowercase, and one of
 them is *not* a plain lowercase→uppercase rename:
 
 | Vault key          | Secret / env var key   |

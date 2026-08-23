@@ -1,4 +1,4 @@
-# 20. Public-repo / home lab deployment split
+# 20. Public repo / private deployment split
 
 Date: 2026-08-15
 
@@ -12,9 +12,8 @@ Supersedes [ADR-0001](0001-deployment-and-connectivity.md) (topology).
 
 The owner intends to publish this repo as a portfolio piece. ADR-0001 described
 the deployment topology — SSR Worker, NestJS in k3s via Cloudflare Tunnel —
-but the repo already contains references to the home lab's specific hosts,
-accounts, and Cloudflare configuration. Publishing it would expose home lab
-infrastructure details.
+but a public repo must not carry environment-specific detail: hosts, accounts,
+or provider configuration identify the operator's infrastructure.
 
 At the same time, the deployment target (a Cloudflare Worker via OpenNext for
 the web, k3s for the API) remains correct. The question is where the boundary
@@ -27,36 +26,38 @@ tunnel routes, env injection).
 - **This repo carries only generic build configuration.** OpenNext and wrangler
   config files describe *how* to build and bundle the Worker, but contain no
   hostnames, Cloudflare account IDs, route patterns, or environment values.
-  Public build-time values are injected at build time by the CI job that runs
-  in the home lab repo.
-- **The home lab IaC repo owns all environment-specific deployment.**
-  Terraform declares DNS records and custom-domain attachment. A CI job in that
-  repo checks out this repo at a release tag, injects the real environment
-  (public build-time values are inlined at build, so the build runs where the
-  env lives), builds with OpenNext, and uploads the result with wrangler.
-  Terraform declares where the Worker lives; wrangler puts the code there.
-- **No home-lab-identifying content in this repo.** Hostnames, account IDs,
-  tunnel UUIDs, route patterns, and env values must not appear in source,
-  configuration, CI files, or documentation.
+  Public build-time values are injected at build time by the CI job that
+  deploys.
+- **A private repository owns all environment-specific deployment.** It
+  declares DNS records and custom-domain attachment, checks out this repo at a
+  release tag, injects the real environment (public build-time values are
+  inlined at build, so the build runs where the env lives), builds with
+  OpenNext, and uploads the result with wrangler. This repo never references
+  that repository beyond this generic statement.
+- **No environment-identifying content in this repo.** Hostnames, account IDs,
+  tunnel UUIDs, route patterns, env values, and any naming that identifies the
+  operator's infrastructure must not appear in source, configuration, CI
+  files, documentation, or the issue tracker.
 
 ## Alternatives considered
 
 - **Keep deployment config in this repo, strip secrets before publishing** —
-  rejected. Scrubbing is error-prone, and any missed reference leaks home lab
-  infrastructure. A clean split is safer than a filter.
-- **Monorepo containing both app and IaC** — rejected. The IaC repo manages
-  many home lab services; folding one app into it would break its scope, and
-  folding all IaC into this repo would make it unpublishable.
+  rejected. Scrubbing is error-prone, and any missed reference leaks
+  infrastructure detail. A clean split is safer than a filter.
+- **Monorepo containing both app and IaC** — rejected. The private repository
+  manages more than this app; folding one app into it would break its scope,
+  and folding all IaC into this repo would make it unpublishable.
 - **Environment-variable-only separation (config in repo, values external)** —
-  partially adopted (wrangler config is generic), but hostnames in Terraform
-  resources and CI scripts still belong in the IaC repo, not here.
+  partially adopted (wrangler config is generic), but hostnames in
+  infrastructure resources and CI scripts still belong in the private
+  repository, not here.
 
 ## Consequences
 
 - Publishing this repo requires no scrubbing — it is clean by construction.
-- Deploying the app requires the home lab IaC repo's CI pipeline; this repo
-  alone cannot deploy to a live environment.
-- Release tags in this repo are the contract between the two repos: the IaC
-  CI job checks out a tag, builds, and deploys.
+- This repo alone cannot deploy to a live environment; deployment happens
+  from the private repository's CI pipeline.
+- Release tags in this repo are the contract between the two repos: the
+  deploying CI job checks out a tag, builds, and deploys.
 - Contributors (or the owner on a new machine) can develop and test locally
-  with `.env` files without needing the home lab IaC repo.
+  with `.env` files without needing anything beyond this repo.

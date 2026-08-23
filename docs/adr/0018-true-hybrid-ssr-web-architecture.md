@@ -74,7 +74,7 @@ page layer so that feature components read only from hooks.
 ## Consequences
 
 - Async server pages fetch the owner's data on every request; app availability
-  remains tied to home lab uptime (same as ADR-0001).
+  remains tied to the self-hosted API's uptime (same as ADR-0001).
 - The shared server-side API helper and the cache seeder are new seams that need
   testing; async server pages stay thin glue (fetch, seed, render) with no
   dedicated tests.

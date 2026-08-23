@@ -26,7 +26,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0017](0017-task-tags-denormalized-array.md) | Task tags as a denormalized text array |
 | [0018](0018-true-hybrid-ssr-web-architecture.md) | True hybrid SSR web architecture — server-rendered pages, Pattern C data seeding, rig-scoped routes (supersedes 0001 web-tier/data-path, amends 0011) |
 | [0019](0019-cookie-token-transport.md) | Cookie token transport — httpOnly cookies scoped to `.rv.<apex>` (amends 0002, 0012) |
-| [0020](0020-public-repo-deployment-split.md) | Public-repo / home lab deployment split — generic config here, IaC specifics in home lab repo (supersedes 0001 topology) |
+| [0020](0020-public-repo-deployment-split.md) | Public repo / private deployment split — generic config here, environment specifics deploy from a private repository (supersedes 0001 topology) |
 | [0021](0021-mcp-server-inside-api.md) | MCP server inside the API — stateless `POST /api/mcp` via pinned `@rekog/mcp-nest`, direct service calls, no OAuth advertised |
 | [0022](0022-mcp-token-lifecycle.md) | MCP token lifecycle — opaque `rvmcp_` secret, hashed at rest, show-once, one active token, non-expiring, managed in an avatar-menu dialog |
 | [0023](0023-mcp-tool-surface.md) | MCP tool surface — 15 tools: reads on every resource with server-computed `dueStatus`, writes on checklists and maintenance tasks only; tools only, no resources or prompts |

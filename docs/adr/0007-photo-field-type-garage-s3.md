@@ -11,7 +11,7 @@ Extends the field `type` set in ADR-0004.
 ## Context
 
 Photos are useful on maintenance records (and, later, on the deferred Problem
-entity — the "true record of the RV"). The home lab already runs Garage (S3) and
+entity — the "true record of the RV"). The operator already runs Garage (S3) and
 Immich, so attachment storage costs little to add.
 
 ## Decision

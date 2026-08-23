@@ -192,7 +192,7 @@ queued deltas; the residual few-km race is accepted and owner-correctable).
 - **Ops:** a PowerSync service container joins both deployments;
   `wal_level=logical` (restart) plus a replication role and a `powersync`
   publication on Postgres; a daily compact job. Generic config lives here,
-  IaC specifics in the home lab repo (ADR-0020).
+  environment-specific deployment lives in the private repository (ADR-0020).
 - **Schema:** `rig_id` denormalized onto stops and attachments; a per-record
   `editedAt` LWW column; an idempotency-key dedup table; create endpoints
   accept optional client ids.
