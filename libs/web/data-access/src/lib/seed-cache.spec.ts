@@ -50,11 +50,6 @@ function trackedStore(): AppStore {
   return store;
 }
 
-/** Flush the microtask in which `upsertQueryData` resolves. */
-function settle(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 function queryData(store: AppStore, prefix: string): unknown {
   const { api: apiState } = store.getState();
   const key = Object.keys(apiState.queries).find((k) => k.startsWith(prefix));
@@ -234,22 +229,22 @@ describe('seed-cache guard (issue #134)', () => {
   });
 
   describe.each(cases)('$name', ({ prefix, seedFresh, seedStale, fresh }) => {
-    it('seeds an empty store', async () => {
+    // `upsertQueryEntries` is a plain synchronous action, so the entry must
+    // be fulfilled immediately after the seed call — that is what puts the
+    // data in the SSR HTML (ADR-0018).
+    it('seeds an empty store synchronously', () => {
       const store = trackedStore();
 
       seedFresh(store);
-      await settle();
 
       expect(queryData(store, prefix)).toEqual(fresh);
     });
 
-    it('does not replace a fulfilled entry', async () => {
+    it('does not replace a fulfilled entry', () => {
       const store = trackedStore();
       seedFresh(store);
-      await settle();
 
       seedStale(store);
-      await settle();
 
       expect(queryData(store, prefix)).toEqual(fresh);
     });
@@ -263,7 +258,6 @@ describe('seed-cache guard (issue #134)', () => {
     ).toBe(true);
 
     seedTrips(store, rigId, [trip(true)]);
-    await settle();
 
     expect(queryData(store, 'listTripsByRig(')).toEqual([trip(true)]);
   });
