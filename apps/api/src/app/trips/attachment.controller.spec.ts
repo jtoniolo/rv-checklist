@@ -7,7 +7,7 @@ import {
   StopRepository,
   TripRepository,
 } from '@rv-checklist/api-data-access';
-import type { Owner, Rig, Stop, Trip } from '@rv-checklist/domain';
+import type { Owner, Rig, StoredStop, Trip } from '@rv-checklist/domain';
 import {
   InMemoryAttachmentRepository,
   InMemoryRigRepository,
@@ -38,7 +38,13 @@ const trip: Trip = {
   name: 'Fall colours loop',
   checklistIds: [],
 };
-const stop: Stop = { id: stopId, tripId, position: 0, arrived: false };
+const stop: StoredStop = {
+  id: stopId,
+  tripId,
+  rigId,
+  position: 0,
+  arrived: false,
+};
 
 /**
  * Exercises the attachment HTTP surface through the *real* global
@@ -120,6 +126,9 @@ describe('AttachmentController over HTTP (through the Zod serializer)', () => {
       sizeBytes: 9,
       isCampgroundMap: false,
     });
+    // The denormalized rig_id (ADR-0028) is sync plumbing — the serializer
+    // must keep it off the wire.
+    expect(body).not.toHaveProperty('rigId');
   });
 
   it('rejects a request without a "file" field with 400', async () => {

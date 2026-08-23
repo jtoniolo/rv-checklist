@@ -32,6 +32,7 @@ const run = (id: string, tripId?: string) => ({
 const attachment = (id: string, stopId: string) => ({
   id,
   stopId,
+  rigId: 'rig-1',
   filename: `${id}.pdf`,
   mimeType: 'application/pdf' as const,
   sizeBytes: 1000,
@@ -115,8 +116,8 @@ describe('in-memory repositories', () => {
     await trips.createWithStops(
       { id: 't1', rigId: 'rig-1', name: 'Loop', checklistIds: [] },
       [
-        { id: 's1', tripId: 't1', position: 0, arrived: false },
-        { id: 's2', tripId: 't1', position: 1, arrived: false },
+        { id: 's1', tripId: 't1', rigId: 'rig-1', position: 0, arrived: false },
+        { id: 's2', tripId: 't1', rigId: 'rig-1', position: 1, arrived: false },
       ],
     );
     const savedTrip = await trips.findById('t1');
@@ -127,9 +128,27 @@ describe('in-memory repositories', () => {
 
   it('lists a trip’s stops ordered by position, not insertion order', async () => {
     const { stops } = createInMemoryRepositories();
-    await stops.save({ id: 's2', tripId: 't1', position: 1, arrived: false });
-    await stops.save({ id: 's1', tripId: 't1', position: 0, arrived: false });
-    await stops.save({ id: 'sx', tripId: 't2', position: 0, arrived: false });
+    await stops.save({
+      id: 's2',
+      tripId: 't1',
+      rigId: 'rig-1',
+      position: 1,
+      arrived: false,
+    });
+    await stops.save({
+      id: 's1',
+      tripId: 't1',
+      rigId: 'rig-1',
+      position: 0,
+      arrived: false,
+    });
+    await stops.save({
+      id: 'sx',
+      tripId: 't2',
+      rigId: 'rig-1',
+      position: 0,
+      arrived: false,
+    });
     const forTrip = await stops.listByTrip('t1');
     expect(forTrip.map((s) => s.id)).toEqual(['s1', 's2']);
   });

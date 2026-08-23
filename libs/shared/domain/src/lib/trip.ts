@@ -45,6 +45,16 @@ export const StopSchema = z.object({
 export type Stop = z.infer<typeof StopSchema>;
 
 /**
+ * A stop as it is stored server-side: the wire stop plus the owning rig's id,
+ * denormalized because PowerSync sync-rule queries cannot join (ADR-0028) —
+ * every synced row must carry the per-rig bucket key itself. Server-set on
+ * create from the owning trip and immutable after (stops never change trips);
+ * never on the wire — read shapes and request bodies stay `rigId`-free.
+ */
+export const StoredStopSchema = StopSchema.extend({ rigId: IdSchema });
+export type StoredStop = z.infer<typeof StoredStopSchema>;
+
+/**
  * A stop as it is read over the wire: the stored stop plus its attachments'
  * metadata (ADR-0026 — filename, type, size, map flag; the bytes stay behind
  * the download route). The array defaults to empty so payloads and fixtures

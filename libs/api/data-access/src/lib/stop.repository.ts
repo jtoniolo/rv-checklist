@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
   Id,
-  Stop,
+  StoredStop,
   StopRepository as StopRepositoryPort,
 } from '@rv-checklist/domain';
 import { Repository } from 'typeorm';
@@ -16,17 +16,18 @@ import { StopEntity } from './entities/stop.entity.js';
  * Ownership resolves through the stop's trip's rig, a layer up (ADR-0003).
  */
 export abstract class StopRepository implements StopRepositoryPort {
-  abstract findById(id: Id): Promise<Stop | undefined>;
-  abstract save(stop: Stop): Promise<Stop>;
+  abstract findById(id: Id): Promise<StoredStop | undefined>;
+  abstract save(stop: StoredStop): Promise<StoredStop>;
   abstract delete(id: Id): Promise<void>;
-  abstract listByTrip(tripId: Id): Promise<Stop[]>;
+  abstract listByTrip(tripId: Id): Promise<StoredStop[]>;
 }
 
-/** The persisted row (with its timestamps) narrowed to the {@link Stop} wire model. */
-function toStop(entity: StopEntity): Stop {
+/** The persisted row (with its timestamps) narrowed to the {@link StoredStop} model. */
+function toStop(entity: StopEntity): StoredStop {
   return {
     id: entity.id,
     tripId: entity.tripId,
+    rigId: entity.rigId,
     position: entity.position,
     arrived: entity.arrived,
     campground: entity.campground ?? undefined,
@@ -47,15 +48,16 @@ function toStop(entity: StopEntity): Stop {
 }
 
 /**
- * The {@link Stop} wire model widened to a persistable row. Exported for the
+ * The {@link StoredStop} model widened to a persistable row. Exported for the
  * trip repository's atomic create-with-stops (issue #120), which writes stop
  * rows inside the trip's transaction — one row mapping, two writers.
  */
 /* eslint-disable unicorn/no-null -- optional wire fields persist as SQL NULL */
-export function stopToRow(stop: Stop): Partial<StopEntity> {
+export function stopToRow(stop: StoredStop): Partial<StopEntity> {
   return {
     id: stop.id,
     tripId: stop.tripId,
+    rigId: stop.rigId,
     position: stop.position,
     arrived: stop.arrived,
     campground: stop.campground ?? null,
@@ -78,7 +80,7 @@ export function stopToRow(stop: Stop): Partial<StopEntity> {
 
 /**
  * TypeORM-backed {@link StopRepository} (ADR-0009). `save` is a whole-aggregate
- * upsert — the use-case assigns the id and hands over a complete {@link Stop}.
+ * upsert — the use-case assigns the id and hands over a complete {@link StoredStop}.
  * The persistence shape (timestamps) never leaves this lib.
  */
 @Injectable()
@@ -90,12 +92,12 @@ export class TypeOrmStopRepository extends StopRepository {
     super();
   }
 
-  async findById(id: Id): Promise<Stop | undefined> {
+  async findById(id: Id): Promise<StoredStop | undefined> {
     const found = await this.repo.findOne({ where: { id } });
     return found ? toStop(found) : undefined;
   }
 
-  async save(stop: Stop): Promise<Stop> {
+  async save(stop: StoredStop): Promise<StoredStop> {
     const saved = await this.repo.save(this.repo.create(stopToRow(stop)));
     return toStop(saved);
   }
@@ -104,7 +106,7 @@ export class TypeOrmStopRepository extends StopRepository {
     await this.repo.delete(id);
   }
 
-  async listByTrip(tripId: Id): Promise<Stop[]> {
+  async listByTrip(tripId: Id): Promise<StoredStop[]> {
     // Position order — the reading every caller wants (the trip embeds its
     // stops in travel order), matching the in-memory double.
     const rows = await this.repo.find({

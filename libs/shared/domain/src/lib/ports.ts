@@ -1,4 +1,4 @@
-import type { Attachment } from './attachment.js';
+import type { StoredAttachment } from './attachment.js';
 import type { Checklist } from './checklist.js';
 import type { Id } from './common.js';
 import type { EquipmentItem } from './equipment.js';
@@ -6,7 +6,7 @@ import type { LogEntry } from './log-entry.js';
 import type { MaintenanceTask } from './maintenance-task.js';
 import type { Rig } from './rig.js';
 import type { Run } from './run.js';
-import type { Stop, Trip } from './trip.js';
+import type { StoredStop, Trip } from './trip.js';
 
 /**
  * Repository ports — the seam that makes the whole core loop unit-testable without a
@@ -67,15 +67,15 @@ export interface TripRepository extends Repository<Trip> {
    * never strand a stopless trip. The use-case hands over fully-built
    * aggregates (ids, positions, arrived already assigned), as with `save`.
    */
-  createWithStops(trip: Trip, stops: Stop[]): Promise<Trip>;
+  createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip>;
 }
 
 /** Stops — ordered overnight halts on a trip; the list comes back position-ordered. */
-export interface StopRepository extends Repository<Stop> {
-  listByTrip(tripId: Id): Promise<Stop[]>;
+export interface StopRepository extends Repository<StoredStop> {
+  listByTrip(tripId: Id): Promise<StoredStop[]>;
 }
 
 /** Attachments — files kept on a stop (ADR-0026); rows are metadata only, the bytes live in object storage. */
-export interface AttachmentRepository extends Repository<Attachment> {
-  listByStop(stopId: Id): Promise<Attachment[]>;
+export interface AttachmentRepository extends Repository<StoredAttachment> {
+  listByStop(stopId: Id): Promise<StoredAttachment[]>;
 }

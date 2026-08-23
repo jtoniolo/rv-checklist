@@ -370,6 +370,7 @@ async function seedData(repos: {
   await repos.stops.save({
     id: STOP_ID,
     tripId: TRIP_ID,
+    rigId: RIG_ID,
     position: 0,
     arrived: false,
     campground: 'Algonquin — Mew Lake',
@@ -379,6 +380,7 @@ async function seedData(repos: {
   await repos.stops.save({
     id: SECOND_STOP_ID,
     tripId: TRIP_ID,
+    rigId: RIG_ID,
     position: 1,
     arrived: false,
     campground: 'Driftwood',
@@ -388,6 +390,7 @@ async function seedData(repos: {
   await repos.attachments.save({
     id: ATTACHMENT_ID,
     stopId: STOP_ID,
+    rigId: RIG_ID,
     filename: 'mew-lake-map.pdf',
     mimeType: 'application/pdf',
     sizeBytes: 123_456,

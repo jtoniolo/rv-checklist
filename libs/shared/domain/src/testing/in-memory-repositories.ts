@@ -1,4 +1,4 @@
-import type { Attachment } from '../lib/attachment.js';
+import type { StoredAttachment } from '../lib/attachment.js';
 import type { Checklist } from '../lib/checklist.js';
 import type { Id } from '../lib/common.js';
 import type { EquipmentItem } from '../lib/equipment.js';
@@ -17,7 +17,7 @@ import type {
 } from '../lib/ports.js';
 import type { Rig } from '../lib/rig.js';
 import type { Run } from '../lib/run.js';
-import type { Stop, Trip } from '../lib/trip.js';
+import type { StoredStop, Trip } from '../lib/trip.js';
 
 /**
  * In-memory repository double — the test-support binding for the repository ports
@@ -126,11 +126,11 @@ export class InMemoryEquipmentItemRepository
 }
 
 export class InMemoryStopRepository
-  extends InMemoryRepository<Stop>
+  extends InMemoryRepository<StoredStop>
   implements StopRepository
 {
   /** Position-ordered, matching the SQL implementation's ORDER BY. */
-  async listByTrip(tripId: Id): Promise<Stop[]> {
+  async listByTrip(tripId: Id): Promise<StoredStop[]> {
     const stops = await this.where((s) => s.tripId === tripId);
     // `where` returns a fresh array of clones, so sorting in place aliases nothing.
     stops.sort((a, b) => a.position - b.position);
@@ -159,7 +159,7 @@ export class InMemoryTripRepository
   }
 
   /** Trip and stops in one save — the in-memory stand-in for the SQL transaction (issue #120). */
-  async createWithStops(trip: Trip, stops: Stop[]): Promise<Trip> {
+  async createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip> {
     const saved = await this.save(trip);
     for (const stop of stops) {
       await this.stopRepository.save(stop);
@@ -169,10 +169,10 @@ export class InMemoryTripRepository
 }
 
 export class InMemoryAttachmentRepository
-  extends InMemoryRepository<Attachment>
+  extends InMemoryRepository<StoredAttachment>
   implements AttachmentRepository
 {
-  listByStop(stopId: Id): Promise<Attachment[]> {
+  listByStop(stopId: Id): Promise<StoredAttachment[]> {
     return this.where((a) => a.stopId === stopId);
   }
 }

@@ -113,6 +113,23 @@ describe('TripService', () => {
       await expect(service.get(alice, trip.id)).resolves.toEqual(trip);
     });
 
+    it("persists the owning rig's id on each stored initial stop but keeps it off the read (ADR-0028)", async () => {
+      const { service, stops } = await makeService();
+
+      const trip = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Fall colours loop',
+        checklistIds: [],
+        stops: [{ campground: 'Killbear' }, { campground: 'Pancake Bay' }],
+      });
+
+      const stored = await stops.listByTrip(trip.id);
+      expect(stored.map((s) => s.rigId)).toEqual([aliceRigId, aliceRigId]);
+      for (const stop of trip.stops) {
+        expect(stop).not.toHaveProperty('rigId');
+      }
+    });
+
     it('refuses to create a trip on a rig the owner does not own', async () => {
       const { service } = await makeService();
 
@@ -139,12 +156,14 @@ describe('TripService', () => {
       await stops.save({
         id: goneChecklistId,
         tripId: trip.id,
+        rigId: aliceRigId,
         position: 1,
         arrived: false,
       });
       await stops.save({
         id: aliceChecklistId,
         tripId: trip.id,
+        rigId: aliceRigId,
         position: 0,
         arrived: true,
       });

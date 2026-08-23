@@ -41,6 +41,18 @@ export const AttachmentSchema = z.object({
 export type Attachment = z.infer<typeof AttachmentSchema>;
 
 /**
+ * An attachment as it is stored server-side: the wire attachment plus the
+ * owning rig's id, denormalized because PowerSync sync-rule queries cannot
+ * join (ADR-0028) — every synced row must carry the per-rig bucket key itself.
+ * Server-set on create from the stop's trip's rig and immutable after
+ * (attachments never change stops); never on the wire.
+ */
+export const StoredAttachmentSchema = AttachmentSchema.extend({
+  rigId: IdSchema,
+});
+export type StoredAttachment = z.infer<typeof StoredAttachmentSchema>;
+
+/**
  * Body of the campground-map flag operation: `true` makes this attachment the
  * stop's campground map, swapping the flag off any other attachment on the
  * stop; `false` leaves the stop with no map. Idempotent.

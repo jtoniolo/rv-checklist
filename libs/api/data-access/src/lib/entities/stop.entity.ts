@@ -29,6 +29,14 @@ export class StopEntity {
   @Column({ name: 'trip_id', type: 'uuid' })
   tripId!: string;
 
+  // The owning rig, denormalized from the trip (ADR-0028): PowerSync sync-rule
+  // queries cannot join, so the per-rig bucket key rides on the row itself.
+  // Set on create, immutable after — stops never change trips. Indexed because
+  // it is the sync buckets' filter column.
+  @Index()
+  @Column({ name: 'rig_id', type: 'uuid' })
+  rigId!: string;
+
   @Column({ type: 'int' })
   position!: number;
 

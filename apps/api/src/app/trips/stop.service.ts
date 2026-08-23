@@ -11,8 +11,8 @@ import type {
   CreateStop,
   Id,
   ReorderStop,
-  Stop,
   StopRead,
+  StoredStop,
   Trip,
   UpdateStop,
 } from '@rv-checklist/domain';
@@ -53,8 +53,17 @@ export class StopService {
   ) {}
 
   /** A stored stop widened to the read shape: its attachments' metadata embedded. */
-  private async toRead(stop: Stop): Promise<StopRead> {
-    return { ...stop, attachments: await this.attachments.listByStop(stop.id) };
+  private async toRead(stop: StoredStop): Promise<StopRead> {
+    // The denormalized rig_id (ADR-0028) is sync plumbing, never wire data —
+    // dropped here so no read path (REST or MCP) carries it out.
+    const { rigId: _rigId, ...wireStop } = stop;
+    const attachments = await this.attachments.listByStop(stop.id);
+    return {
+      ...wireStop,
+      attachments: attachments.map(
+        ({ rigId: _attachmentRigId, ...attachment }) => attachment,
+      ),
+    };
   }
 
   /** Whether the rig exists and belongs to the owner — the single ownership gate. */
@@ -77,7 +86,7 @@ export class StopService {
   private async ownedStop(
     ownerId: Id,
     id: Id,
-  ): Promise<{ stop: Stop; trip: Trip }> {
+  ): Promise<{ stop: StoredStop; trip: Trip }> {
     const stop = await this.stops.findById(id);
     if (stop) {
       const trip = await this.trips.findById(stop.tripId);
@@ -109,7 +118,7 @@ export class StopService {
   }
 
   /** Renumber a trip's stops 0..n-1 in their current order, writing only movers. */
-  private async renumber(tripId: Id): Promise<Stop[]> {
+  private async renumber(tripId: Id): Promise<StoredStop[]> {
     const ordered = await this.stops.listByTrip(tripId);
     return Promise.all(
       ordered.map((stop, index) =>
@@ -128,6 +137,9 @@ export class StopService {
       id: randomUUID(),
       position: siblings.length,
       arrived: false,
+      // The owning rig's id, denormalized for sync (ADR-0028) — always the
+      // trip's own, never client input; immutable after create.
+      rigId: trip.rigId,
       ...input,
     });
     return this.toRead(saved);
@@ -142,7 +154,7 @@ export class StopService {
    */
   async update(ownerId: Id, id: Id, changes: UpdateStop): Promise<StopRead> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
-    const next: Stop = { ...stop };
+    const next: StoredStop = { ...stop };
     if (changes.campground === null) delete next.campground;
     else if (changes.campground !== undefined)
       next.campground = changes.campground;
