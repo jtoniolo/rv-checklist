@@ -36,15 +36,5 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0027](0027-mcp-trips-and-stops-tools.md) | MCP trips and stops tools — full CRUD incl. `mark_stop_arrived`; arrival writes the rig's Distance as a service-owned side effect (amends 0023) |
 | [0028](0028-offline-first-pwa-powersync.md) | Offline-first PWA — PowerSync local store, operation-queue writes through the API, per-record LWW, Serwist-runtime service worker, offline attachments (amends 0018, 0012, 0011; extends 0026) |
 
-## Archived prototypes
-
-Throwaway UI prototypes that informed production code are preserved on
-local branches as primary source (not merged into `main`).
-
-| Branch | Contents | Decisions folded into |
-|--------|----------|-----------------------|
-| `prototype/ui-prototypes` | `maintenance-prototype/` — maintenance-list layout, pushState/popstate navigation, card-based task display | Issues #38–#43 (maintenance list, history, tags, intervals, checklists) |
-| `prototype/ui-prototypes` | `maintenance-history-prototype/` — timeline/history view, variant-A layout with grouped entries | Issue #43 (maintenance history view) |
-
 The domain model (entities, relationships, ubiquitous language) lives in
 `CONTEXT.md` at the repo root, written as the domain-model ticket (#2) is walked.
