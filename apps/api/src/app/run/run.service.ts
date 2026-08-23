@@ -19,6 +19,7 @@ import {
   type Checklist,
   type CreateRun,
   type Id,
+  type LogEntry,
   type MaintenanceTask,
   type Run,
   type RunStep,
@@ -41,6 +42,35 @@ function toRunStep(step: Step): RunStep {
     ...(step.taskId !== undefined && { taskId: step.taskId }),
     ...(step.fieldSchema !== undefined && { fieldSchema: step.fieldSchema }),
     state: 'incomplete',
+  };
+}
+
+/**
+ * The reconciled outcome of a run edit's task-linked steps, planned before
+ * anything is written: the steps to store, the Log Entries new completions
+ * will write, and the entry ids un-completions detach (to delete).
+ */
+interface MaintenanceLogPlan {
+  readonly steps: RunStep[];
+  readonly entries: LogEntry[];
+  readonly detachedEntryIds: Id[];
+}
+
+/** The Log Entry for one task-linked completion — built, not yet written. */
+function buildEntry(
+  task: MaintenanceTask,
+  step: Omit<RunStep, 'logEntryId'>,
+  performedOn: string,
+): LogEntry {
+  return {
+    id: randomUUID(),
+    taskId: task.id,
+    rigId: task.rigId,
+    // Snapshot the task's name at completion time (issue #27), alongside the
+    // field snapshot — a later rename never rewrites this entry.
+    taskName: task.name,
+    performedOn,
+    fields: toLoggedFields(task.fieldSchema, step.values),
   };
 }
 
@@ -123,12 +153,18 @@ export class RunService {
    * rides on the step as `logEntryId` — server-owned bookkeeping, carried over
    * from the stored run and never taken from the client, so a stale or forged
    * echo can neither duplicate an entry nor detach one.
+   *
+   * This is the *planning* half: it validates, resolves tasks, and returns the
+   * reconciled steps together with the entries to write and the detached entry
+   * ids to delete — but touches nothing. {@link update} flushes the plan only
+   * after the run write itself lands, so an LWW-rejected stale echo (ADR-0028,
+   * issue #141) is a full no-op: no run change, no entries written or deleted.
    */
-  private async reconcileMaintenanceLog(
+  private async planMaintenanceLog(
     run: Run,
     incoming: readonly RunStep[],
     performedOn: string,
-  ): Promise<RunStep[]> {
+  ): Promise<MaintenanceLogPlan> {
     const stored = new Map(run.steps.map((step) => [step.id, step]));
     const alreadyWritten = (step: { readonly id: Id }): Id | undefined =>
       stored.get(step.id)?.logEntryId;
@@ -159,44 +195,29 @@ export class RunService {
       tasksToLog.set(step.id, task);
     }
 
-    return Promise.all(
-      incoming.map(async ({ logEntryId: _clientOwned, ...step }) => {
-        if (step.taskId !== undefined && step.state === 'complete') {
-          const task = tasksToLog.get(step.id);
-          const entryId =
-            alreadyWritten(step) ??
-            (task ? await this.writeEntry(task, step, performedOn) : undefined);
-          return {
-            ...step,
-            ...(entryId !== undefined && { logEntryId: entryId }),
-          };
+    const entries: LogEntry[] = [];
+    const detachedEntryIds: Id[] = [];
+    const steps = incoming.map(({ logEntryId: _clientOwned, ...step }) => {
+      if (step.taskId !== undefined && step.state === 'complete') {
+        const task = tasksToLog.get(step.id);
+        let entryId = alreadyWritten(step);
+        if (entryId === undefined && task) {
+          const entry = buildEntry(task, step, performedOn);
+          entries.push(entry);
+          entryId = entry.id;
         }
-        const written = alreadyWritten(step);
-        if (written !== undefined) {
-          await this.logEntries.delete(written);
-        }
-        return step;
-      }),
-    );
-  }
-
-  /** Write the Log Entry for one task-linked completion, returning its id. */
-  private async writeEntry(
-    task: MaintenanceTask,
-    step: Omit<RunStep, 'logEntryId'>,
-    performedOn: string,
-  ): Promise<Id> {
-    const entry = await this.logEntries.save({
-      id: randomUUID(),
-      taskId: task.id,
-      rigId: task.rigId,
-      // Snapshot the task's name at completion time (issue #27), alongside the
-      // field snapshot — a later rename never rewrites this entry.
-      taskName: task.name,
-      performedOn,
-      fields: toLoggedFields(task.fieldSchema, step.values),
+        return {
+          ...step,
+          ...(entryId !== undefined && { logEntryId: entryId }),
+        };
+      }
+      const written = alreadyWritten(step);
+      if (written !== undefined) {
+        detachedEntryIds.push(written);
+      }
+      return step;
     });
-    return entry.id;
+    return { steps, entries, detachedEntryIds };
   }
 
   /**
@@ -258,19 +279,43 @@ export class RunService {
     return this.runs.listByTrip(tripId);
   }
 
-  /** Apply a partial edit to one of the owner's runs (checklist/rig never change). */
-  async update(ownerId: Id, id: Id, changes: UpdateRun): Promise<Run> {
+  /**
+   * Apply a partial edit to one of the owner's runs (checklist/rig never
+   * change). Under LWW the gate is **record-level on the whole run, steps
+   * included** (ADR-0028, issue #141 — per-step merge is its own ticket): a
+   * stale stamp is a full no-op, so the maintenance-log plan is flushed only
+   * after the run write lands.
+   */
+  async update(
+    ownerId: Id,
+    id: Id,
+    changes: UpdateRun,
+    editedAt?: Date,
+  ): Promise<Run> {
     const existing = await this.get(ownerId, id);
     const startedOn = changes.startedOn ?? existing.startedOn;
-    const steps =
+    const plan: MaintenanceLogPlan =
       changes.steps === undefined
-        ? existing.steps
-        : await this.reconcileMaintenanceLog(
-            existing,
-            changes.steps,
-            startedOn,
-          );
-    return this.runs.save({ ...existing, startedOn, steps });
+        ? { steps: [...existing.steps], entries: [], detachedEntryIds: [] }
+        : await this.planMaintenanceLog(existing, changes.steps, startedOn);
+    const next: Run = { ...existing, startedOn, steps: plan.steps };
+    let saved: Run;
+    if (editedAt === undefined) {
+      saved = await this.runs.save(next);
+    } else {
+      const { applied, record } = await this.runs.saveIfNewer(next, editedAt);
+      if (!applied) {
+        return record;
+      }
+      saved = record;
+    }
+    for (const entry of plan.entries) {
+      await this.logEntries.save(entry);
+    }
+    for (const entryId of plan.detachedEntryIds) {
+      await this.logEntries.delete(entryId);
+    }
+    return saved;
   }
 
   /** Delete one of the owner's runs (e.g. one started by mistake). */

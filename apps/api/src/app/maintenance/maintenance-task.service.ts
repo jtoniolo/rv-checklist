@@ -88,6 +88,7 @@ export class MaintenanceTaskService {
     ownerId: Id,
     id: Id,
     changes: UpdateMaintenanceTask,
+    editedAt?: Date,
   ): Promise<MaintenanceTask> {
     const existing = await this.get(ownerId, id);
     const next: MaintenanceTask = {
@@ -136,7 +137,13 @@ export class MaintenanceTaskService {
     if (changes.tags !== undefined) {
       next.tags = changes.tags;
     }
-    return this.tasks.save(next);
+    if (editedAt === undefined) {
+      return this.tasks.save(next);
+    }
+    // Per-record LWW (ADR-0028, issue #141): a stale stamp no-ops to the
+    // current record.
+    const { record } = await this.tasks.saveIfNewer(next, editedAt);
+    return record;
   }
 
   /** Delete one of the owner's tasks (its log entries go with it, ADR-0006). */

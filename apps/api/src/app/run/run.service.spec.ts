@@ -801,3 +801,77 @@ describe('RunService — trip link (issue #111)', () => {
     );
   });
 });
+
+// LWW stamps (issue #141): clearly older / newer than any record the test just wrote.
+const staleStamp = (): Date => new Date(Date.now() - 60_000);
+const newerStamp = (): Date => new Date(Date.now() + 60_000);
+
+describe('RunService update under LWW — X-Edited-At (ADR-0028, issue #141)', () => {
+  it('a stale stamp is a full no-op: run kept, no Log Entry written', async () => {
+    const { service, logEntries } = await makeService();
+    const run = await service.create(alice, { checklistId: sealsChecklistId });
+
+    const result = await service.update(
+      alice,
+      run.id,
+      {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303 Protectant' }],
+        }),
+      },
+      staleStamp(),
+    );
+
+    // The current record comes back as a normal success — never an error.
+    expect(taskStepOf(result)?.state).toBe('incomplete');
+    expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(0);
+  });
+
+  it('a stale un-complete echo deletes no Log Entry', async () => {
+    const { service, logEntries } = await makeService();
+    const run = await service.create(alice, { checklistId: sealsChecklistId });
+    const completed = await service.update(alice, run.id, {
+      steps: patchStep(run, 'Condition the slide seals', {
+        state: 'complete',
+        values: [{ name: 'Product used', value: '303 Protectant' }],
+      }),
+    });
+    expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(1);
+
+    const result = await service.update(
+      alice,
+      run.id,
+      {
+        steps: patchStep(completed, 'Condition the slide seals', {
+          state: 'incomplete',
+        }),
+      },
+      staleStamp(),
+    );
+
+    expect(taskStepOf(result)?.state).toBe('complete');
+    expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(1);
+  });
+
+  it('a newer stamp applies the whole run write, Log Entry included', async () => {
+    const { service, logEntries } = await makeService();
+    const run = await service.create(alice, { checklistId: sealsChecklistId });
+
+    const result = await service.update(
+      alice,
+      run.id,
+      {
+        steps: patchStep(run, 'Condition the slide seals', {
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303 Protectant' }],
+        }),
+      },
+      newerStamp(),
+    );
+
+    const entries = await logEntries.listByTask(sealsTaskId);
+    expect(entries).toHaveLength(1);
+    expect(taskStepOf(result)?.logEntryId).toBe(entries[0]?.id);
+  });
+});

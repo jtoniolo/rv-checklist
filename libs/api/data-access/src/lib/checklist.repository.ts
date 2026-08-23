@@ -3,9 +3,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type {
   Checklist,
   ChecklistRepository as ChecklistRepositoryPort,
+  ConditionalWrite,
   Id,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { ChecklistEntity } from './entities/checklist.entity.js';
 
 /**
@@ -20,6 +21,10 @@ import { ChecklistEntity } from './entities/checklist.entity.js';
 export abstract class ChecklistRepository implements ChecklistRepositoryPort {
   abstract findById(id: Id): Promise<Checklist | undefined>;
   abstract save(checklist: Checklist): Promise<Checklist>;
+  abstract saveIfNewer(
+    checklist: Checklist,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<Checklist>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<Checklist[]>;
 }
@@ -57,8 +62,29 @@ export class TypeOrmChecklistRepository extends ChecklistRepository {
   }
 
   async save(checklist: Checklist): Promise<Checklist> {
-    const saved = await this.repo.save(this.repo.create(checklist));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...checklist, editedAt: new Date() }),
+    );
     return toChecklist(saved);
+  }
+
+  async saveIfNewer(
+    checklist: Checklist,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<Checklist>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = checklist;
+    const result = await this.repo.update(
+      { id: checklist.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: checklist.id });
+    return {
+      applied: (result.affected ?? 0) > 0,
+      record: toChecklist(current),
+    };
   }
 
   async delete(id: Id): Promise<void> {

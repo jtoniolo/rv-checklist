@@ -16,6 +16,7 @@ import type { LogEntry, Owner } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import { LogEntryService } from './log-entry.service.js';
 import {
   CreateLogEntryDto,
@@ -86,8 +87,9 @@ export class LogEntryController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateLogEntryDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<LogEntry> {
-    return this.logEntries.update(owner.id, id, body);
+    return this.logEntries.update(owner.id, id, body, editedAt);
   }
 
   /** Delete one of the owner's entries (a mistaken record). */

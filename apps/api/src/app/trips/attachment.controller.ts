@@ -22,6 +22,7 @@ import {
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import { AttachmentService } from './attachment.service.js';
 import { AttachmentDto, SetCampgroundMapDto } from './trips.dto.js';
 
@@ -85,7 +86,10 @@ export class AttachmentController {
     });
   }
 
-  /** Flag (or unflag) the stop's campground map — at most one per stop, flagging swaps. */
+  /**
+   * Flag (or unflag) the stop's campground map — at most one per stop,
+   * flagging swaps. A set write, so LWW-gated by `X-Edited-At` (issue #141).
+   */
   @Post('attachments/:id/campground-map')
   @HttpCode(200)
   @ZodSerializerDto(AttachmentDto)
@@ -93,11 +97,13 @@ export class AttachmentController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: SetCampgroundMapDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<Attachment> {
     return this.attachments.setCampgroundMap(
       owner.id,
       id,
       body.isCampgroundMap,
+      editedAt,
     );
   }
 

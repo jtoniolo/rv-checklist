@@ -64,6 +64,10 @@ const aliceDistance = async (rigs: InMemoryRigRepository) => {
   return rig?.distanceKm;
 };
 
+// LWW stamps (issue #141): clearly older / newer than any record the test just wrote.
+const staleStamp = () => new Date(Date.now() - 60_000);
+const newerStamp = () => new Date(Date.now() + 60_000);
+
 describe('StopService', () => {
   describe('create', () => {
     it('appends at the end: fresh id, next position, not arrived', async () => {
@@ -162,6 +166,48 @@ describe('StopService', () => {
       });
       expect(cleared.legKm).toBeUndefined();
       expect(cleared.legKmManual).toBeUndefined();
+    });
+  });
+
+  describe('update under LWW — X-Edited-At (ADR-0028, issue #141)', () => {
+    it('a stale stamp is a full no-op: record kept, no delta arithmetic', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 100,
+      });
+      await service.setArrived(alice, stop.id, true);
+
+      const result = await service.update(
+        alice,
+        stop.id,
+        { legKm: 250, campground: 'Stale camp' },
+        staleStamp(),
+      );
+
+      // The current record comes back as a normal success — never an error.
+      expect(result.legKm).toBe(100);
+      expect(result.campground).toBeUndefined();
+      expect(await aliceDistance(rigs)).toBe(1100);
+    });
+
+    it('a newer stamp applies, and the arrived-leg delta runs with it', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 1000 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 100,
+      });
+      await service.setArrived(alice, stop.id, true);
+
+      const result = await service.update(
+        alice,
+        stop.id,
+        { legKm: 250 },
+        newerStamp(),
+      );
+
+      expect(result.legKm).toBe(250);
+      expect(await aliceDistance(rigs)).toBe(1250);
     });
   });
 

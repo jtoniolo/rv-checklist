@@ -148,7 +148,12 @@ export class TripService {
    * changes). An explicit `null` clears a start-point field; `checklistIds`
    * replaces the whole set, like a task's tags (issue #41).
    */
-  async update(ownerId: Id, id: Id, changes: UpdateTrip): Promise<TripRead> {
+  async update(
+    ownerId: Id,
+    id: Id,
+    changes: UpdateTrip,
+    editedAt?: Date,
+  ): Promise<TripRead> {
     const next: Trip = { ...(await this.ownedTrip(ownerId, id)) };
     if (changes.name !== undefined) next.name = changes.name;
     if (changes.startLocation === null) delete next.startLocation;
@@ -159,7 +164,13 @@ export class TripService {
       next.startPlaceId = changes.startPlaceId;
     if (changes.checklistIds !== undefined)
       next.checklistIds = changes.checklistIds;
-    return this.toRead(await this.trips.save(next));
+    if (editedAt === undefined) {
+      return this.toRead(await this.trips.save(next));
+    }
+    // Per-record LWW (ADR-0028, issue #141): a stale stamp no-ops to the
+    // current record.
+    const { record } = await this.trips.saveIfNewer(next, editedAt);
+    return this.toRead(record);
   }
 
   /**

@@ -19,10 +19,30 @@ import type { StoredStop, Trip } from './trip.js';
  * builds the full aggregate before saving. Every read is scoped to its parent so ownership
  * scoping (ADR-0003) is enforceable a layer up.
  */
+/**
+ * The outcome of a {@link Repository.saveIfNewer} conditional write: whether the
+ * write landed, and the record as it stands afterwards either way — the caller
+ * returns `record` unconditionally and uses `applied` only to gate side effects.
+ */
+export interface ConditionalWrite<T> {
+  readonly applied: boolean;
+  readonly record: T;
+}
+
 export interface Repository<T> {
   findById(id: Id): Promise<T | undefined>;
   save(entity: T): Promise<T>;
   delete(id: Id): Promise<void>;
+  /**
+   * Server-enforced per-record LWW (ADR-0028, issue #141): replace the stored
+   * aggregate only if `editedAt` is **strictly newer** than the record's stored
+   * edit time; an equal or older stamp is a no-op that returns the current
+   * record unchanged. An applied write stores `editedAt` as the record's new
+   * edit time (a plain `save` stamps server now). The edit time is
+   * persistence-side bookkeeping — it never appears on the domain model. The
+   * record must already exist: callers resolve (and ownership-check) it first.
+   */
+  saveIfNewer(entity: T, editedAt: Date): Promise<ConditionalWrite<T>>;
 }
 
 /** Rigs — the aggregate root, scoped to their owner (ADR-0003, ADR-0006). */

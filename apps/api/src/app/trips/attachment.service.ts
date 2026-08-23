@@ -110,6 +110,16 @@ export class AttachmentService {
     throw new NotFoundException('Attachment not found');
   }
 
+  /** Clear the campground-map flag off every *other* attachment on the stop. */
+  private async sweepSiblingFlags(stopId: Id, keepId: Id): Promise<void> {
+    const siblings = await this.attachments.listByStop(stopId);
+    await Promise.all(
+      siblings
+        .filter((a) => a.isCampgroundMap && a.id !== keepId)
+        .map((a) => this.attachments.save({ ...a, isCampgroundMap: false })),
+    );
+  }
+
   /**
    * Keep a file on one of the owner's stops: validate type and size
    * (ADR-0026 — JPEG/PNG/WebP/HEIC/PDF, 15 MB, no count limit), put the
@@ -175,20 +185,30 @@ export class AttachmentService {
    * flagging swaps the flag off any other attachment on the stop
    * (ADR-0026 — the flag is on an ordinary attachment, not a stop field).
    * Idempotent.
+   *
+   * The toggle is a *set* write, so it is LWW-gated on the target attachment
+   * (ADR-0028, issue #141): when the stamped write applies, its sibling-sweep
+   * side effect applies with it; a stale stamp is a full no-op.
    */
   async setCampgroundMap(
     ownerId: Id,
     id: Id,
     isCampgroundMap: boolean,
+    editedAt?: Date,
   ): Promise<Attachment> {
     const attachment = await this.ownedAttachment(ownerId, id);
-    if (isCampgroundMap) {
-      const siblings = await this.attachments.listByStop(attachment.stopId);
-      await Promise.all(
-        siblings
-          .filter((a) => a.isCampgroundMap && a.id !== attachment.id)
-          .map((a) => this.attachments.save({ ...a, isCampgroundMap: false })),
+    if (editedAt !== undefined) {
+      const { applied, record } = await this.attachments.saveIfNewer(
+        { ...attachment, isCampgroundMap },
+        editedAt,
       );
+      if (applied && isCampgroundMap) {
+        await this.sweepSiblingFlags(attachment.stopId, attachment.id);
+      }
+      return this.toWire(record);
+    }
+    if (isCampgroundMap) {
+      await this.sweepSiblingFlags(attachment.stopId, attachment.id);
     }
     if (attachment.isCampgroundMap === isCampgroundMap) {
       return this.toWire(attachment);

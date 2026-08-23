@@ -15,6 +15,7 @@ import type { Checklist, Owner } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import {
   ChecklistDto,
   CreateChecklistDto,
@@ -76,8 +77,9 @@ export class ChecklistController {
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateChecklistDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<Checklist> {
-    return this.checklists.update(owner.id, id, body);
+    return this.checklists.update(owner.id, id, body, editedAt);
   }
 
   /** Delete one of the owner's checklists. */

@@ -146,6 +146,7 @@ export class LogEntryService {
     ownerId: Id,
     id: Id,
     changes: UpdateLogEntry,
+    editedAt?: Date,
   ): Promise<LogEntry> {
     const existing = await this.get(ownerId, id);
     if (changes.fields !== undefined) {
@@ -173,7 +174,13 @@ export class LogEntryService {
     } else if (changes.comment !== undefined) {
       next.comment = changes.comment;
     }
-    return this.logEntries.save(next);
+    if (editedAt === undefined) {
+      return this.logEntries.save(next);
+    }
+    // Per-record LWW (ADR-0028, issue #141): a stale stamp no-ops to the
+    // current record.
+    const { record } = await this.logEntries.saveIfNewer(next, editedAt);
+    return record;
   }
 
   /** Delete one of the owner's entries (a mistaken record). */

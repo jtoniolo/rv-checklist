@@ -39,6 +39,9 @@ const attachment = (id: string, stopId: string) => ({
   isCampgroundMap: false,
 });
 
+const later = (): Date => new Date(Date.now() + 60_000);
+const earlier = (): Date => new Date(Date.now() - 60_000);
+
 describe('in-memory repositories', () => {
   it('saves and finds an aggregate by id', async () => {
     const { rigs } = createInMemoryRepositories();
@@ -168,5 +171,85 @@ describe('in-memory repositories', () => {
     await attachments.save(attachment('a2', 's2'));
     const forStop = await attachments.listByStop('s1');
     expect(forStop.map((a) => a.id)).toEqual(['a1']);
+  });
+
+  describe('saveIfNewer — per-record LWW (ADR-0028, issue #141)', () => {
+    it('applies a write stamped newer than the stored edit time', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.save(rig('a', 'owner-1'));
+      const outcome = await rigs.saveIfNewer(
+        { ...rig('a', 'owner-1'), nickname: 'Renamed' },
+        later(),
+      );
+      expect(outcome.applied).toBe(true);
+      expect(outcome.record.nickname).toBe('Renamed');
+      const found = await rigs.findById('a');
+      expect(found?.nickname).toBe('Renamed');
+    });
+
+    it('no-ops a write stamped older, returning the current record', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.save(rig('a', 'owner-1'));
+      const outcome = await rigs.saveIfNewer(
+        { ...rig('a', 'owner-1'), nickname: 'Stale' },
+        earlier(),
+      );
+      expect(outcome.applied).toBe(false);
+      expect(outcome.record.nickname).toBe('Rig a');
+      const found = await rigs.findById('a');
+      expect(found?.nickname).toBe('Rig a');
+    });
+
+    it('no-ops a write stamped exactly at the stored edit time (strictly newer wins)', async () => {
+      const { rigs } = createInMemoryRepositories();
+      const stamp = later();
+      await rigs.save(rig('a', 'owner-1'));
+      await rigs.saveIfNewer(
+        { ...rig('a', 'owner-1'), nickname: 'First' },
+        stamp,
+      );
+      const outcome = await rigs.saveIfNewer(
+        { ...rig('a', 'owner-1'), nickname: 'Echo' },
+        new Date(stamp),
+      );
+      expect(outcome.applied).toBe(false);
+      expect(outcome.record.nickname).toBe('First');
+    });
+
+    it('an applied stamp becomes the stored edit time the next write compares against', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.save(rig('a', 'owner-1'));
+      const first = later();
+      await rigs.saveIfNewer(
+        { ...rig('a', 'owner-1'), nickname: 'First' },
+        first,
+      );
+      const between = new Date(first.getTime() - 1);
+      const outcome = await rigs.saveIfNewer(
+        { ...rig('a', 'owner-1'), nickname: 'Between' },
+        between,
+      );
+      expect(outcome.applied).toBe(false);
+      expect(outcome.record.nickname).toBe('First');
+    });
+
+    it('a plain save re-stamps the record to now, so an older stamp loses to it', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.save(rig('a', 'owner-1'));
+      await rigs.save({ ...rig('a', 'owner-1'), nickname: 'Online edit' });
+      const outcome = await rigs.saveIfNewer(
+        { ...rig('a', 'owner-1'), nickname: 'Stale replay' },
+        earlier(),
+      );
+      expect(outcome.applied).toBe(false);
+      expect(outcome.record.nickname).toBe('Online edit');
+    });
+
+    it('rejects a conditional write on a record that does not exist', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await expect(
+        rigs.saveIfNewer(rig('missing', 'owner-1'), later()),
+      ).rejects.toThrow('missing');
+    });
   });
 });

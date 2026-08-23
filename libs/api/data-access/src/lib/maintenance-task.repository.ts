@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
+  ConditionalWrite,
   Id,
   MaintenanceTask,
   MaintenanceTaskRepository as MaintenanceTaskRepositoryPort,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { MaintenanceTaskEntity } from './entities/maintenance-task.entity.js';
 
 /**
@@ -20,6 +21,10 @@ import { MaintenanceTaskEntity } from './entities/maintenance-task.entity.js';
 export abstract class MaintenanceTaskRepository implements MaintenanceTaskRepositoryPort {
   abstract findById(id: Id): Promise<MaintenanceTask | undefined>;
   abstract save(task: MaintenanceTask): Promise<MaintenanceTask>;
+  abstract saveIfNewer(
+    task: MaintenanceTask,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<MaintenanceTask>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<MaintenanceTask[]>;
 }
@@ -112,8 +117,26 @@ export class TypeOrmMaintenanceTaskRepository extends MaintenanceTaskRepository 
   }
 
   async save(task: MaintenanceTask): Promise<MaintenanceTask> {
-    const saved = await this.repo.save(this.repo.create(toRow(task)));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...toRow(task), editedAt: new Date() }),
+    );
     return toTask(saved);
+  }
+
+  async saveIfNewer(
+    task: MaintenanceTask,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<MaintenanceTask>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = toRow(task);
+    const result = await this.repo.update(
+      { id: task.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: task.id });
+    return { applied: (result.affected ?? 0) > 0, record: toTask(current) };
   }
 
   async delete(id: Id): Promise<void> {

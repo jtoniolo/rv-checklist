@@ -83,9 +83,16 @@ export class RigService {
    * Apply a partial edit to one of the owner's rigs. `distanceKm` (issue #32)
    * and the Dimensions fields (issue #139) carry the removal marker the other
    * optional fields lack: an explicit `null` clears the value, an omitted key
-   * leaves it unchanged.
+   * leaves it unchanged. A manual `distanceKm` set rides in the record write,
+   * so it is absolute LWW like every other field (ADR-0028) — only the stop
+   * operations' delta arithmetic is exempt.
    */
-  async update(ownerId: Id, id: Id, changes: UpdateRig): Promise<Rig> {
+  async update(
+    ownerId: Id,
+    id: Id,
+    changes: UpdateRig,
+    editedAt?: Date,
+  ): Promise<Rig> {
     const rig = await this.findOwned(ownerId, id);
     const {
       distanceKm,
@@ -127,7 +134,14 @@ export class RigService {
     } else if (clearanceDriverMm !== undefined) {
       next.clearanceDriverMm = clearanceDriverMm;
     }
-    return this.rigs.save(next);
+    if (editedAt === undefined) {
+      return this.rigs.save(next);
+    }
+    // Per-record LWW (ADR-0028, issue #141): only a strictly newer stamp
+    // applies; a stale one is a no-op returning the current record as a
+    // normal 200 — never an error.
+    const { record } = await this.rigs.saveIfNewer(next, editedAt);
+    return record;
   }
 
   /** Delete one of the owner's rigs. */

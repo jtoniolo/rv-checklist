@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
+  ConditionalWrite,
   Id,
   StoredStop,
   Trip,
   TripRepository as TripRepositoryPort,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { StopEntity } from './entities/stop.entity.js';
 import { TripEntity } from './entities/trip.entity.js';
 import { stopToRow } from './stop.repository.js';
@@ -23,6 +24,10 @@ import { stopToRow } from './stop.repository.js';
 export abstract class TripRepository implements TripRepositoryPort {
   abstract findById(id: Id): Promise<Trip | undefined>;
   abstract save(trip: Trip): Promise<Trip>;
+  abstract saveIfNewer(
+    trip: Trip,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<Trip>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<Trip[]>;
   abstract createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip>;
@@ -73,8 +78,26 @@ export class TypeOrmTripRepository extends TripRepository {
   }
 
   async save(trip: Trip): Promise<Trip> {
-    const saved = await this.repo.save(this.repo.create(toRow(trip)));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...toRow(trip), editedAt: new Date() }),
+    );
     return toTrip(saved);
+  }
+
+  async saveIfNewer(
+    trip: Trip,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<Trip>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = toRow(trip);
+    const result = await this.repo.update(
+      { id: trip.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: trip.id });
+    return { applied: (result.affected ?? 0) > 0, record: toTrip(current) };
   }
 
   async delete(id: Id): Promise<void> {

@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
+  ConditionalWrite,
   Id,
   Rig,
   RigRepository as RigRepositoryPort,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { RigEntity } from './entities/rig.entity.js';
 
 /**
@@ -19,6 +20,10 @@ import { RigEntity } from './entities/rig.entity.js';
 export abstract class RigRepository implements RigRepositoryPort {
   abstract findById(id: Id): Promise<Rig | undefined>;
   abstract save(rig: Rig): Promise<Rig>;
+  abstract saveIfNewer(
+    rig: Rig,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<Rig>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByOwner(ownerId: Id): Promise<Rig[]>;
 }
@@ -83,8 +88,25 @@ export class TypeOrmRigRepository extends RigRepository {
   }
 
   async save(rig: Rig): Promise<Rig> {
-    const saved = await this.repo.save(this.repo.create(toRow(rig)));
+    // A plain save is an authoritative edit "now" — it re-stamps the LWW edit
+    // time (issue #141), so a headerless (online) write always wins over any
+    // older queued offline stamp.
+    const saved = await this.repo.save(
+      this.repo.create({ ...toRow(rig), editedAt: new Date() }),
+    );
     return toRig(saved);
+  }
+
+  async saveIfNewer(rig: Rig, editedAt: Date): Promise<ConditionalWrite<Rig>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = toRow(rig);
+    const result = await this.repo.update(
+      { id: rig.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: rig.id });
+    return { applied: (result.affected ?? 0) > 0, record: toRig(current) };
   }
 
   async delete(id: Id): Promise<void> {

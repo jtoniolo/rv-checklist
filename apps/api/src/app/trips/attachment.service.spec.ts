@@ -193,6 +193,47 @@ describe('AttachmentService', () => {
       expect(bytes.toString()).toBe('png bytes');
     });
 
+    it('a stale LWW stamp is a full no-op: no flag change, no sibling sweep (issue #141)', async () => {
+      const { service, attachments, aliceStopId } = await makeServices();
+      const first = await service.upload(alice, aliceStopId, png('a.png'));
+      const second = await service.upload(alice, aliceStopId, png('b.png'));
+      await service.setCampgroundMap(alice, first.id, true);
+
+      const result = await service.setCampgroundMap(
+        alice,
+        second.id,
+        true,
+        new Date(Date.now() - 60_000),
+      );
+
+      // The current record comes back as a normal success — never an error.
+      expect(result.isCampgroundMap).toBe(false);
+      const all = await attachments.listByStop(aliceStopId);
+      expect(all.filter((a) => a.isCampgroundMap).map((a) => a.id)).toEqual([
+        first.id,
+      ]);
+    });
+
+    it('a newer LWW stamp applies the toggle and its sibling sweep with it (issue #141)', async () => {
+      const { service, attachments, aliceStopId } = await makeServices();
+      const first = await service.upload(alice, aliceStopId, png('a.png'));
+      const second = await service.upload(alice, aliceStopId, png('b.png'));
+      await service.setCampgroundMap(alice, first.id, true);
+
+      const result = await service.setCampgroundMap(
+        alice,
+        second.id,
+        true,
+        new Date(Date.now() + 60_000),
+      );
+
+      expect(result.isCampgroundMap).toBe(true);
+      const all = await attachments.listByStop(aliceStopId);
+      expect(all.filter((a) => a.isCampgroundMap).map((a) => a.id)).toEqual([
+        second.id,
+      ]);
+    });
+
     it("refuses another owner's attachment (house 404)", async () => {
       const { service, bobStopId } = await makeServices();
       const bobs = await service.upload(bob, bobStopId, png());

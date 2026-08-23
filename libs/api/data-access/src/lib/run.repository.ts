@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type {
+  ConditionalWrite,
   Id,
   Run,
   RunRepository as RunRepositoryPort,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { RunEntity } from './entities/run.entity.js';
 
 /**
@@ -19,6 +20,10 @@ import { RunEntity } from './entities/run.entity.js';
 export abstract class RunRepository implements RunRepositoryPort {
   abstract findById(id: Id): Promise<Run | undefined>;
   abstract save(run: Run): Promise<Run>;
+  abstract saveIfNewer(
+    run: Run,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<Run>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<Run[]>;
   abstract listByChecklist(checklistId: Id): Promise<Run[]>;
@@ -71,8 +76,24 @@ export class TypeOrmRunRepository extends RunRepository {
   }
 
   async save(run: Run): Promise<Run> {
-    const saved = await this.repo.save(this.repo.create(toRow(run)));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...toRow(run), editedAt: new Date() }),
+    );
     return toRun(saved);
+  }
+
+  async saveIfNewer(run: Run, editedAt: Date): Promise<ConditionalWrite<Run>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window. Record-level: the whole
+    // `steps` JSONB rides with the run (per-step merge is a later ticket).
+    const { id: _id, ...row } = toRow(run);
+    const result = await this.repo.update(
+      { id: run.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: run.id });
+    return { applied: (result.affected ?? 0) > 0, record: toRun(current) };
   }
 
   async delete(id: Id): Promise<void> {

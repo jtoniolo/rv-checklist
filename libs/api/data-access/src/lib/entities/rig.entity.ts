@@ -66,6 +66,14 @@ export class RigEntity {
   @Column({ name: 'clearance_driver_mm', type: 'integer', nullable: true })
   clearanceDriverMm!: number | null;
 
+  // Per-record LWW edit time (ADR-0028, issue #141): the stamp `saveIfNewer`
+  // compares against, set from the client's clamped X-Edited-At (server now on
+  // a plain save). Distinct from `updatedAt`, which auto-touches on every save
+  // and must never gate a write. Persistence-side only — never wire data;
+  // PowerSync replicates it straight from the row.
+  @Column({ name: 'edited_at', type: 'timestamptz', default: () => 'now()' })
+  editedAt!: Date;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

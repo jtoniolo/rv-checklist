@@ -151,8 +151,17 @@ export class StopService {
    * `null` clears a field. Editing an **arrived** stop's `legKm` adjusts the
    * rig's Distance by the difference — the recorded travel changed, so the
    * running total follows; clearing it backs the whole leg out.
+   *
+   * Under LWW (ADR-0028, issue #141) the record write is gated *first*: a
+   * stale stamp is a full no-op — `legKm` did not change, so the arrived-leg
+   * delta arithmetic must not run either.
    */
-  async update(ownerId: Id, id: Id, changes: UpdateStop): Promise<StopRead> {
+  async update(
+    ownerId: Id,
+    id: Id,
+    changes: UpdateStop,
+    editedAt?: Date,
+  ): Promise<StopRead> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     const next: StoredStop = { ...stop };
     if (changes.campground === null) delete next.campground;
@@ -191,6 +200,16 @@ export class StopService {
     else if (changes.legKmManual !== undefined)
       next.legKmManual = changes.legKmManual;
 
+    if (editedAt !== undefined) {
+      const { applied, record } = await this.stops.saveIfNewer(next, editedAt);
+      if (applied && stop.arrived) {
+        await this.adjustDistance(
+          trip.rigId,
+          (next.legKm ?? 0) - (stop.legKm ?? 0),
+        );
+      }
+      return this.toRead(record);
+    }
     if (stop.arrived) {
       await this.adjustDistance(
         trip.rigId,

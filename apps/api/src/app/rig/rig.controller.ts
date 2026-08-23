@@ -14,6 +14,7 @@ import type { EquipmentItem, Owner, Rig } from '@rv-checklist/domain';
 import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
+import { EditedAt } from '../common/edited-at.decorator.js';
 import { CreateRigDto, RigDetailDto, RigDto, UpdateRigDto } from './rig.dto.js';
 import { RigService } from './rig.service.js';
 
@@ -59,15 +60,16 @@ export class RigController {
     return this.rigs.get(owner.id, id);
   }
 
-  /** Edit one of the owner's rigs. */
+  /** Edit one of the owner's rigs — LWW-gated by `X-Edited-At` (issue #141). */
   @Patch(':id')
   @ZodSerializerDto(RigDto)
   update(
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: UpdateRigDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<Rig> {
-    return this.rigs.update(owner.id, id, body);
+    return this.rigs.update(owner.id, id, body, editedAt);
   }
 
   /** Delete one of the owner's rigs. */

@@ -113,6 +113,41 @@ describe('RigService', () => {
   });
 
   describe('update', () => {
+    it('a stale X-Edited-At stamp is a no-op returning the current record (issue #141)', async () => {
+      const { service } = makeService();
+      const created = await service.create(alice, airstream);
+
+      const result = await service.update(
+        alice,
+        created.id,
+        { nickname: 'Stale rename' },
+        new Date(Date.now() - 60_000),
+      );
+
+      // The current record comes back as a normal success — never an error.
+      expect(result.nickname).toBe('Silver Bullet');
+      await expect(service.get(alice, created.id)).resolves.toMatchObject({
+        nickname: 'Silver Bullet',
+      });
+    });
+
+    it('a newer X-Edited-At stamp applies (issue #141)', async () => {
+      const { service } = makeService();
+      const created = await service.create(alice, airstream);
+
+      const result = await service.update(
+        alice,
+        created.id,
+        { nickname: 'Fresh rename' },
+        new Date(Date.now() + 60_000),
+      );
+
+      expect(result.nickname).toBe('Fresh rename');
+      await expect(service.get(alice, created.id)).resolves.toMatchObject({
+        nickname: 'Fresh rename',
+      });
+    });
+
     it('applies a partial edit and persists it', async () => {
       const { service } = makeService();
       const created = await service.create(alice, airstream);

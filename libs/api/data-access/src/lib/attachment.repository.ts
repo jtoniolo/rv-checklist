@@ -3,10 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type {
   AttachmentMimeType,
   AttachmentRepository as AttachmentRepositoryPort,
+  ConditionalWrite,
   Id,
   StoredAttachment,
 } from '@rv-checklist/domain';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { AttachmentEntity } from './entities/attachment.entity.js';
 
 /**
@@ -21,6 +22,10 @@ import { AttachmentEntity } from './entities/attachment.entity.js';
 export abstract class AttachmentRepository implements AttachmentRepositoryPort {
   abstract findById(id: Id): Promise<StoredAttachment | undefined>;
   abstract save(attachment: StoredAttachment): Promise<StoredAttachment>;
+  abstract saveIfNewer(
+    attachment: StoredAttachment,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<StoredAttachment>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByStop(stopId: Id): Promise<StoredAttachment[]>;
 }
@@ -72,8 +77,29 @@ export class TypeOrmAttachmentRepository extends AttachmentRepository {
   }
 
   async save(attachment: StoredAttachment): Promise<StoredAttachment> {
-    const saved = await this.repo.save(this.repo.create(toRow(attachment)));
+    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+    const saved = await this.repo.save(
+      this.repo.create({ ...toRow(attachment), editedAt: new Date() }),
+    );
     return toAttachment(saved);
+  }
+
+  async saveIfNewer(
+    attachment: StoredAttachment,
+    editedAt: Date,
+  ): Promise<ConditionalWrite<StoredAttachment>> {
+    // The strictly-newer comparison and the write are one conditional UPDATE
+    // (ADR-0028) — no read-compare-write window.
+    const { id: _id, ...row } = toRow(attachment);
+    const result = await this.repo.update(
+      { id: attachment.id, editedAt: LessThan(editedAt) },
+      { ...row, editedAt },
+    );
+    const current = await this.repo.findOneByOrFail({ id: attachment.id });
+    return {
+      applied: (result.affected ?? 0) > 0,
+      record: toAttachment(current),
+    };
   }
 
   async delete(id: Id): Promise<void> {
