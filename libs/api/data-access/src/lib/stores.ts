@@ -46,6 +46,12 @@ export interface RefreshTokenRecord {
   readonly expiresAt: Date;
   /** When the token was revoked, or `undefined` while it is still live. */
   readonly revokedAt: Date | undefined;
+  /**
+   * The token that replaced this one on rotation. Set only by rotation —
+   * logout and session revocation leave it `undefined`, which is how the
+   * reuse interval (ADR-0028) tells a rotated-out token from a dead one.
+   */
+  readonly replacedById: string | undefined;
   /** The session this token belongs to, or `undefined` for pre-session legacy tokens. */
   readonly sessionId: string | undefined;
 }

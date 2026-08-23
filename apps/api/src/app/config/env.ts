@@ -25,6 +25,17 @@ export const EnvSchema = z.object({
   JWT_ACCESS_TTL: z.coerce.number().int().positive().default(900),
   /** Refresh-token lifetime in days. Long (Gmail-like) so the owner rarely re-signs-in. */
   REFRESH_TTL_DAYS: z.coerce.number().int().positive().default(180),
+  /**
+   * How long, in seconds, a rotated-out refresh token may still be replayed
+   * (ADR-0028 amending ADR-0012). On an unreliable network the rotation
+   * response can be lost; inside this window the spent token still refreshes,
+   * so the session self-heals. Outside it, a spent token is rejected.
+   */
+  REFRESH_REUSE_INTERVAL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(120),
 
   /**
    * Cookie domain for the httpOnly auth cookies (ADR-0019). In production this

@@ -81,6 +81,7 @@ Secrets Operator, set `rolloutRestartTargets` to this Deployment.
 | `image.tag`         | `""`    | Empty means "use `appVersion`". Override only to pin a `sha-` build. |
 | `image.pullPolicy`  | `IfNotPresent` | Safe — published tags are immutable.                    |
 | `existingSecret`    | `""`    | See above.                                                      |
+| `config.REFRESH_REUSE_INTERVAL_SECONDS` | `"120"` | Reuse interval for a rotated-out refresh token (ADR-0028): a replay inside this window still refreshes, so a rotation response lost on an unreliable network self-heals. |
 
 There is no `config.PORT`. `containerPort` is a fixed `3000` and the Service
 resolves `targetPort: http` through it, so a configurable listen port could only

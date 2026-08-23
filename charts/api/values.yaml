@@ -35,6 +35,10 @@ config:
   MCP_ISSUER_URL: ""
   JWT_ACCESS_TTL: "900"
   REFRESH_TTL_DAYS: "180"
+  # Reuse interval in seconds for a rotated-out refresh token (ADR-0028): a
+  # replay inside this window still refreshes, so a rotation response lost on
+  # an unreliable network self-heals instead of ending the session.
+  REFRESH_REUSE_INTERVAL_SECONDS: "120"
   # Required — rendering fails without it. Garage S3 endpoint for attachment
   # storage (ADR-0026). Garage runs on the home lab host, outside the cluster
   # (http://<garage-host>:3900). Not a secret — it is unreachable without the key

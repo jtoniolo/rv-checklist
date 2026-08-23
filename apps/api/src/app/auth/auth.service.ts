@@ -104,6 +104,13 @@ export class AuthService {
    * Exchange a valid refresh token for a fresh pair, rotating the old one out.
    * The session_id propagates from the old token so the rotation chain stays
    * grouped (issue #98).
+   *
+   * A rotated-out token is still accepted for a short reuse interval
+   * (ADR-0028 amending ADR-0012): on an unreliable network the rotation
+   * response can be lost, leaving the client holding the spent token; inside
+   * the window it gets a fresh sibling pair in the same session instead of a
+   * dead session. Only rotation qualifies — logout and session revocation
+   * leave `replacedById` unset and stay final.
    */
   async refresh(
     rawToken: string,
@@ -115,8 +122,17 @@ export class AuthService {
     if (!stored) {
       throw new UnauthorizedException('Invalid refresh token');
     }
-    const isExpired = stored.expiresAt.getTime() <= this.clock.now().getTime();
-    if (isExpired || stored.revokedAt !== undefined) {
+    const now = this.clock.now();
+    if (stored.expiresAt.getTime() <= now.getTime()) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    const isRevoked = stored.revokedAt !== undefined;
+    const isReplayableRotation =
+      stored.revokedAt !== undefined &&
+      stored.replacedById !== undefined &&
+      now.getTime() - stored.revokedAt.getTime() <=
+        this.tokens.refreshReuseWindowMs();
+    if (isRevoked && !isReplayableRotation) {
       throw new UnauthorizedException('Invalid refresh token');
     }
     const user = await this.users.findById(stored.userId);
@@ -127,7 +143,11 @@ export class AuthService {
       sessionId: stored.sessionId,
       userAgent,
     });
-    await this.refreshTokens.revoke(stored.id, refreshId);
+    if (!isRevoked) {
+      // An in-window replay must not re-revoke: that would refresh
+      // `revokedAt` and slide the reuse window open indefinitely.
+      await this.refreshTokens.revoke(stored.id, refreshId);
+    }
     if (stored.sessionId) {
       await this.refreshTokens.updateLastUsed(refreshId);
     }

@@ -34,6 +34,7 @@ function toRefreshRecord(entity: RefreshTokenEntity): RefreshTokenRecord {
     userId: entity.userId,
     expiresAt: entity.expiresAt,
     revokedAt: entity.revokedAt ?? undefined,
+    replacedById: entity.replacedById ?? undefined,
     sessionId: entity.sessionId ?? undefined,
   };
 }
