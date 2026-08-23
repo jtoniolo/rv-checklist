@@ -9,11 +9,9 @@ import {
   type LogEntry,
   type LoggedField,
   type MaintenanceTask,
-  type Rig,
   type TaskAppearance,
 } from '@rv-checklist/domain';
 import {
-  skipToken,
   useCreateLogEntryMutation,
   useCreateTaskMutation,
   useDeleteLogEntryMutation,
@@ -21,6 +19,7 @@ import {
   useListChecklistsQuery,
   useListLogEntriesByRigQuery,
   useListLogEntriesQuery,
+  useListRigsQuery,
   useListTasksQuery,
   useUpdateLogEntryMutation,
   useUpdateTaskMutation,
@@ -67,31 +66,26 @@ const SORT_OPTIONS: readonly SortOption<MaintenanceSortKey>[] = [
 ];
 
 export function MaintenanceScreen({
-  activeRig,
   rigId,
   openTaskId,
   view,
 }: {
-  readonly activeRig: Rig | undefined;
   readonly rigId: Id;
   readonly openTaskId?: Id | undefined;
   readonly view?: string | undefined;
 }): JSX.Element {
   const router = useRouter();
-  const {
-    data: tasks,
-    isLoading,
-    isError,
-  } = useListTasksQuery(activeRig?.id ?? skipToken);
+  // The active rig from the cached rig list (issue #135) — its distance
+  // drives km-based due badges, so a stop arrival's Rig invalidation
+  // refreshes them here without a reload.
+  const { data: rigs } = useListRigsQuery();
+  const activeRig = rigs?.find((r) => r.id === rigId);
+  const { data: tasks, isLoading, isError } = useListTasksQuery(rigId);
   // The rig's entries back every row's due badge in one read (ADR-0005).
-  const { data: rigEntries } = useListLogEntriesByRigQuery(
-    activeRig?.id ?? skipToken,
-  );
+  const { data: rigEntries } = useListLogEntriesByRigQuery(rigId);
   // The rig's checklists back the detail's "Appears on" section (issue #24) —
   // derived client-side from this already-cached list, no task-specific read.
-  const { data: checklists } = useListChecklistsQuery(
-    activeRig?.id ?? skipToken,
-  );
+  const { data: checklists } = useListChecklistsQuery(rigId);
   const [createTask, { isLoading: isCreating }] = useCreateTaskMutation();
   const [updateTask, { isLoading: isUpdating }] = useUpdateTaskMutation();
   const [deleteTask] = useDeleteTaskMutation();
@@ -124,7 +118,7 @@ export function MaintenanceScreen({
     setEditing(false);
   }, [openTaskId]);
 
-  if (!activeRig) {
+  if (rigs !== undefined && !activeRig) {
     return (
       <Link
         href="/rigs"
@@ -143,7 +137,7 @@ export function MaintenanceScreen({
 
   // Pre-compute due status for every task in one pass from the rig's entries.
   const statusOf = (task: MaintenanceTask): DueStatus =>
-    dueStatusOf(task, entriesFor(task.id), activeRig.distanceKm, today);
+    dueStatusOf(task, entriesFor(task.id), activeRig?.distanceKm, today);
 
   /** The effective "last performed" date for a task — the later of log and manual anchor. */
   const lastPerformedOf = (task: MaintenanceTask): string | undefined => {
@@ -174,7 +168,7 @@ export function MaintenanceScreen({
 
   const handleCreate = async (values: TaskFormValues): Promise<void> => {
     const created = await createTask({
-      rigId: activeRig.id,
+      rigId,
       name: values.name,
       ...(values.description !== undefined && {
         description: values.description,
@@ -243,7 +237,7 @@ export function MaintenanceScreen({
   };
 
   const handleDelete = async (id: Id): Promise<void> => {
-    await deleteTask({ id, rigId: activeRig.id }).unwrap();
+    await deleteTask({ id, rigId }).unwrap();
     router.push(`/rig/${rigId}/maintenance`);
   };
 
@@ -1076,7 +1070,12 @@ function LogHistory({ task }: { readonly task: MaintenanceTask }): JSX.Element {
                   setLogging(false);
                   setEditingEntryId(entry.id);
                 }}
-                onDelete={() => void deleteEntry(entry.id).unwrap()}
+                onDelete={() =>
+                  void deleteEntry({
+                    id: entry.id,
+                    rigId: entry.rigId,
+                  }).unwrap()
+                }
               />
             )}
           </li>
@@ -1171,7 +1170,12 @@ function OrphanedHistory({
                 onEdit={() => {
                   setEditingEntryId(entry.id);
                 }}
-                onDelete={() => void deleteEntry(entry.id).unwrap()}
+                onDelete={() =>
+                  void deleteEntry({
+                    id: entry.id,
+                    rigId: entry.rigId,
+                  }).unwrap()
+                }
               />
             )}
           </li>

@@ -140,7 +140,9 @@ describe('RigHomePage current-trip card (issue #118)', () => {
     ]);
     await renderPage([planned, underway]);
 
-    const card = screen.getByRole('link', { name: /fall colours loop/i });
+    const card = await screen.findByRole('link', {
+      name: /fall colours loop/i,
+    });
     expect(card.getAttribute('href')).toBe(
       `/rig/${RIG_ID}/trips/${underway.id}`,
     );
@@ -170,7 +172,7 @@ describe('RigHomePage current-trip card (issue #118)', () => {
     ]);
     await renderPage([later, sooner]);
 
-    const card = screen.getByRole('link', { name: /sooner trip/i });
+    const card = await screen.findByRole('link', { name: /sooner trip/i });
     expect(card.getAttribute('href')).toBe(`/rig/${RIG_ID}/trips/${sooner.id}`);
     expect(within(card).getByText('Planned')).toBeTruthy();
     expect(within(card).getByText(/September Camp/)).toBeTruthy();
@@ -188,6 +190,9 @@ describe('RigHomePage current-trip card (issue #118)', () => {
     ]);
     await renderPage([completed]);
 
+    // The greeting renders from the seeded cache — wait for it so the
+    // absence checks below run against the settled screen.
+    await screen.findByRole('heading', { name: /hi jeff/i });
     expect(screen.queryByRole('region', { name: /current trip/i })).toBeNull();
     expect(screen.queryByText('Last Summer')).toBeNull();
   });
@@ -195,6 +200,7 @@ describe('RigHomePage current-trip card (issue #118)', () => {
   it('renders no current-trip section when the rig has no trips', async () => {
     await renderPage([]);
 
+    await screen.findByRole('heading', { name: /hi jeff/i });
     expect(screen.queryByRole('region', { name: /current trip/i })).toBeNull();
   });
 });

@@ -242,3 +242,23 @@ export function currentTrip<
   }
   return best;
 }
+
+/**
+ * {@link currentTrip} over {@link TripRead}s. The adapter only narrows each
+ * stop to the fields the helper reads (`exactOptionalPropertyTypes` rejects
+ * the wider Zod-inferred stop shape directly).
+ */
+export function findCurrentTrip(
+  trips: readonly TripRead[],
+): TripRead | undefined {
+  return currentTrip(
+    trips.map((trip) => ({
+      trip,
+      stops: trip.stops.map((s) => ({
+        position: s.position,
+        arrived: s.arrived,
+        ...(s.arrivalDate !== undefined && { arrivalDate: s.arrivalDate }),
+      })),
+    })),
+  )?.trip;
+}

@@ -633,12 +633,24 @@ export const api = createApi({
         body: changes,
       }),
       transformResponse: (raw: unknown) => LogEntrySchema.parse(raw),
-      invalidatesTags: (_result, _error, { id }) => [{ type: 'LogEntry', id }],
+      // A corrected date or distance changes due standing, so the rig's task
+      // list refetches too — same as createLogEntry.
+      invalidatesTags: (result, _error, { id }) => [
+        { type: 'LogEntry', id },
+        ...(result
+          ? [{ type: 'Task' as const, id: `LIST:${result.rigId}` }]
+          : []),
+      ],
     }),
 
-    deleteLogEntry: builder.mutation<void, Id>({
-      query: (id) => ({ url: `/log-entries/${id}`, method: 'DELETE' }),
-      invalidatesTags: (_result, _error, id) => [{ type: 'LogEntry', id }],
+    // DELETE returns no body, so the caller passes the entry's rigId for the
+    // due-standing invalidation.
+    deleteLogEntry: builder.mutation<void, { id: Id; rigId: Id }>({
+      query: ({ id }) => ({ url: `/log-entries/${id}`, method: 'DELETE' }),
+      invalidatesTags: (_result, _error, { id, rigId }) => [
+        { type: 'LogEntry', id },
+        { type: 'Task', id: `LIST:${rigId}` },
+      ],
     }),
 
     listEquipment: builder.query<EquipmentItem[], Id>({

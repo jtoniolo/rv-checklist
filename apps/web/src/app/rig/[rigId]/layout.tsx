@@ -5,10 +5,11 @@ import { fetchMe, fetchRigs } from '@/lib/server-api';
 
 /**
  * The layout for rig-scoped routes (ADR-0018). Fetches the owner and rigs
- * server-side, seeds them into the RTK Query cache, and wraps children in
- * the signed-in navigation chrome. The shell receives its data as props
- * (layout chrome, not a feature component) so the header and rig selector
- * appear in the server-rendered HTML without a spinner.
+ * server-side and seeds them into the RTK Query cache, so the shell's hooks
+ * render the header and rig selector in the SSR HTML without a spinner —
+ * and, because the shell subscribes (issue #135), a rig rename reaches the
+ * header through tag invalidation even though layout segments never
+ * re-render on navigation.
  */
 export default async function RigLayout({
   children,
@@ -22,9 +23,7 @@ export default async function RigLayout({
 
   return (
     <CacheSeeder me={me} rigs={rigs}>
-      <RigShell rigId={rigId} owner={me} rigs={rigs}>
-        {children}
-      </RigShell>
+      <RigShell rigId={rigId}>{children}</RigShell>
     </CacheSeeder>
   );
 }
