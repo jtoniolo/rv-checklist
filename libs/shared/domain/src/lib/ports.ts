@@ -29,9 +29,51 @@ export interface ConditionalWrite<T> {
   readonly record: T;
 }
 
+/**
+ * The outcome of an {@link Repository.insert}: whether this call created the
+ * row, and the record as it stands either way. `created: false` means a row
+ * already carried that id — the create is a replay of one the caller made
+ * before (ADR-0028, issue #143), and `record` is the row already stored.
+ * Callers **must** ownership- and parent-scope-check a `created: false` record
+ * before returning it: an id is client-supplied, so the row it collides with
+ * may be someone else's.
+ */
+export interface InsertResult<T> {
+  readonly created: boolean;
+  readonly record: T;
+}
+
 export interface Repository<T> {
   findById(id: Id): Promise<T | undefined>;
-  save(entity: T): Promise<T>;
+  /**
+   * Upsert the whole aggregate. Without `editedAt` the write stamps the
+   * record's LWW edit time server now — an authoritative online edit, which is
+   * why it beats any older queued offline stamp.
+   *
+   * With `editedAt` the write is an **exempt** one (ADR-0028, issue #143):
+   * stop arrival, stop reorder, and the rig-Distance delta those trigger. The
+   * effect always applies — exemption is from the LWW *gate*, not from the
+   * stamp — and the edit time becomes `max(stored, editedAt)`. Taking the
+   * maximum rather than storing the stamp outright is deliberate: a plain
+   * overwrite could wind a record's clock *backwards* past another device's
+   * newer edit, letting a third device's stale queued write win.
+   *
+   * The record need not exist (this is an upsert), but a create goes through
+   * {@link insert}, which is where a supplied stamp initialises the clock.
+   */
+  save(entity: T, editedAt?: Date): Promise<T>;
+  /**
+   * Create the aggregate under the id it already carries — the client-generated
+   * id path (ADR-0028, issue #143). A row that already holds that id is left
+   * **untouched**, edit time included, and comes back as `created: false`: a
+   * replayed offline create is a success, not an overwrite. The insert and the
+   * collision check are one statement, so a concurrent duplicate cannot slip
+   * between a read and a write.
+   *
+   * `editedAt` initialises the record's LWW edit time (the row is new, so
+   * there is nothing to take a maximum against); absent stamps server now.
+   */
+  insert(entity: T, editedAt?: Date): Promise<InsertResult<T>>;
   delete(id: Id): Promise<void>;
   /**
    * Server-enforced per-record LWW (ADR-0028, issue #141): replace the stored
@@ -86,8 +128,18 @@ export interface TripRepository extends Repository<Trip> {
    * either the whole plan lands or nothing does — a mid-save failure must
    * never strand a stopless trip. The use-case hands over fully-built
    * aggregates (ids, positions, arrived already assigned), as with `save`.
+   *
+   * The trip's id may be client-generated (ADR-0028, issue #143), so this is
+   * {@link Repository.insert} for the pair: a trip id already in use leaves
+   * everything untouched and comes back as `created: false`. A *stop* id in
+   * use under an otherwise-new trip is not a replay — the client reused an id
+   * — and rejects the whole write.
    */
-  createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip>;
+  createWithStops(
+    trip: Trip,
+    stops: StoredStop[],
+    editedAt?: Date,
+  ): Promise<InsertResult<Trip>>;
 }
 
 /** Stops — ordered overnight halts on a trip; the list comes back position-ordered. */

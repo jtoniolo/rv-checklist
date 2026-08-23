@@ -64,6 +64,12 @@ export const CreateRunSchema = z.object({
 });
 export type CreateRun = z.infer<typeof CreateRunSchema>;
 
+/** The create body with an optional client-generated `id` — see {@link CreateRigWithIdSchema} (issue #143). */
+export const CreateRunWithIdSchema = CreateRunSchema.extend({
+  id: IdSchema.optional(),
+});
+export type CreateRunWithId = z.infer<typeof CreateRunWithIdSchema>;
+
 /**
  * Edit body — nothing is locked (CONTEXT.md), so a run stays editable after the fact. The
  * whole `steps` array travels (like a checklist edit), each carrying its own state and any

@@ -1,5 +1,5 @@
 import {
-  CreateRunSchema,
+  CreateRunWithIdSchema,
   RunSchema,
   UpdateRunSchema,
 } from '@rv-checklist/domain';
@@ -13,8 +13,12 @@ import { createZodDto } from 'nestjs-zod';
  * responses — one source of truth for the wire model, no hand-written validators.
  */
 
-/** `POST /runs` body — the client names the checklist; the server copies its steps. */
-export class CreateRunDto extends createZodDto(CreateRunSchema) {}
+/**
+ * `POST /runs` body — the client names the checklist and may supply the run's
+ * id (issue #143); the server copies the steps and mints their ids (#144). The
+ * HTTP-only schema keeps `id` off the MCP surface.
+ */
+export class CreateRunDto extends createZodDto(CreateRunWithIdSchema) {}
 
 /** `PATCH /runs/:id` body — any subset; a full `steps` array covers state and answers. */
 export class UpdateRunDto extends createZodDto(UpdateRunSchema) {}

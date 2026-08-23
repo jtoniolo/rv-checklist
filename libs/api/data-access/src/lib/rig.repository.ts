@@ -3,11 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type {
   ConditionalWrite,
   Id,
+  InsertResult,
   Rig,
   RigRepository as RigRepositoryPort,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { RigEntity } from './entities/rig.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link RigRepositoryPort} as a concrete Nest DI token (an abstract class,
@@ -19,7 +21,8 @@ import { RigEntity } from './entities/rig.entity.js';
  */
 export abstract class RigRepository implements RigRepositoryPort {
   abstract findById(id: Id): Promise<Rig | undefined>;
-  abstract save(rig: Rig): Promise<Rig>;
+  abstract save(rig: Rig, editedAt?: Date): Promise<Rig>;
+  abstract insert(rig: Rig, editedAt?: Date): Promise<InsertResult<Rig>>;
   abstract saveIfNewer(
     rig: Rig,
     editedAt: Date,
@@ -87,14 +90,48 @@ export class TypeOrmRigRepository extends RigRepository {
     return found ? toRig(found) : undefined;
   }
 
-  async save(rig: Rig): Promise<Rig> {
-    // A plain save is an authoritative edit "now" — it re-stamps the LWW edit
-    // time (issue #141), so a headerless (online) write always wins over any
-    // older queued offline stamp.
-    const saved = await this.repo.save(
-      this.repo.create({ ...toRow(rig), editedAt: new Date() }),
+  async save(rig: Rig, editedAt?: Date): Promise<Rig> {
+    if (editedAt === undefined) {
+      // A plain save is an authoritative edit "now" — it re-stamps the LWW edit
+      // time (issue #141), so a headerless (online) write always wins over any
+      // older queued offline stamp.
+      const saved = await this.repo.save(
+        this.repo.create({ ...toRow(rig), editedAt: new Date() }),
+      );
+      return toRig(saved);
+    }
+    // An exempt write carrying the client's clamped stamp (issue #143). Two
+    // statements, each doing one thing: the row always lands (exemption is
+    // from the LWW *gate*, not from the stamp), then the edit clock moves to
+    // `max(stored, editedAt)` — a conditional UPDATE reusing `saveIfNewer`'s
+    // idiom, so the clock can never wind backwards past a newer edit.
+    const saved = await this.repo.save(this.repo.create(toRow(rig)));
+    await this.repo.update(
+      { id: rig.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toRig(saved);
+  }
+
+  async insert(rig: Rig, editedAt?: Date): Promise<InsertResult<Rig>> {
+    // Insert-then-catch, never check-then-insert (ADR-0028, issue #143): the
+    // primary key decides the collision in one statement, so two concurrent
+    // replays of the same queued create cannot both find the id free.
+    try {
+      await this.repo.insert({
+        ...toRow(rig),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      // The stored row is returned untouched — edit time included. Whether the
+      // caller may see it at all is the use-case's ownership check.
+      const existing = await this.repo.findOneByOrFail({ id: rig.id });
+      return { created: false, record: toRig(existing) };
+    }
+    return { created: true, record: rig };
   }
 
   async saveIfNewer(rig: Rig, editedAt: Date): Promise<ConditionalWrite<Rig>> {

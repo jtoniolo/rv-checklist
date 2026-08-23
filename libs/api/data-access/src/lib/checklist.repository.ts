@@ -5,9 +5,11 @@ import type {
   ChecklistRepository as ChecklistRepositoryPort,
   ConditionalWrite,
   Id,
+  InsertResult,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { ChecklistEntity } from './entities/checklist.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link ChecklistRepositoryPort} as a concrete Nest DI token (an abstract
@@ -20,7 +22,11 @@ import { ChecklistEntity } from './entities/checklist.entity.js';
  */
 export abstract class ChecklistRepository implements ChecklistRepositoryPort {
   abstract findById(id: Id): Promise<Checklist | undefined>;
-  abstract save(checklist: Checklist): Promise<Checklist>;
+  abstract save(checklist: Checklist, editedAt?: Date): Promise<Checklist>;
+  abstract insert(
+    checklist: Checklist,
+    editedAt?: Date,
+  ): Promise<InsertResult<Checklist>>;
   abstract saveIfNewer(
     checklist: Checklist,
     editedAt: Date,
@@ -61,12 +67,42 @@ export class TypeOrmChecklistRepository extends ChecklistRepository {
     return found ? toChecklist(found) : undefined;
   }
 
-  async save(checklist: Checklist): Promise<Checklist> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
-    const saved = await this.repo.save(
-      this.repo.create({ ...checklist, editedAt: new Date() }),
+  async save(checklist: Checklist, editedAt?: Date): Promise<Checklist> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...checklist, editedAt: new Date() }),
+      );
+      return toChecklist(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
+    const saved = await this.repo.save(this.repo.create({ ...checklist }));
+    await this.repo.update(
+      { id: checklist.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toChecklist(saved);
+  }
+
+  async insert(
+    checklist: Checklist,
+    editedAt?: Date,
+  ): Promise<InsertResult<Checklist>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...checklist,
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: checklist.id });
+      return { created: false, record: toChecklist(existing) };
+    }
+    return { created: true, record: checklist };
   }
 
   async saveIfNewer(

@@ -1,6 +1,6 @@
 import {
   ChecklistSchema,
-  CreateChecklistSchema,
+  CreateChecklistWithIdSchema,
   UpdateChecklistSchema,
 } from '@rv-checklist/domain';
 import { createZodDto } from 'nestjs-zod';
@@ -14,8 +14,14 @@ import { createZodDto } from 'nestjs-zod';
  * the wire model, no hand-written validators.
  */
 
-/** `POST /checklists` body — the client supplies the fields; the server owns the ids. */
-export class CreateChecklistDto extends createZodDto(CreateChecklistSchema) {}
+/**
+ * `POST /checklists` body — the client supplies the fields and may supply the
+ * checklist's id (issue #143); step ids stay server-minted. The HTTP-only
+ * schema keeps `id` off the MCP surface.
+ */
+export class CreateChecklistDto extends createZodDto(
+  CreateChecklistWithIdSchema,
+) {}
 
 /** `PATCH /checklists/:id` body — any subset; a full `steps` array covers add/edit/reorder/delete. */
 export class UpdateChecklistDto extends createZodDto(UpdateChecklistSchema) {}

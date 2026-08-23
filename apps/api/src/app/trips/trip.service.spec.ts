@@ -16,6 +16,9 @@ const aliceRigId = '550e8400-e29b-41d4-a716-446655440010';
 const bobRigId = '550e8400-e29b-41d4-a716-446655440011';
 const aliceChecklistId = '550e8400-e29b-41d4-a716-446655440020';
 const goneChecklistId = '550e8400-e29b-41d4-a716-446655440021';
+// Ids a client minted offline, before the rows ever reached the server.
+const clientTripId = '550e8400-e29b-41d4-a716-446655440077';
+const clientStopId = '550e8400-e29b-41d4-a716-446655440078';
 
 const aliceRig: Rig = {
   id: aliceRigId,
@@ -334,6 +337,144 @@ describe('TripService', () => {
       await expect(service.get(alice, aliceTrip.id)).resolves.toEqual(
         aliceTrip,
       );
+    });
+  });
+
+  // Client-generated ids on the trip create (ADR-0028, issue #143). A trip
+  // create is the one that carries nested ids: an offline trip must produce
+  // stops the operation queue can already name.
+  describe('create with client-generated ids', () => {
+    it('creates the trip and its stops under the supplied ids', async () => {
+      const { service } = await makeService();
+
+      const trip = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Fall colours loop',
+        checklistIds: [],
+        id: clientTripId,
+        stops: [{ id: clientStopId, campground: 'Pine Hollow' }],
+      });
+
+      expect(trip.id).toBe(clientTripId);
+      expect(trip.stops).toEqual([
+        expect.objectContaining({
+          id: clientStopId,
+          position: 0,
+          arrived: false,
+        }),
+      ]);
+    });
+
+    it('mints ids for the stops the client did not name', async () => {
+      const { service } = await makeService();
+
+      const trip = await service.create(alice, {
+        rigId: aliceRigId,
+        name: 'Mixed',
+        checklistIds: [],
+        stops: [{ id: clientStopId }, { campground: 'Server minted' }],
+      });
+
+      expect(trip.stops[0]?.id).toBe(clientStopId);
+      expect(trip.stops[1]?.id).toEqual(expect.any(String));
+      expect(trip.stops[1]?.id).not.toBe(clientStopId);
+    });
+
+    it('treats a re-post as success, leaving exactly one trip', async () => {
+      const { service } = await makeService();
+      const body = {
+        rigId: aliceRigId,
+        name: 'Fall colours loop',
+        checklistIds: [],
+        id: clientTripId,
+        stops: [{ id: clientStopId, campground: 'Pine Hollow' }],
+      };
+      await service.create(alice, body);
+
+      const replayed = await service.create(alice, body);
+
+      expect(replayed.id).toBe(clientTripId);
+      expect(replayed.stops).toHaveLength(1);
+      await expect(service.list(alice, aliceRigId)).resolves.toHaveLength(1);
+    });
+
+    it('does not let the create body overwrite a trip edited since', async () => {
+      const { service } = await makeService();
+      const body = {
+        rigId: aliceRigId,
+        name: 'Original name',
+        checklistIds: [],
+        id: clientTripId,
+        stops: [],
+      };
+      await service.create(alice, body);
+      await service.update(alice, clientTripId, { name: 'Renamed since' });
+
+      const replayed = await service.create(alice, body);
+
+      expect(replayed.name).toBe('Renamed since');
+    });
+
+    it('never adopts a trip on another owner’s rig', async () => {
+      const { service } = await makeService();
+      await service.create(bob, {
+        rigId: bobRigId,
+        name: "Bob's trip",
+        checklistIds: [],
+        id: clientTripId,
+        stops: [],
+      });
+
+      await expect(
+        service.create(alice, {
+          rigId: aliceRigId,
+          name: 'Attempted takeover',
+          checklistIds: [],
+          id: clientTripId,
+          stops: [],
+        }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(service.get(bob, clientTripId)).resolves.toMatchObject({
+        name: "Bob's trip",
+        rigId: bobRigId,
+      });
+      await expect(service.list(alice, aliceRigId)).resolves.toEqual([]);
+    });
+
+    it('initialises the trip’s edit time from X-Edited-At', async () => {
+      const { service, trips } = await makeService();
+      const stamp = new Date(Date.now() - 60_000);
+
+      await service.create(
+        alice,
+        {
+          rigId: aliceRigId,
+          name: 'Queued offline',
+          checklistIds: [],
+          id: clientTripId,
+          stops: [],
+        },
+        stamp,
+      );
+
+      expect(trips.editedAtOf(clientTripId)).toEqual(stamp);
+    });
+
+    it('leaves a re-posted trip’s edit time where it was', async () => {
+      const { service, trips } = await makeService();
+      const createdAt = new Date(Date.now() - 60_000);
+      const body = {
+        rigId: aliceRigId,
+        name: 'Queued offline',
+        checklistIds: [],
+        id: clientTripId,
+        stops: [],
+      };
+      await service.create(alice, body, createdAt);
+
+      await service.create(alice, body, new Date(Date.now() - 10_000));
+
+      expect(trips.editedAtOf(clientTripId)).toEqual(createdAt);
     });
   });
 });

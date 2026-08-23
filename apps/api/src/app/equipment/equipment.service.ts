@@ -6,11 +6,12 @@ import {
   RigRepository,
 } from '@rv-checklist/api-data-access';
 import type {
-  CreateEquipmentItem,
+  CreateEquipmentItemWithId,
   EquipmentItem,
   Id,
   UpdateEquipmentItem,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 
 /**
  * Equipment item authoring, owner-scoped (issue #79). An equipment item
@@ -38,15 +39,19 @@ export class EquipmentService {
     }
   }
 
+  /** Add an item to one of the owner's rigs — `id` may be the client's own (issue #143). */
   async create(
     ownerId: Id,
-    input: CreateEquipmentItem,
+    input: CreateEquipmentItemWithId,
+    editedAt?: Date,
   ): Promise<EquipmentItem> {
     await this.assertOwnsRig(ownerId, input.rigId);
-    return this.items.save({
-      id: randomUUID(),
-      ...input,
-    });
+    const { id = randomUUID(), ...fields } = input;
+    return adoptCreated(
+      await this.items.insert({ id, ...fields }, editedAt),
+      (item) => item.rigId === input.rigId,
+      'Equipment item not found',
+    );
   }
 
   async list(ownerId: Id, rigId: Id): Promise<EquipmentItem[]> {

@@ -23,6 +23,8 @@ const bobRigId = '550e8400-e29b-41d4-a716-446655440011';
 const aliceTripId = '550e8400-e29b-41d4-a716-446655440030';
 const bobTripId = '550e8400-e29b-41d4-a716-446655440031';
 const missingId = '550e8400-e29b-41d4-a716-446655440099';
+// An id a client minted offline, in the attachment outbox, before upload.
+const clientId = '550e8400-e29b-41d4-a716-446655440077';
 
 const aliceRig: Rig = { id: aliceRigId, ownerId: alice, nickname: 'Silver' };
 const bobRig: Rig = { id: bobRigId, ownerId: bob, nickname: "Bob's" };
@@ -367,6 +369,127 @@ describe('AttachmentService', () => {
       await tripService.remove(alice, aliceTripId);
 
       expect(storage.keys()).toEqual([]);
+    });
+  });
+
+  /**
+   * The offline upload path (ADR-0028, issue #143): the outbox mints the id
+   * when the capture is taken and replays the multipart POST from the service
+   * worker, so the upload must accept that id and set the campground-map flag
+   * in the same request.
+   */
+  describe('upload with a client-generated id', () => {
+    it('stores under the supplied id, bytes and row alike', async () => {
+      const { service, storage, aliceStopId } = await makeServices();
+
+      const attachment = await service.upload(alice, aliceStopId, png(), {
+        id: clientId,
+      });
+
+      expect(attachment.id).toBe(clientId);
+      expect(storage.keys()).toEqual([`stops/${aliceStopId}/${clientId}`]);
+    });
+
+    it('treats a replayed upload as success, leaving one row and one object', async () => {
+      const { service, storage, attachments, aliceStopId } =
+        await makeServices();
+      await service.upload(alice, aliceStopId, png(), { id: clientId });
+
+      const replayed = await service.upload(alice, aliceStopId, png(), {
+        id: clientId,
+      });
+
+      expect(replayed.id).toBe(clientId);
+      await expect(attachments.listByStop(aliceStopId)).resolves.toHaveLength(
+        1,
+      );
+      expect(storage.keys()).toEqual([`stops/${aliceStopId}/${clientId}`]);
+    });
+
+    it('never adopts an attachment kept on someone else’s stop', async () => {
+      const { service, attachments, aliceStopId, bobStopId } =
+        await makeServices();
+      await service.upload(bob, bobStopId, png(), { id: clientId });
+
+      await expect(
+        service.upload(alice, aliceStopId, png(), { id: clientId }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(attachments.findById(clientId)).resolves.toMatchObject({
+        stopId: bobStopId,
+      });
+      await expect(attachments.listByStop(aliceStopId)).resolves.toEqual([]);
+    });
+
+    it('initialises the row’s edit time from X-Edited-At', async () => {
+      const { service, attachments, aliceStopId } = await makeServices();
+      const stamp = new Date(Date.now() - 60_000);
+
+      await service.upload(alice, aliceStopId, png(), {
+        id: clientId,
+        editedAt: stamp,
+      });
+
+      expect(attachments.editedAtOf(clientId)).toEqual(stamp);
+    });
+
+    it('leaves a replayed row’s edit time where it was', async () => {
+      const { service, attachments, aliceStopId } = await makeServices();
+      const createdAt = new Date(Date.now() - 60_000);
+      await service.upload(alice, aliceStopId, png(), {
+        id: clientId,
+        editedAt: createdAt,
+      });
+
+      await service.upload(alice, aliceStopId, png(), {
+        id: clientId,
+        editedAt: new Date(Date.now() - 10_000),
+      });
+
+      expect(attachments.editedAtOf(clientId)).toEqual(createdAt);
+    });
+  });
+
+  describe('upload with isCampgroundMap', () => {
+    it('sets the flag in the same write as the bytes', async () => {
+      const { service, aliceStopId } = await makeServices();
+
+      const attachment = await service.upload(alice, aliceStopId, png(), {
+        isCampgroundMap: true,
+      });
+
+      expect(attachment.isCampgroundMap).toBe(true);
+    });
+
+    it('leaves the flag off when the field is absent — unchanged from before', async () => {
+      const { service, aliceStopId } = await makeServices();
+
+      const attachment = await service.upload(alice, aliceStopId, png());
+
+      expect(attachment.isCampgroundMap).toBe(false);
+    });
+
+    it('sweeps the flag off the stop’s other attachments, as the toggle does', async () => {
+      const { service, attachments, aliceStopId } = await makeServices();
+      const first = await service.upload(
+        alice,
+        aliceStopId,
+        png('old-map.png'),
+      );
+      await service.setCampgroundMap(alice, first.id, true);
+
+      const second = await service.upload(
+        alice,
+        aliceStopId,
+        png('new-map.png'),
+        {
+          isCampgroundMap: true,
+        },
+      );
+
+      const kept = await attachments.listByStop(aliceStopId);
+      expect(kept.filter((a) => a.isCampgroundMap).map((a) => a.id)).toEqual([
+        second.id,
+      ]);
     });
   });
 });

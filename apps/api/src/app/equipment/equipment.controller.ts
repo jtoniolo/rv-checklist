@@ -33,13 +33,19 @@ import { EquipmentService } from './equipment.service.js';
 export class EquipmentController {
   constructor(private readonly equipment: EquipmentService) {}
 
+  /**
+   * `X-Edited-At` initialises the new row's LWW edit time (issue #143), so a
+   * create replayed at reconnect never stamps itself later than the edits
+   * already queued behind it.
+   */
   @Post()
   @ZodSerializerDto(EquipmentItemDto)
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateEquipmentItemDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<EquipmentItem> {
-    return this.equipment.create(owner.id, body);
+    return this.equipment.create(owner.id, body, editedAt);
   }
 
   @Get()

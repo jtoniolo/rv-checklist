@@ -8,6 +8,8 @@ import { RigService } from './rig.service.js';
 
 const alice = '550e8400-e29b-41d4-a716-446655440001';
 const bob = '550e8400-e29b-41d4-a716-446655440002';
+// An id a client minted offline, before the row ever reached the server.
+const clientId = '550e8400-e29b-41d4-a716-446655440077';
 
 const airstream: CreateRig = {
   vin: '1FDXE4FS1234567890',
@@ -45,6 +47,129 @@ describe('RigService', () => {
       const second = await service.create(alice, airstream);
 
       expect(first.id).not.toEqual(second.id);
+    });
+
+    // Client-generated ids (ADR-0028, issue #143). The rig is the plainest of
+    // the nine create paths, so the whole contract is pinned here; the others
+    // cover only what differs (nested ids, parent scope, side effects).
+    describe('with a client-generated id', () => {
+      it('persists under the id the client supplied', async () => {
+        const { service } = makeService();
+
+        const rig = await service.create(alice, { ...airstream, id: clientId });
+
+        expect(rig.id).toBe(clientId);
+        await expect(service.get(alice, clientId)).resolves.toMatchObject({
+          nickname: 'Silver Bullet',
+        });
+      });
+
+      it('still mints an id when the client supplies none', async () => {
+        const { service } = makeService();
+
+        const rig = await service.create(alice, airstream);
+
+        expect(rig.id).toEqual(expect.any(String));
+        expect(rig.id).not.toBe(clientId);
+      });
+
+      it('treats a re-post of the same id as success, leaving exactly one row', async () => {
+        const { service } = makeService();
+        await service.create(alice, { ...airstream, id: clientId });
+
+        const replayed = await service.create(alice, {
+          ...airstream,
+          id: clientId,
+        });
+
+        expect(replayed.id).toBe(clientId);
+        await expect(service.list(alice)).resolves.toHaveLength(1);
+      });
+
+      it('leaves the stored record untouched on a re-post', async () => {
+        const { service } = makeService();
+        await service.create(alice, { ...airstream, id: clientId });
+        await service.update(alice, clientId, { nickname: 'Renamed since' });
+
+        const replayed = await service.create(alice, {
+          ...airstream,
+          id: clientId,
+          nickname: 'The original create body',
+        });
+
+        // The replay is not an edit: the create body must not overwrite what
+        // the edits queued behind it already did.
+        expect(replayed.nickname).toBe('Renamed since');
+      });
+
+      it('never returns another owner’s row, and never overwrites it', async () => {
+        const { service } = makeService();
+        await service.create(bob, { ...airstream, id: clientId });
+
+        // Indistinguishable from "not found", exactly as reading Bob's rig is.
+        await expect(
+          service.create(alice, { ...airstream, id: clientId }),
+        ).rejects.toThrow(NotFoundException);
+        await expect(service.get(bob, clientId)).resolves.toMatchObject({
+          nickname: 'Silver Bullet',
+          ownerId: bob,
+        });
+        await expect(service.list(alice)).resolves.toEqual([]);
+      });
+    });
+
+    // The X-Edited-At contract on creates (ADR-0028, issue #143): a create
+    // replayed at reconnect must not stamp itself later than the edits already
+    // queued behind it, or those edits would be dropped as stale.
+    describe('under X-Edited-At', () => {
+      it('initialises the record’s edit time to the clamped stamp', async () => {
+        const { service, repo } = makeService();
+        const stamp = new Date(Date.now() - 60_000);
+
+        const rig = await service.create(alice, airstream, stamp);
+
+        expect(repo.editedAtOf(rig.id)).toEqual(stamp);
+      });
+
+      it('lets an edit queued after an offline create still win', async () => {
+        const { service } = makeService();
+        const createdAt = new Date(Date.now() - 60_000);
+        const editedAt = new Date(Date.now() - 30_000);
+        await service.create(alice, { ...airstream, id: clientId }, createdAt);
+
+        const updated = await service.update(
+          alice,
+          clientId,
+          { nickname: 'Renamed offline' },
+          editedAt,
+        );
+
+        expect(updated.nickname).toBe('Renamed offline');
+      });
+
+      it('stamps server now when the header is absent', async () => {
+        const { service, repo } = makeService();
+        const before = Date.now();
+
+        const rig = await service.create(alice, airstream);
+
+        const stored = repo.editedAtOf(rig.id);
+        expect(stored?.getTime()).toBeGreaterThanOrEqual(before);
+      });
+
+      it('leaves a re-posted row’s edit time where it was', async () => {
+        const { service, repo } = makeService();
+        const createdAt = new Date(Date.now() - 60_000);
+        await service.create(alice, { ...airstream, id: clientId }, createdAt);
+
+        await service.create(
+          alice,
+          { ...airstream, id: clientId },
+          new Date(Date.now() - 10_000),
+        );
+
+        expect(repo.editedAtOf(clientId)).toEqual(createdAt);
+      });
     });
   });
 

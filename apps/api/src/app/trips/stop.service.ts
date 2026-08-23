@@ -8,7 +8,7 @@ import {
   TripRepository,
 } from '@rv-checklist/api-data-access';
 import type {
-  CreateStop,
+  CreateStopWithId,
   Id,
   ReorderStop,
   StopRead,
@@ -16,6 +16,7 @@ import type {
   Trip,
   UpdateStop,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 import { ObjectStorage } from '../storage/object-storage.js';
 import { stopAttachmentPrefix } from './attachment-keys.js';
 
@@ -103,7 +104,11 @@ export class StopService {
    * running total); the result is floored at 0 so backing a leg out after a
    * manual downward correction can never go negative.
    */
-  private async adjustDistance(rigId: Id, deltaKm: number): Promise<void> {
+  private async adjustDistance(
+    rigId: Id,
+    deltaKm: number,
+    editedAt?: Date,
+  ): Promise<void> {
     if (deltaKm === 0) {
       return;
     }
@@ -111,10 +116,18 @@ export class StopService {
     if (!rig) {
       return;
     }
-    await this.rigs.save({
-      ...rig,
-      distanceKm: Math.max(0, (rig.distanceKm ?? 0) + deltaKm),
-    });
+    // The delta always applies — it is exempt from the LWW gate. When the
+    // caller carried `X-Edited-At`, the rig's edit clock moves to
+    // max(stored, stamp) instead of server now (issue #143): re-stamping it
+    // "now" would silently drop the same client's next queued rig edit, which
+    // is the bug this closes.
+    await this.rigs.save(
+      {
+        ...rig,
+        distanceKm: Math.max(0, (rig.distanceKm ?? 0) + deltaKm),
+      },
+      editedAt,
+    );
   }
 
   /** Renumber a trip's stops 0..n-1 in their current order, writing only movers. */
@@ -129,20 +142,38 @@ export class StopService {
     );
   }
 
-  /** Append a stop at the end of one of the owner's trips — not yet arrived. */
-  async create(ownerId: Id, input: CreateStop): Promise<StopRead> {
+  /**
+   * Append a stop at the end of one of the owner's trips — not yet arrived.
+   * `id` may be the client's own (issue #143); a re-post returns the stored
+   * stop untouched rather than appending a duplicate.
+   */
+  async create(
+    ownerId: Id,
+    input: CreateStopWithId,
+    editedAt?: Date,
+  ): Promise<StopRead> {
     const trip = await this.ownedTrip(ownerId, input.tripId);
     const siblings = await this.stops.listByTrip(trip.id);
-    const saved = await this.stops.save({
-      id: randomUUID(),
-      position: siblings.length,
-      arrived: false,
-      // The owning rig's id, denormalized for sync (ADR-0028) — always the
-      // trip's own, never client input; immutable after create.
-      rigId: trip.rigId,
-      ...input,
-    });
-    return this.toRead(saved);
+    const { id = randomUUID(), ...fields } = input;
+    const inserted = await this.stops.insert(
+      {
+        id,
+        position: siblings.length,
+        arrived: false,
+        // The owning rig's id, denormalized for sync (ADR-0028) — always the
+        // trip's own, never client input; immutable after create.
+        rigId: trip.rigId,
+        ...fields,
+      },
+      editedAt,
+    );
+    return this.toRead(
+      adoptCreated(
+        inserted,
+        (stop) => stop.tripId === trip.id,
+        'Stop not found',
+      ),
+    );
   }
 
   /**
@@ -206,6 +237,7 @@ export class StopService {
         await this.adjustDistance(
           trip.rigId,
           (next.legKm ?? 0) - (stop.legKm ?? 0),
+          editedAt,
         );
       }
       return this.toRead(record);
@@ -224,8 +256,19 @@ export class StopService {
    * and logs its leg onto the rig's Distance; `false` un-arrives it and backs
    * the leg out. Idempotent — re-asserting the current state changes nothing,
    * so a leg can never be counted twice.
+   *
+   * A delta operation, so it is exempt from the LWW gate and always applies
+   * (ADR-0028) — but `X-Edited-At` still governs the *stamp* it leaves: the
+   * stop's and the rig's edit clocks move to max(stored, stamp) rather than
+   * server now, so the edits queued behind an offline arrival survive replay
+   * (issue #143).
    */
-  async setArrived(ownerId: Id, id: Id, isArrived: boolean): Promise<StopRead> {
+  async setArrived(
+    ownerId: Id,
+    id: Id,
+    isArrived: boolean,
+    editedAt?: Date,
+  ): Promise<StopRead> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     if (stop.arrived === isArrived) {
       return this.toRead(stop);
@@ -234,9 +277,12 @@ export class StopService {
       await this.adjustDistance(
         trip.rigId,
         isArrived ? stop.legKm : -stop.legKm,
+        editedAt,
       );
     }
-    return this.toRead(await this.stops.save({ ...stop, arrived: isArrived }));
+    return this.toRead(
+      await this.stops.save({ ...stop, arrived: isArrived }, editedAt),
+    );
   }
 
   /**
@@ -244,8 +290,16 @@ export class StopService {
    * (a past-the-end position lands it last), renumbering the whole trip
    * contiguously. Returns the trip's stops in their new order. Legs ride with
    * their stops, so reordering never touches the rig's Distance.
+   *
+   * Exempt from the LWW gate like arrival, and stamped the same way: every
+   * moved stop's edit clock becomes max(stored, `X-Edited-At`) (issue #143).
    */
-  async reorder(ownerId: Id, id: Id, body: ReorderStop): Promise<StopRead[]> {
+  async reorder(
+    ownerId: Id,
+    id: Id,
+    body: ReorderStop,
+    editedAt?: Date,
+  ): Promise<StopRead[]> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     const siblings = await this.stops.listByTrip(trip.id);
     const others = siblings.filter((s) => s.id !== stop.id);
@@ -254,7 +308,7 @@ export class StopService {
       others.map((s, index) =>
         s.position === index
           ? Promise.resolve(s)
-          : this.stops.save({ ...s, position: index }),
+          : this.stops.save({ ...s, position: index }, editedAt),
       ),
     );
     const reordered = await this.stops.listByTrip(trip.id);

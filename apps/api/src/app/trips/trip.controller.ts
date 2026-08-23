@@ -31,13 +31,19 @@ import { CreateTripDto, TripDto, UpdateTripDto } from './trips.dto.js';
 export class TripController {
   constructor(private readonly trips: TripService) {}
 
+  /**
+   * `X-Edited-At` initialises the new row's LWW edit time (issue #143), so a
+   * create replayed at reconnect never stamps itself later than the edits
+   * already queued behind it.
+   */
   @Post()
   @ZodSerializerDto(TripDto)
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateTripDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<TripRead> {
-    return this.trips.create(owner.id, body);
+    return this.trips.create(owner.id, body, editedAt);
   }
 
   /** The trips of one rig — the only list scope a trip screen needs. */

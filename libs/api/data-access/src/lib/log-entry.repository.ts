@@ -3,11 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type {
   ConditionalWrite,
   Id,
+  InsertResult,
   LogEntry,
   LogEntryRepository as LogEntryRepositoryPort,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { LogEntryEntity } from './entities/log-entry.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link LogEntryRepositoryPort} as a concrete Nest DI token (an abstract
@@ -19,7 +21,11 @@ import { LogEntryEntity } from './entities/log-entry.entity.js';
  */
 export abstract class LogEntryRepository implements LogEntryRepositoryPort {
   abstract findById(id: Id): Promise<LogEntry | undefined>;
-  abstract save(entry: LogEntry): Promise<LogEntry>;
+  abstract save(entry: LogEntry, editedAt?: Date): Promise<LogEntry>;
+  abstract insert(
+    entry: LogEntry,
+    editedAt?: Date,
+  ): Promise<InsertResult<LogEntry>>;
   abstract saveIfNewer(
     entry: LogEntry,
     editedAt: Date,
@@ -83,12 +89,42 @@ export class TypeOrmLogEntryRepository extends LogEntryRepository {
     return found ? toLogEntry(found) : undefined;
   }
 
-  async save(entry: LogEntry): Promise<LogEntry> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
-    const saved = await this.repo.save(
-      this.repo.create({ ...toRow(entry), editedAt: new Date() }),
+  async save(entry: LogEntry, editedAt?: Date): Promise<LogEntry> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...toRow(entry), editedAt: new Date() }),
+      );
+      return toLogEntry(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
+    const saved = await this.repo.save(this.repo.create({ ...toRow(entry) }));
+    await this.repo.update(
+      { id: entry.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toLogEntry(saved);
+  }
+
+  async insert(
+    entry: LogEntry,
+    editedAt?: Date,
+  ): Promise<InsertResult<LogEntry>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...toRow(entry),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: entry.id });
+      return { created: false, record: toLogEntry(existing) };
+    }
+    return { created: true, record: entry };
   }
 
   async saveIfNewer(

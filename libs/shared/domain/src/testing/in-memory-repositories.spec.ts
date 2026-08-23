@@ -12,6 +12,21 @@ const rig = (id: string, ownerId: string): Rig => ({
   nickname: `Rig ${id}`,
 });
 
+const trip = (id: string) => ({
+  id,
+  rigId: 'rig-1',
+  name: `Trip ${id}`,
+  checklistIds: [],
+});
+
+const stop = (id: string, tripId: string) => ({
+  id,
+  tripId,
+  rigId: 'rig-1',
+  position: 0,
+  arrived: false,
+});
+
 const checklist = (id: string, rigId: string): Checklist => ({
   id,
   rigId,
@@ -250,6 +265,137 @@ describe('in-memory repositories', () => {
       await expect(
         rigs.saveIfNewer(rig('missing', 'owner-1'), later()),
       ).rejects.toThrow('missing');
+    });
+  });
+
+  describe('insert — client-generated ids (ADR-0028, issue #143)', () => {
+    it('creates under the carried id and reports it created', async () => {
+      const { rigs } = createInMemoryRepositories();
+
+      const outcome = await rigs.insert(rig('a', 'owner-1'));
+
+      expect(outcome.created).toBe(true);
+      expect(outcome.record.nickname).toBe('Rig a');
+      await expect(rigs.findById('a')).resolves.toMatchObject({ id: 'a' });
+    });
+
+    it('leaves an existing row untouched and reports it not created', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.save({ ...rig('a', 'owner-1'), nickname: 'Stored' });
+
+      const outcome = await rigs.insert({
+        ...rig('a', 'owner-1'),
+        nickname: 'Replay',
+      });
+
+      expect(outcome.created).toBe(false);
+      expect(outcome.record.nickname).toBe('Stored');
+      await expect(rigs.findById('a')).resolves.toMatchObject({
+        nickname: 'Stored',
+      });
+    });
+
+    it('initialises the edit time from the stamp — no maximum, the row is new', async () => {
+      const { rigs } = createInMemoryRepositories();
+      const stamp = earlier();
+
+      await rigs.insert(rig('a', 'owner-1'), stamp);
+
+      expect(rigs.editedAtOf('a')).toEqual(stamp);
+    });
+
+    it('leaves a colliding row’s edit time exactly where it was', async () => {
+      const { rigs } = createInMemoryRepositories();
+      const stamp = earlier();
+      await rigs.insert(rig('a', 'owner-1'), stamp);
+
+      await rigs.insert(rig('a', 'owner-1'), later());
+
+      expect(rigs.editedAtOf('a')).toEqual(stamp);
+    });
+  });
+
+  describe('save with a stamp — the exempt-write clock (issue #143)', () => {
+    it('moves the edit time forward to a newer stamp', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.insert(rig('a', 'owner-1'), earlier());
+      const stamp = later();
+
+      await rigs.save(rig('a', 'owner-1'), stamp);
+
+      expect(rigs.editedAtOf('a')).toEqual(stamp);
+    });
+
+    it('keeps a newer stored edit time — max, never a plain overwrite', async () => {
+      const { rigs } = createInMemoryRepositories();
+      const stored = later();
+      await rigs.insert(rig('a', 'owner-1'), stored);
+
+      await rigs.save(rig('a', 'owner-1'), earlier());
+
+      expect(rigs.editedAtOf('a')).toEqual(stored);
+    });
+
+    it('writes the row either way — exemption is from the gate, not the write', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.insert(rig('a', 'owner-1'), later());
+
+      await rigs.save(
+        { ...rig('a', 'owner-1'), nickname: 'Delta applied' },
+        earlier(),
+      );
+
+      await expect(rigs.findById('a')).resolves.toMatchObject({
+        nickname: 'Delta applied',
+      });
+    });
+
+    it('re-stamps to now when no stamp is given — unchanged from before', async () => {
+      const { rigs } = createInMemoryRepositories();
+      await rigs.insert(rig('a', 'owner-1'), earlier());
+      const before = Date.now();
+
+      await rigs.save(rig('a', 'owner-1'));
+
+      expect(rigs.editedAtOf('a')?.getTime()).toBeGreaterThanOrEqual(before);
+    });
+  });
+
+  describe('createWithStops under client ids (issue #143)', () => {
+    it('writes the trip and its stops under the ids they carry', async () => {
+      const { trips, stops } = createInMemoryRepositories();
+
+      const outcome = await trips.createWithStops(trip('t1'), [
+        stop('s1', 't1'),
+      ]);
+
+      expect(outcome.created).toBe(true);
+      await expect(stops.listByTrip('t1')).resolves.toHaveLength(1);
+    });
+
+    it('leaves an existing trip and its stops alone on a re-post', async () => {
+      const { trips, stops } = createInMemoryRepositories();
+      await trips.createWithStops(trip('t1'), [stop('s1', 't1')]);
+
+      const outcome = await trips.createWithStops(trip('t1'), [
+        stop('s2', 't1'),
+      ]);
+
+      expect(outcome.created).toBe(false);
+      await expect(stops.listByTrip('t1')).resolves.toEqual([
+        expect.objectContaining({ id: 's1' }),
+      ]);
+    });
+
+    it('refuses a reused stop id under a new trip, writing nothing', async () => {
+      const { trips, stops } = createInMemoryRepositories();
+      await trips.createWithStops(trip('t1'), [stop('s1', 't1')]);
+
+      await expect(
+        trips.createWithStops(trip('t2'), [stop('s1', 't2')]),
+      ).rejects.toThrow('s1');
+      await expect(trips.findById('t2')).resolves.toBeUndefined();
+      await expect(stops.listByTrip('t1')).resolves.toHaveLength(1);
     });
   });
 });

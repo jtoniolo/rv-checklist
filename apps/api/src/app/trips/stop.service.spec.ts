@@ -15,6 +15,8 @@ const aliceRigId = '550e8400-e29b-41d4-a716-446655440010';
 const bobRigId = '550e8400-e29b-41d4-a716-446655440011';
 const aliceTripId = '550e8400-e29b-41d4-a716-446655440030';
 const bobTripId = '550e8400-e29b-41d4-a716-446655440031';
+// Ids a client minted offline, before the rows ever reached the server.
+const clientStopId = '550e8400-e29b-41d4-a716-446655440077';
 
 const aliceTrip: Trip = {
   id: aliceTripId,
@@ -67,6 +69,31 @@ const aliceDistance = async (rigs: InMemoryRigRepository) => {
 // LWW stamps (issue #141): clearly older / newer than any record the test just wrote.
 const staleStamp = () => new Date(Date.now() - 60_000);
 const newerStamp = () => new Date(Date.now() + 60_000);
+
+// The replay timeline for the exempt-write clock (issue #143): the rows were
+// last edited hours ago, the offline arrival is stamped an hour back, and the
+// rename queued behind it half an hour back. Everything replays now.
+const longAgo = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
+const arrivalStamp = () => new Date(Date.now() - 60 * 60 * 1000);
+const renameStamp = () => new Date(Date.now() - 30 * 60 * 1000);
+
+/**
+ * Seed the rig with an edit clock that is already old — the state a row is
+ * really in when a queued operation finally replays. The clock only ever moves
+ * forward (that is the rule under test), so an old row has to be inserted as
+ * one rather than saved and wound back.
+ */
+async function backdateRig(
+  rigs: InMemoryRigRepository,
+  when: Date,
+): Promise<void> {
+  const rig = await rigs.findById(aliceRigId);
+  if (!rig) {
+    throw new Error('backdateRig: no rig to backdate');
+  }
+  await rigs.delete(aliceRigId);
+  await rigs.insert(rig, when);
+}
 
 describe('StopService', () => {
   describe('create', () => {
@@ -456,6 +483,172 @@ describe('StopService', () => {
       );
 
       expect(await aliceDistance(rigs)).toBe(1000);
+    });
+  });
+
+  // Client-generated ids on the stop create (ADR-0028, issue #143).
+  describe('create with a client-generated id', () => {
+    it('appends under the supplied id', async () => {
+      const { service } = await makeService();
+
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        id: clientStopId,
+        campground: 'Pine Hollow',
+      });
+
+      expect(stop).toMatchObject({ id: clientStopId, position: 0 });
+    });
+
+    it('treats a re-post as success, leaving one stop on the trip', async () => {
+      const { service, stops } = await makeService();
+      await service.create(alice, { tripId: aliceTripId, id: clientStopId });
+
+      const replayed = await service.create(alice, {
+        tripId: aliceTripId,
+        id: clientStopId,
+      });
+
+      expect(replayed.id).toBe(clientStopId);
+      await expect(stops.listByTrip(aliceTripId)).resolves.toHaveLength(1);
+    });
+
+    it('keeps rigId server-derived — a client id names the row, not its parents', async () => {
+      const { service, stops } = await makeService();
+
+      await service.create(alice, { tripId: aliceTripId, id: clientStopId });
+
+      await expect(stops.findById(clientStopId)).resolves.toMatchObject({
+        rigId: aliceRigId,
+      });
+    });
+
+    it('never adopts a stop sitting on someone else’s trip', async () => {
+      const { service, stops } = await makeService();
+      await service.create(bob, { tripId: bobTripId, id: clientStopId });
+
+      await expect(
+        service.create(alice, { tripId: aliceTripId, id: clientStopId }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(stops.findById(clientStopId)).resolves.toMatchObject({
+        tripId: bobTripId,
+      });
+      await expect(stops.listByTrip(aliceTripId)).resolves.toEqual([]);
+    });
+  });
+
+  /**
+   * The exempt-write edit-clock rule (ADR-0028, issue #143). Arrival and
+   * reorder are exempt from the LWW *gate*, not from the *stamp*: before this,
+   * they re-stamped the row (and the rig) to server receipt time, and the same
+   * client's next queued edit was then dropped as stale. The fix stores
+   * max(stored, clamped) instead — forward-only, so it closes that gap without
+   * letting a third device's stale write win.
+   */
+  describe('the exempt-write edit clock', () => {
+    it('leaves the rig’s clock behind the edit queued after an offline arrival', async () => {
+      const { service, rigs } = await makeService();
+      await backdateRig(rigs, longAgo());
+      const stop = await service.create(
+        alice,
+        { tripId: aliceTripId, legKm: 120 },
+        longAgo(),
+      );
+
+      await service.setArrived(alice, stop.id, true, arrivalStamp());
+
+      // The rename the client queued behind the arrival is older than now but
+      // newer than the arrival. Re-stamping the rig to "now" dropped it — the
+      // reported bug; max(stored, clamped) lets it land.
+      const { applied } = await rigs.saveIfNewer(
+        { id: aliceRigId, ownerId: alice, nickname: 'Renamed offline' },
+        renameStamp(),
+      );
+      expect(applied).toBe(true);
+      await expect(rigs.findById(aliceRigId)).resolves.toMatchObject({
+        nickname: 'Renamed offline',
+      });
+    });
+
+    it('leaves the stop’s own clock behind that queued edit too', async () => {
+      const { service, stops } = await makeService();
+      const stamp = arrivalStamp();
+      const stop = await service.create(
+        alice,
+        { tripId: aliceTripId, legKm: 120 },
+        longAgo(),
+      );
+
+      await service.setArrived(alice, stop.id, true, stamp);
+
+      expect(stops.editedAtOf(stop.id)).toEqual(stamp);
+    });
+
+    it('applies the Distance delta regardless — exemption is from the gate', async () => {
+      const { service, rigs } = await makeService({ distanceKm: 500 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 120,
+      });
+
+      await service.setArrived(alice, stop.id, true, staleStamp());
+
+      expect(await aliceDistance(rigs)).toBe(620);
+    });
+
+    it('never winds a clock backwards below a newer stored edit', async () => {
+      const { service, rigs, stops } = await makeService();
+      const stop = await service.create(
+        alice,
+        { tripId: aliceTripId, legKm: 120 },
+        longAgo(),
+      );
+      // A newer edit from another device lands first.
+      await stops.saveIfNewer({ ...stop, rigId: aliceRigId }, newerStamp());
+      const newerStored = stops.editedAtOf(stop.id);
+
+      await service.setArrived(alice, stop.id, true, staleStamp());
+
+      // max(stored, clamped) keeps the newer stamp, so a third device's stale
+      // queued write still loses — the reason this is not a plain overwrite.
+      expect(stops.editedAtOf(stop.id)).toEqual(newerStored);
+      expect(await aliceDistance(rigs)).toBe(120);
+    });
+
+    it('stamps server now when arrival carries no header — unchanged from before', async () => {
+      const { service, stops } = await makeService();
+      const stop = await service.create(
+        alice,
+        { tripId: aliceTripId },
+        longAgo(),
+      );
+      const before = Date.now();
+
+      await service.setArrived(alice, stop.id, true);
+
+      expect(stops.editedAtOf(stop.id)?.getTime()).toBeGreaterThanOrEqual(
+        before,
+      );
+    });
+
+    it('stamps every stop a reorder moves with max(stored, clamped)', async () => {
+      const { service, stops } = await makeService();
+      const first = await service.create(
+        alice,
+        { tripId: aliceTripId },
+        longAgo(),
+      );
+      const second = await service.create(
+        alice,
+        { tripId: aliceTripId },
+        longAgo(),
+      );
+      const stamp = arrivalStamp();
+
+      await service.reorder(alice, second.id, { position: 0 }, stamp);
+
+      expect(stops.editedAtOf(first.id)).toEqual(stamp);
+      expect(stops.editedAtOf(second.id)).toEqual(stamp);
     });
   });
 });

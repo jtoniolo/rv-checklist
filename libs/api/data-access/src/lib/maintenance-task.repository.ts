@@ -3,11 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type {
   ConditionalWrite,
   Id,
+  InsertResult,
   MaintenanceTask,
   MaintenanceTaskRepository as MaintenanceTaskRepositoryPort,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { MaintenanceTaskEntity } from './entities/maintenance-task.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link MaintenanceTaskRepositoryPort} as a concrete Nest DI token (an
@@ -20,7 +22,14 @@ import { MaintenanceTaskEntity } from './entities/maintenance-task.entity.js';
  */
 export abstract class MaintenanceTaskRepository implements MaintenanceTaskRepositoryPort {
   abstract findById(id: Id): Promise<MaintenanceTask | undefined>;
-  abstract save(task: MaintenanceTask): Promise<MaintenanceTask>;
+  abstract save(
+    task: MaintenanceTask,
+    editedAt?: Date,
+  ): Promise<MaintenanceTask>;
+  abstract insert(
+    task: MaintenanceTask,
+    editedAt?: Date,
+  ): Promise<InsertResult<MaintenanceTask>>;
   abstract saveIfNewer(
     task: MaintenanceTask,
     editedAt: Date,
@@ -116,12 +125,42 @@ export class TypeOrmMaintenanceTaskRepository extends MaintenanceTaskRepository 
     return found ? toTask(found) : undefined;
   }
 
-  async save(task: MaintenanceTask): Promise<MaintenanceTask> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
-    const saved = await this.repo.save(
-      this.repo.create({ ...toRow(task), editedAt: new Date() }),
+  async save(task: MaintenanceTask, editedAt?: Date): Promise<MaintenanceTask> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...toRow(task), editedAt: new Date() }),
+      );
+      return toTask(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
+    const saved = await this.repo.save(this.repo.create({ ...toRow(task) }));
+    await this.repo.update(
+      { id: task.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toTask(saved);
+  }
+
+  async insert(
+    task: MaintenanceTask,
+    editedAt?: Date,
+  ): Promise<InsertResult<MaintenanceTask>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...toRow(task),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: task.id });
+      return { created: false, record: toTask(existing) };
+    }
+    return { created: true, record: task };
   }
 
   async saveIfNewer(

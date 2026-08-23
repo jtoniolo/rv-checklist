@@ -6,12 +6,13 @@ import {
   RigRepository,
 } from '@rv-checklist/api-data-access';
 import type {
-  CreateRig,
+  CreateRigWithId,
   EquipmentItem,
   Id,
   Rig,
   UpdateRig,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 
 /**
  * Apply the *present* fields of a partial edit onto a complete aggregate. A key
@@ -56,9 +57,23 @@ export class RigService {
     return rig;
   }
 
-  /** Add a rig for the owner — the server assigns the id and the ownership. */
-  create(ownerId: Id, input: CreateRig): Promise<Rig> {
-    return this.rigs.save({ id: randomUUID(), ownerId, ...input });
+  /**
+   * Add a rig for the owner — the server assigns the ownership, and the id
+   * unless the client brought its own (issue #143). `X-Edited-At` initialises
+   * the row's LWW edit time, so a create replayed at reconnect does not stamp
+   * itself later than the edits already queued behind it.
+   */
+  async create(
+    ownerId: Id,
+    input: CreateRigWithId,
+    editedAt?: Date,
+  ): Promise<Rig> {
+    const { id = randomUUID(), ...fields } = input;
+    return adoptCreated(
+      await this.rigs.insert({ id, ownerId, ...fields }, editedAt),
+      (rig) => rig.ownerId === ownerId,
+      'Rig not found',
+    );
   }
 
   /** The owner's rigs. */

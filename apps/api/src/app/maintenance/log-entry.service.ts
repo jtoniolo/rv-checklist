@@ -12,13 +12,14 @@ import {
 } from '@rv-checklist/api-data-access';
 import {
   validateFieldValues,
-  type CreateLogEntry,
+  type CreateLogEntryWithId,
   type Id,
   type LogEntry,
   type LoggedField,
   type MaintenanceTask,
   type UpdateLogEntry,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 
 /**
  * Reject a snapshot whose `required` fields carry no value (spec §Testing —
@@ -78,32 +79,49 @@ export class LogEntryService {
     return task;
   }
 
-  /** Record that one of the owner's tasks was performed — the rig comes from the task. */
-  async create(ownerId: Id, input: CreateLogEntry): Promise<LogEntry> {
+  /**
+   * Record that one of the owner's tasks was performed — the rig comes from
+   * the task. `id` may be the client's own (issue #143); a replayed create
+   * returns the entry already stored and, having written nothing, leaves the
+   * one-time task deletion below to the call that really did the work.
+   */
+  async create(
+    ownerId: Id,
+    input: CreateLogEntryWithId,
+    editedAt?: Date,
+  ): Promise<LogEntry> {
     const task = await this.ownedTask(ownerId, input.taskId);
     assertRequiredValues(input.fields);
-    const entry = await this.logEntries.save({
-      id: randomUUID(),
-      taskId: task.id,
-      rigId: task.rigId,
-      // Snapshot the task's name as it is now (issue #27) — a later rename must
-      // not relabel this entry, exactly as the field snapshot is frozen.
-      taskName: task.name,
-      performedOn: input.performedOn,
-      // The rig's Distance reading at the time (issue #32), if the owner gave
-      // one — the anchor a distance Interval measures from. Absent means absent.
-      ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
-      // The cost in cents (issue #39), if the owner recorded one. Absent means absent.
-      ...(input.costCents !== undefined && { costCents: input.costCents }),
-      // The free-text comment (issue #101), if the owner wrote one. Absent means absent.
-      ...(input.comment !== undefined && { comment: input.comment }),
-      fields: input.fields,
-    });
+    const inserted = await this.logEntries.insert(
+      {
+        id: input.id ?? randomUUID(),
+        taskId: task.id,
+        rigId: task.rigId,
+        // Snapshot the task's name as it is now (issue #27) — a later rename must
+        // not relabel this entry, exactly as the field snapshot is frozen.
+        taskName: task.name,
+        performedOn: input.performedOn,
+        // The rig's Distance reading at the time (issue #32), if the owner gave
+        // one — the anchor a distance Interval measures from. Absent means absent.
+        ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
+        // The cost in cents (issue #39), if the owner recorded one. Absent means absent.
+        ...(input.costCents !== undefined && { costCents: input.costCents }),
+        // The free-text comment (issue #101), if the owner wrote one. Absent means absent.
+        ...(input.comment !== undefined && { comment: input.comment }),
+        fields: input.fields,
+      },
+      editedAt,
+    );
+    const entry = adoptCreated(
+      inserted,
+      (existing) => existing.taskId === task.id,
+      'Log entry not found',
+    );
     // A one-time task is done once (issue #29): performing it writes this entry,
     // then the task deletes itself. The entry is the permanent record — it
     // outlives the task, kept and orphaned via ON DELETE SET NULL (issue #28),
     // still owned through its rig and labeled by its snapshotted taskName.
-    if (task.oneTime) {
+    if (inserted.created && task.oneTime) {
       await this.tasks.delete(task.id);
     }
     return entry;

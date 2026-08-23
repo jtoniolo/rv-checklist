@@ -10,7 +10,7 @@ import {
 } from '@rv-checklist/api-data-access';
 import {
   tripStatus,
-  type CreateTrip,
+  type CreateTripWithId,
   type Id,
   type StopRead,
   type StoredStop,
@@ -18,6 +18,7 @@ import {
   type TripRead,
   type UpdateTrip,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 import { ObjectStorage } from '../storage/object-storage.js';
 import { stopAttachmentPrefix } from './attachment-keys.js';
 
@@ -105,28 +106,45 @@ export class TripService {
 
   /**
    * Create a trip — with any initial stops — on one of the owner's rigs, in
-   * one atomic save (issue #120). The server assigns every id, positions the
-   * stops 0..n-1 in array order, and starts each un-arrived (arrival is an
-   * explicit operation with Distance side effects). An empty `stops` stays
-   * valid: the at-least-one-stop rule is the web form's, not the wire's.
+   * one atomic save (issue #120). The server positions the stops 0..n-1 in
+   * array order and starts each un-arrived (arrival is an explicit operation
+   * with Distance side effects). An empty `stops` stays valid: the
+   * at-least-one-stop rule is the web form's, not the wire's.
+   *
+   * The trip and each initial stop may carry a client-generated id (issue
+   * #143), so an offline trip create produces stops the operation queue can
+   * name straight away. A re-post of the same trip id returns the stored trip
+   * untouched — one trip, one set of stops, no second copy.
    */
-  async create(ownerId: Id, input: CreateTrip): Promise<TripRead> {
+  async create(
+    ownerId: Id,
+    input: CreateTripWithId,
+    editedAt?: Date,
+  ): Promise<TripRead> {
     if (!(await this.ownsRig(ownerId, input.rigId))) {
       throw new NotFoundException('Rig not found');
     }
-    const { stops, ...tripFields } = input;
-    const trip: Trip = { id: randomUUID(), ...tripFields };
-    const initialStops: StoredStop[] = stops.map((stop, position) => ({
-      ...stop,
-      id: randomUUID(),
-      tripId: trip.id,
-      // The owning rig's id, denormalized for sync (ADR-0028) — always the
-      // trip's own, never client input; immutable after create.
-      rigId: trip.rigId,
-      position,
-      arrived: false,
-    }));
-    return this.toRead(await this.trips.createWithStops(trip, initialStops));
+    const { stops, id: tripId = randomUUID(), ...tripFields } = input;
+    const trip: Trip = { id: tripId, ...tripFields };
+    const initialStops: StoredStop[] = stops.map(
+      ({ id = randomUUID(), ...stopFields }, position) => ({
+        ...stopFields,
+        id,
+        tripId: trip.id,
+        // The owning rig's id, denormalized for sync (ADR-0028) — always the
+        // trip's own, never client input; immutable after create.
+        rigId: trip.rigId,
+        position,
+        arrived: false,
+      }),
+    );
+    return this.toRead(
+      adoptCreated(
+        await this.trips.createWithStops(trip, initialStops, editedAt),
+        (stored) => stored.rigId === input.rigId,
+        'Trip not found',
+      ),
+    );
   }
 
   /** The trips of one of the owner's rigs, each with stops and status embedded. */

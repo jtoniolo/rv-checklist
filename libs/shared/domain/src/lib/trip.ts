@@ -130,6 +130,12 @@ export const CreateStopSchema = StopSchema.omit({
 });
 export type CreateStop = z.infer<typeof CreateStopSchema>;
 
+/** The create body with an optional client-generated `id` — see {@link CreateRigWithIdSchema} (issue #143). */
+export const CreateStopWithIdSchema = CreateStopSchema.extend({
+  id: IdSchema.optional(),
+});
+export type CreateStopWithId = z.infer<typeof CreateStopWithIdSchema>;
+
 /**
  * A stop as it rides inside a trip create body (issue #120): the stop create
  * body minus `tripId` — the server knows which trip it is creating. Derived
@@ -152,6 +158,23 @@ export const CreateTripSchema = TripSchema.omit({ id: true }).extend({
   stops: z.array(CreateTripStopSchema).default([]),
 });
 export type CreateTrip = z.infer<typeof CreateTripSchema>;
+
+/**
+ * The create body with an optional client-generated `id` — see
+ * {@link CreateRigWithIdSchema} (issue #143). The initial stops carry optional
+ * ids of their own: an offline trip create must produce stops the operation
+ * queue can already name, exactly as a checklist edit carries its step ids.
+ */
+export const CreateTripStopWithIdSchema = CreateTripStopSchema.extend({
+  id: IdSchema.optional(),
+});
+export type CreateTripStopWithId = z.infer<typeof CreateTripStopWithIdSchema>;
+
+export const CreateTripWithIdSchema = CreateTripSchema.extend({
+  id: IdSchema.optional(),
+  stops: z.array(CreateTripStopWithIdSchema).default([]),
+});
+export type CreateTripWithId = z.infer<typeof CreateTripWithIdSchema>;
 
 /**
  * Edit body — every detail field optional (omitted = unchanged) and nullable

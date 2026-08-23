@@ -574,4 +574,97 @@ describe('LogEntryService', () => {
       await expect(service.get(alice, entry.id)).resolves.toEqual(entry);
     });
   });
+
+  // Client-generated ids (ADR-0028, issue #143).
+  describe('create with a client-generated id', () => {
+    const clientId = '550e8400-e29b-41d4-a716-446655440077';
+
+    it('records the entry under the supplied id', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, {
+        ...performSeals,
+        id: clientId,
+      });
+
+      expect(entry.id).toBe(clientId);
+    });
+
+    it('treats a re-post as success, leaving exactly one entry', async () => {
+      const { service } = await makeService();
+      await service.create(alice, { ...performSeals, id: clientId });
+
+      const replayed = await service.create(alice, {
+        ...performSeals,
+        id: clientId,
+      });
+
+      expect(replayed.id).toBe(clientId);
+      await expect(
+        service.listByTask(alice, sealsTaskId),
+      ).resolves.toHaveLength(1);
+    });
+
+    it('never adopts an entry logged against another owner’s task', async () => {
+      const { service, logEntries } = await makeService();
+      await service.create(bob, {
+        taskId: bobTaskId,
+        performedOn: '2026-07-21',
+        fields: [],
+        id: clientId,
+      });
+
+      await expect(
+        service.create(alice, { ...performSeals, id: clientId }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(logEntries.findById(clientId)).resolves.toMatchObject({
+        taskId: bobTaskId,
+      });
+    });
+
+    it('initialises the entry’s edit time from X-Edited-At', async () => {
+      const { service, logEntries } = await makeService();
+      const stamp = new Date(Date.now() - 60_000);
+
+      await service.create(alice, { ...performSeals, id: clientId }, stamp);
+
+      expect(logEntries.editedAtOf(clientId)).toEqual(stamp);
+    });
+
+    /**
+     * The replay trap ADR-0028 names: performing a one-time task deletes it,
+     * so a replay must not re-run that side effect against whatever else the
+     * queue did in between. It writes nothing, so it triggers nothing.
+     */
+    it('does not re-run the one-time task deletion on a replay', async () => {
+      const oneTimeTaskId = '550e8400-e29b-41d4-a716-446655440031';
+      const { service, tasks } = await makeService();
+      const oneTime = {
+        id: oneTimeTaskId,
+        rigId: aliceRigId,
+        name: 'Re-glue loose trim',
+        oneTime: true as const,
+        fieldSchema: [],
+        tags: [],
+      };
+      await tasks.save(oneTime);
+      const body = {
+        taskId: oneTimeTaskId,
+        performedOn: '2026-07-22',
+        fields: [],
+        id: clientId,
+      };
+      await service.create(alice, body);
+      // The owner re-created the task after the first completion; the queued
+      // create then replays.
+      await tasks.save(oneTime);
+
+      const replayed = await service.create(alice, body);
+
+      expect(replayed.id).toBe(clientId);
+      await expect(tasks.findById(oneTimeTaskId)).resolves.toMatchObject({
+        id: oneTimeTaskId,
+      });
+    });
+  });
 });

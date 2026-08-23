@@ -39,13 +39,19 @@ export class ChecklistController {
   constructor(private readonly checklists: ChecklistService) {}
 
   /** Add a checklist to one of the owner's rigs. */
+  /**
+   * `X-Edited-At` initialises the new row's LWW edit time (issue #143), so a
+   * create replayed at reconnect never stamps itself later than the edits
+   * already queued behind it.
+   */
   @Post()
   @ZodSerializerDto(ChecklistDto)
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateChecklistDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<Checklist> {
-    return this.checklists.create(owner.id, body);
+    return this.checklists.create(owner.id, body, editedAt);
   }
 
   /** List the checklists of one of the owner's rigs (`?rigId=`). */

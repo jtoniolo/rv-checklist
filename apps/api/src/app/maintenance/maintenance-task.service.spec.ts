@@ -480,4 +480,68 @@ describe('MaintenanceTaskService', () => {
       await expect(service.get(alice, task.id)).resolves.toEqual(task);
     });
   });
+
+  // Client-generated ids (ADR-0028, issue #143).
+  describe('create with a client-generated id', () => {
+    const clientId = '550e8400-e29b-41d4-a716-446655440077';
+
+    it('creates under the supplied id', async () => {
+      const { service } = await makeService();
+
+      const task = await service.create(alice, {
+        ...sealsInput,
+        rigId: aliceRigId,
+        id: clientId,
+      });
+
+      expect(task.id).toBe(clientId);
+    });
+
+    it('treats a re-post as success, leaving one task on the rig', async () => {
+      const { service } = await makeService();
+      const body = { ...sealsInput, rigId: aliceRigId, id: clientId };
+      await service.create(alice, body);
+
+      const replayed = await service.create(alice, body);
+
+      expect(replayed.id).toBe(clientId);
+      await expect(service.listByRig(alice, aliceRigId)).resolves.toHaveLength(
+        1,
+      );
+    });
+
+    it('never adopts a task on another owner’s rig', async () => {
+      const { service, tasks } = await makeService();
+      await service.create(bob, {
+        ...sealsInput,
+        rigId: bobRigId,
+        id: clientId,
+      });
+
+      await expect(
+        service.create(alice, {
+          ...sealsInput,
+          rigId: aliceRigId,
+          id: clientId,
+        }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(tasks.findById(clientId)).resolves.toMatchObject({
+        rigId: bobRigId,
+      });
+      await expect(service.listByRig(alice, aliceRigId)).resolves.toEqual([]);
+    });
+
+    it('initialises the task’s edit time from X-Edited-At', async () => {
+      const { service, tasks } = await makeService();
+      const stamp = new Date(Date.now() - 60_000);
+
+      await service.create(
+        alice,
+        { ...sealsInput, rigId: aliceRigId, id: clientId },
+        stamp,
+      );
+
+      expect(tasks.editedAtOf(clientId)).toEqual(stamp);
+    });
+  });
 });

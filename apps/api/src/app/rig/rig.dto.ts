@@ -1,5 +1,5 @@
 import {
-  CreateRigSchema,
+  CreateRigWithIdSchema,
   EquipmentItemSchema,
   RigSchema,
   UpdateRigSchema,
@@ -14,8 +14,13 @@ import { z } from 'zod';
  * truth for the wire model, no hand-written validators.
  */
 
-/** `POST /rigs` body — the client supplies the fields; the server owns id + owner. */
-export class CreateRigDto extends createZodDto(CreateRigSchema) {}
+/**
+ * `POST /rigs` body — the client supplies the fields and, optionally, the id
+ * (issue #143); the server owns the ownership. The HTTP-only
+ * {@link CreateRigWithIdSchema} keeps `id` off the MCP tool surface, which
+ * binds the plain create schema.
+ */
+export class CreateRigDto extends createZodDto(CreateRigWithIdSchema) {}
 
 /** `PATCH /rigs/:id` body — any subset of the editable fields. */
 export class UpdateRigDto extends createZodDto(UpdateRigSchema) {}

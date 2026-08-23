@@ -9,6 +9,7 @@ import type {
   ChecklistRepository,
   ConditionalWrite,
   EquipmentItemRepository,
+  InsertResult,
   LogEntryRepository,
   MaintenanceTaskRepository,
   RigRepository,
@@ -31,6 +32,23 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+/**
+ * The edit time a write leaves behind (issue #143): server now when it carries
+ * no stamp, otherwise `max(stored, editedAt)` — forward-only, so an exempt
+ * write can never wind a record's clock back below a newer edit.
+ */
+function nextEditTime(
+  stored: Date | undefined,
+  editedAt: Date | undefined,
+): Date {
+  if (editedAt === undefined) {
+    return new Date();
+  }
+  return stored !== undefined && stored.getTime() > editedAt.getTime()
+    ? stored
+    : editedAt;
+}
+
 abstract class InMemoryRepository<T extends { readonly id: Id }> {
   // Per-record LWW edit times (ADR-0028) — persistence-side bookkeeping the
   // domain model never carries, mirrored here so `saveIfNewer` behaves as the
@@ -43,10 +61,38 @@ abstract class InMemoryRepository<T extends { readonly id: Id }> {
     return Promise.resolve(found === undefined ? undefined : clone(found));
   }
 
-  save(entity: T): Promise<T> {
+  /**
+   * Upsert. A bare save stamps server now; a save carrying the client's
+   * clamped stamp is an exempt write, whose edit time is `max(stored, editedAt)`
+   * so the clock never runs backwards (issue #143).
+   */
+  save(entity: T, editedAt?: Date): Promise<T> {
     this.store.set(entity.id, clone(entity));
-    this.editTimes.set(entity.id, new Date());
+    this.editTimes.set(
+      entity.id,
+      nextEditTime(this.editTimes.get(entity.id), editedAt),
+    );
     return Promise.resolve(clone(entity));
+  }
+
+  /** Create under the carried id; an id already in use is left untouched (issue #143). */
+  insert(entity: T, editedAt?: Date): Promise<InsertResult<T>> {
+    const existing = this.store.get(entity.id);
+    if (existing !== undefined) {
+      return Promise.resolve({ created: false, record: clone(existing) });
+    }
+    this.store.set(entity.id, clone(entity));
+    this.editTimes.set(entity.id, editedAt ?? new Date());
+    return Promise.resolve({ created: true, record: clone(entity) });
+  }
+
+  /**
+   * The record's LWW edit time, as the SQL implementations expose it only
+   * through behaviour — the seam a spec needs to assert on a create's
+   * initialised stamp, or on a replay leaving one where it was.
+   */
+  editedAtOf(id: Id): Date | undefined {
+    return this.editTimes.get(id);
   }
 
   /** Conditional LWW write — applies only a strictly newer stamp (issue #141). */
@@ -183,12 +229,28 @@ export class InMemoryTripRepository
   }
 
   /** Trip and stops in one save — the in-memory stand-in for the SQL transaction (issue #120). */
-  async createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip> {
-    const saved = await this.save(trip);
-    for (const stop of stops) {
-      await this.stopRepository.save(stop);
+  async createWithStops(
+    trip: Trip,
+    stops: StoredStop[],
+    editedAt?: Date,
+  ): Promise<InsertResult<Trip>> {
+    const inserted = await this.insert(trip, editedAt);
+    if (!inserted.created) {
+      return inserted;
     }
-    return saved;
+    // A stop id already in use under a brand-new trip is a reused client id,
+    // not a replay — the SQL transaction rolls the whole write back, so the
+    // double refuses it before writing anything either.
+    for (const stop of stops) {
+      if ((await this.stopRepository.findById(stop.id)) !== undefined) {
+        await this.delete(trip.id);
+        throw new Error(`createWithStops: stop id ${stop.id} already in use`);
+      }
+    }
+    for (const stop of stops) {
+      await this.stopRepository.insert(stop, editedAt);
+    }
+    return inserted;
   }
 }
 
