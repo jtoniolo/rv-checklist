@@ -46,6 +46,8 @@ function fakeDatabase({ synced = false } = {}): FakeDatabase {
       listeners.push(notify);
       return dispose;
     },
+    clear: () => Promise.resolve(),
+    close: () => Promise.resolve(),
     completeFirstSync: () => {
       hasSynced = true;
       releaseSync?.();
@@ -261,6 +263,34 @@ describe('watchIntoCache', () => {
 
     expect(emit).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith(['newest']);
+  });
+
+  it('does not propagate a failed open — it would be an unhandled rejection per entry', async () => {
+    const emit = jest.fn();
+    const unhandled = jest.fn();
+    process.on('unhandledRejection', unhandled);
+
+    // The real failures: the SDK's worker fetch answered with a redirect once
+    // the access cookie has expired, a CSP that blocks wasm, OPFS unavailable.
+    // RTK Query rethrows whatever `onCacheEntryAdded` rejects with, so a
+    // rejection here becomes one unhandled rejection for every watched entry,
+    // for the life of the page.
+    const watching = watchIntoCache({
+      query: countingQuery({ value: ['one'] }),
+      emit,
+      removed: neverRemoved(),
+      open: () =>
+        Promise.reject(
+          new Error('Failed to construct Worker: /@powersync/worker.js'),
+        ),
+    });
+
+    await expect(watching).resolves.toBeUndefined();
+    await settle();
+    process.off('unhandledRejection', unhandled);
+
+    expect(emit).not.toHaveBeenCalled();
+    expect(unhandled).not.toHaveBeenCalled();
   });
 
   it('keeps watching after a failed read rather than killing the entry', async () => {

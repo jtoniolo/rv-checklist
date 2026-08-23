@@ -133,6 +133,37 @@ store is the only copy of the owner's data, so eviction under storage pressure
 is unrecoverable. It is requested once per page, skipped when already granted,
 and failure is tolerated — the store works without it.
 
+### 10. The local store belongs to one owner, and sign-out clears it
+
+The local store is persisted SQLite that outlives the session that filled it,
+and PowerSync keeps `hasSynced` inside it. Decision 3 then works against us on
+a shared browser: a store one owner has synced answers `waitForFirstSync`
+immediately, so the first watch a *second* owner opens over it emits the
+previous owner's rows — and by decision 4 that emission leaves a fulfilled
+entry, which outranks the new owner's own correct network response. Two rules,
+and the second holds when the first never ran:
+
+- **Sign-out clears.** The logout mutation calls `disconnectAndClear()` then
+  `close()` and drops the memoised store, so a later sign-in opens a fresh one
+  and connects with the new owner's token. `resetApiState()` alone is not
+  enough: it tears the watches down and leaves the rows.
+- **A store belonging to a different owner is never adopted.** The store file
+  is owner-scoped (`rv-checklist-<owner>.sqlite`), and the owner is resolved
+  *before* the store is handed to any watch — a window between opening and
+  knowing whose it is is a window in which watches emit the wrong owner's rows.
+  A store left behind by someone who closed the tab without signing out is
+  simply never opened by anyone else.
+
+The owner comes from the sync token itself: `GET /auth/powersync-token` mints a
+JWT whose `sub` is the user the sync rules scope to, so the store is keyed by
+exactly the identity that filled it. The connector already reads that token
+into JS — it has to hand it to the SDK — so reading its own `sub` adds no
+exposure, and the httpOnly session cookies stay invisible either way
+(ADR-0019). Only a transport failure (genuinely offline) falls back to the
+owner remembered in `localStorage`; any answer the server did give that is not
+a readable token means "no local store", because a remembered value that
+disagrees with a reachable server is the stale one.
+
 ## Consequences
 
 - **Replication latency is a visible residual, and is accepted.** A watch
@@ -167,6 +198,20 @@ and failure is tolerated — the store works without it.
 - **A host without `Worker`, `indexedDB` and `WebAssembly` has no local
   store** and silently falls back to the network path. That covers the server
   render and jsdom under test as well as a locked-down browser.
+- **A failed open is a missing local store, not a failed watch.** Opening can
+  reject for reasons outside this path — the worker fetch answered with the
+  redirect above, a CSP that blocks wasm, OPFS unavailable — and RTK Query
+  rethrows whatever `onCacheEntryAdded` rejects with, so an unguarded open is
+  one unhandled rejection per watched entry for the life of the page. The watch
+  treats it as "no local store" and the network answers. The failure is not
+  memoised either, so a later subscription retries rather than inheriting a
+  dead store.
+- **Signing out does not reach a store this page never opened.** Clearing needs
+  an open handle, so an owner who reloads onto a page with no watched endpoint
+  and signs out there leaves their rows on disk. Owner-scoped filenames mean
+  nobody else can read them; they are data at rest until that owner signs in
+  again, or the browser evicts them. The same holds for the store of an owner
+  who closed the tab without signing out.
 - **Acceptance is split between the gate and the hand.** The pure pieces — the
   projections, the trip stitching, and the watch-to-cache reducer — are unit
   tested against a fake local database. The two live criteria (a server-side

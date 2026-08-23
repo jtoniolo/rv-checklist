@@ -1,13 +1,19 @@
 import { column, PowerSyncDatabase, Schema, Table } from '@powersync/web';
 import { RvSyncConnector } from './connector.js';
 import type { LocalDatabase } from './local-store.js';
+import {
+  forgetStoreOwner,
+  resolveStoreOwner,
+  storeFilenameFor,
+} from './owner.js';
+import { createLocalStoreSession } from './session.js';
 import { localIndexes, localTables, type LocalTableName } from './tables.js';
 
 /**
  * The one module that touches `@powersync/web` (ADR-0029). Everything else in
  * `powersync/` is plain TypeScript behind the `LocalDatabase` seam, and this
- * file is reached only through a dynamic import from `watch.ts` — so nothing
- * pulls the SDK, its Worker or its wasm into the server render.
+ * file is reached only through a dynamic import from `browser-store.ts` — so
+ * nothing pulls the SDK, its Worker or its wasm into the server render.
  */
 
 /**
@@ -23,21 +29,31 @@ import { localIndexes, localTables, type LocalTableName } from './tables.js';
  */
 const workerUrl = '/@powersync/worker.js';
 
-const databaseFilename = 'rv-checklist.sqlite';
+/**
+ * One database, one worker, one connection per page — but per *owner*, and
+ * released on sign-out. The session owns that policy; this module only knows
+ * how to open and dispose a store (ADR-0029, decision 10).
+ */
+const session = createLocalStoreSession({
+  resolveOwner: resolveStoreOwner,
+  openStore: open,
+  forgetOwner: forgetStoreOwner,
+});
 
-/** Memoised so every watch shares one database, one worker, one connection. */
-const singleton: { database?: Promise<LocalDatabase> } = {};
-
-/** Open (once per page) the local store and start replication. */
-export function openLocalDatabase(): Promise<LocalDatabase> {
-  singleton.database ??= open();
-  return singleton.database;
+/** Open the signed-in owner's local store and start replication. */
+export function openLocalDatabase(): Promise<LocalDatabase | undefined> {
+  return session.open();
 }
 
-async function open(): Promise<LocalDatabase> {
+/** Release the local store when the session changes; see `LocalStoreSession`. */
+export function resetLocalDatabase(options: { clear: boolean }): Promise<void> {
+  return session.reset(options);
+}
+
+async function open(owner: string): Promise<LocalDatabase> {
   const database = new PowerSyncDatabase({
     schema: buildSchema(),
-    database: { dbFilename: databaseFilename, worker: workerUrl },
+    database: { dbFilename: storeFilenameFor(owner), worker: workerUrl },
     sync: { worker: workerUrl },
   });
   await database.init();
@@ -64,6 +80,11 @@ async function open(): Promise<LocalDatabase> {
         },
         { tables: [...tables] },
       ),
+    clear: async () => {
+      await database.disconnectAndClear();
+      await database.close();
+    },
+    close: () => database.close(),
   };
 }
 

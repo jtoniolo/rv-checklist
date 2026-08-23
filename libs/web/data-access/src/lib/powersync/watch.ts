@@ -1,3 +1,4 @@
+import { connectLocalDatabase } from './browser-store.js';
 import type { LocalDatabase, LocalQuery } from './local-store.js';
 
 /**
@@ -50,7 +51,17 @@ export async function watchIntoCache<Result>({
     teardown.abort();
   });
 
-  const database = await open();
+  let database: LocalDatabase | undefined;
+  try {
+    database = await open();
+  } catch {
+    // A failed open is a missing local store, not a failed watch. It rejects
+    // for reasons outside this path — the worker fetch answered with a
+    // redirect once the access cookie has expired, a CSP that blocks wasm,
+    // OPFS unavailable — and the rejection would otherwise leave
+    // `onCacheEntryAdded` with a rejected promise that RTK Query rethrows:
+    // one unhandled rejection per watched entry, for the life of the page.
+  }
   if (database === undefined || isTornDown()) return;
 
   await database.waitForFirstSync(teardown.signal);
@@ -75,27 +86,4 @@ export async function watchIntoCache<Result>({
   run();
   await removed;
   dispose();
-}
-
-/**
- * Open the browser's local database, or report that there isn't one. The SDK
- * is loaded here and nowhere else: the import is dynamic and guarded, so the
- * server render — where this lifecycle also runs — never pulls in a Worker,
- * wasm or IndexedDB, and online first paint is unchanged.
- *
- * The guard is a capability check, not a `typeof window` check. wa-sqlite
- * needs all four of these, so a host missing any of them cannot hold a local
- * store and the read path falls back to the network. That covers the server
- * render, jsdom under test, and any browser with the storage APIs disabled.
- */
-async function connectLocalDatabase(): Promise<LocalDatabase | undefined> {
-  const canHostLocalStore =
-    typeof window !== 'undefined' &&
-    typeof Worker !== 'undefined' &&
-    typeof indexedDB !== 'undefined' &&
-    typeof WebAssembly !== 'undefined';
-  if (!canHostLocalStore) return undefined;
-
-  const { openLocalDatabase } = await import('./client.js');
-  return openLocalDatabase();
 }

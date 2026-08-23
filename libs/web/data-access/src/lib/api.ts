@@ -63,6 +63,7 @@ import { Mutex } from 'async-mutex';
 import { z } from 'zod';
 import { signedIn, signedOut } from './auth.slice.js';
 import { config } from './config.js';
+import { resetLocalStore } from './powersync/browser-store.js';
 import {
   checklistsQuery,
   equipmentQuery,
@@ -191,6 +192,11 @@ export const api = createApi({
       }),
       async onQueryStarted(_idToken, { dispatch, queryFulfilled }) {
         await queryFulfilled;
+        // Whoever the page last resolved as is now the wrong owner. Drop the
+        // handle (without clearing — the incoming owner's store is a different
+        // file) so the first watch after this re-resolves and connects with the
+        // new token (ADR-0029, decision 10).
+        await resetLocalStore({ clear: false });
         dispatch(signedIn());
         dispatch(api.util.invalidateTags(['Me', 'Rig']));
       },
@@ -207,6 +213,11 @@ export const api = createApi({
         } finally {
           dispatch(signedOut());
           dispatch(api.util.resetApiState());
+          // Resetting the API state tears the watches down but leaves the
+          // replicated rows on disk — and PowerSync keeps `hasSynced` there
+          // too, so without this the next owner to sign in on this browser is
+          // served the previous one's data (ADR-0029, decision 10).
+          await resetLocalStore({ clear: true });
         }
       },
     }),

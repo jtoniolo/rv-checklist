@@ -25,6 +25,15 @@ export interface LocalDatabase {
   waitForFirstSync(signal: AbortSignal): Promise<void>;
   /** Calls `notify` whenever one of `tables` changes. Returns a dispose function. */
   onChange(tables: readonly LocalTableName[], notify: () => void): () => void;
+  /**
+   * Stop replicating, delete every locally stored row, and close the store.
+   * This is sign-out: the store outlives the session that filled it, so
+   * without this the next owner on this browser inherits the previous one's
+   * rows (ADR-0029, decision 10).
+   */
+  clear(): Promise<void>;
+  /** Close the store and its worker, keeping what is stored. */
+  close(): Promise<void>;
 }
 
 /** A cache entry's worth of local data: what to read, and what makes it stale. */
