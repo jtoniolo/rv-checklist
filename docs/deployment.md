@@ -30,19 +30,27 @@ consumes the published image/chart for the API.
 ## Web
 
 Build and deploy, with the deployer supplying every environment-specific value
-on the command line or via CI variables:
+via CI variables and its own wrangler config:
 
 ```sh
 npx opennextjs-cloudflare build
-npx wrangler deploy --name <worker-name> --config apps/web/wrangler.jsonc
+npx wrangler deploy --config apps/web/<deployer-config>.jsonc
 ```
+
+The worker name fits on the command line (`--name`), but routes and custom
+domains have no wrangler CLI flag — they can only come from a config file. The
+deployer therefore keeps its own environment-specific wrangler config (name,
+routes/custom domains) and places it next to `apps/web/wrangler.jsonc` before
+deploying: wrangler resolves `main` and `assets.directory` relative to the
+config file, so the paths from the environment-blind config only work from
+that directory.
 
 Required at build time (inlined into the bundle):
 
 - `NEXT_PUBLIC_API_BASE_URL` — public API origin, e.g. `https://api.example.com/api`
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — Google OAuth client id
 
-Worker name, routes/custom domains, and DNS belong to the deployer.
+DNS belongs to the deployer.
 The service worker (`public/sw.js`, ADR-0028) is a build output served as a
 static asset; it needs `max-age=0, must-revalidate` response headers (declared
 in `public/_headers` once built — nothing extra to configure).
