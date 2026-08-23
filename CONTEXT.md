@@ -126,6 +126,11 @@ _Avoid_: error banner (offline is a mode, not a failure)
 
 ## Deployment contract
 
+`docs/deployment.md` is the public deployment contract a deploying repository
+references (ADR-0020): components, release-tag pinning, build commands, and
+required configuration. Environment-specific work items are tracked in the
+deploying repository, never here.
+
 The Helm chart in `charts/api` is part of any change that touches runtime
 configuration. `charts/api/values.yaml` declares the deployment contract:
 non-secret env vars under `config`, required secret keys under `secretKeys`.
