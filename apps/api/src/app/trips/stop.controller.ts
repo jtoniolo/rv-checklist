@@ -35,11 +35,11 @@ import {
 export class StopController {
   constructor(private readonly stops: StopService) {}
 
-  /** Append a stop at the end of one of the owner's trips. */
   /**
-   * `X-Edited-At` initialises the new row's LWW edit time (issue #143), so a
-   * create replayed at reconnect never stamps itself later than the edits
-   * already queued behind it.
+   * Append a stop at the end of one of the owner's trips. `X-Edited-At`
+   * initialises the new row's LWW edit time (issue #143), so a create replayed
+   * at reconnect never stamps itself later than the edits already queued behind
+   * it.
    */
   @Post()
   @ZodSerializerDto(StopDto)

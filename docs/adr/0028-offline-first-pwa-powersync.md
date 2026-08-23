@@ -76,7 +76,9 @@ transfer.
   minting, so the MCP surface is unchanged) and a **per-operation idempotency
   key with a server dedup table** make every replay safe — including the two
   known traps: leg-delta replay on `PATCH /stops/:id` and `POST /log-entries`
-  on a one-time task (which deletes the task).
+  on a one-time task (which deletes the task). A client id already taken by a
+  different record is **409 Conflict** — a 4xx, so the queue marks that
+  operation failed rather than retrying a request that can never succeed.
 - **Newest wins is server-enforced per-record LWW**: each write carries the
   client's edit timestamp, clamped to server time on receipt, applied only if
   newer than the stored edit time. Delta operations are exempt — they always
