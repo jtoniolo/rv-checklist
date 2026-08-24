@@ -110,6 +110,70 @@ describe('RigController over HTTP (through the Zod serializer)', () => {
     ]);
   });
 
+  // The client-generated-id contract over real HTTP (ADR-0028, issue #143).
+  // `id` is a declared optional field on the HTTP-only create schema, which is
+  // what makes a malformed one a 400 instead of a silently stripped key.
+  describe('POST with a client-generated id', () => {
+    it('creates the rig under the supplied id', async () => {
+      const id = '550e8400-e29b-41d4-a716-4466554400a1';
+
+      const response = await fetch(`${baseUrl}/rigs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, nickname: 'Client Minted' }),
+      });
+
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ id });
+    });
+
+    it('rejects a malformed id with 400', async () => {
+      const response = await fetch(`${baseUrl}/rigs`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: 'not-a-uuid', nickname: 'Never lands' }),
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('re-posting the same id is a success that leaves one row', async () => {
+      const id = '550e8400-e29b-41d4-a716-4466554400a2';
+      const post = () =>
+        fetch(`${baseUrl}/rigs`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-edited-at': new Date(Date.now() - 60_000).toISOString(),
+          },
+          body: JSON.stringify({ id, nickname: 'Replayed' }),
+        });
+
+      const first = await post();
+      expect(first.status).toBe(201);
+      const replay = await post();
+
+      expect(replay.status).toBe(201);
+      expect(await replay.json()).toMatchObject({ id });
+      const list = await fetch(`${baseUrl}/rigs`);
+      const listed = (await list.json()) as { id: string }[];
+      expect(listed.filter((rig) => rig.id === id)).toHaveLength(1);
+    });
+
+    it('rejects a malformed X-Edited-At on a create with 400', async () => {
+      const response = await fetch(`${baseUrl}/rigs`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-edited-at': 'yesterday',
+        },
+        body: JSON.stringify({ nickname: 'Never lands' }),
+      });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   // The X-Edited-At header contract over real HTTP (ADR-0028, issue #141).
   describe('PATCH under LWW — the X-Edited-At header', () => {
     it('rejects a malformed header with 400 before the handler runs', async () => {

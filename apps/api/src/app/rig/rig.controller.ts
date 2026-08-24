@@ -30,14 +30,19 @@ import { RigService } from './rig.service.js';
 export class RigController {
   constructor(private readonly rigs: RigService) {}
 
-  /** Add a rig for the owner. */
+  /**
+   * Add a rig for the owner. `X-Edited-At` initialises the new row's LWW edit
+   * time (issue #143), so a create replayed at reconnect never stamps itself
+   * later than the edits already queued behind it.
+   */
   @Post()
   @ZodSerializerDto(RigDto)
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateRigDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<Rig> {
-    return this.rigs.create(owner.id, body);
+    return this.rigs.create(owner.id, body, editedAt);
   }
 
   /** List the owner's rigs. */

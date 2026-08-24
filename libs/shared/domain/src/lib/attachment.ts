@@ -61,3 +61,21 @@ export const SetCampgroundMapSchema = z.object({
   isCampgroundMap: z.boolean(),
 });
 export type SetCampgroundMap = z.infer<typeof SetCampgroundMapSchema>;
+
+/**
+ * The text fields that may ride alongside the `file` part on upload (issue
+ * #143). `id` is the client-generated attachment id — see
+ * {@link CreateRigWithIdSchema}; the offline outbox mints it when the capture
+ * is taken, so a Background Sync replay lands on the same row. `isCampgroundMap`
+ * sets the flag with the bytes, in one request, instead of leaving a queued
+ * upload to follow itself with a separate toggle.
+ *
+ * Multipart carries every field as text, so the flag arrives as the string
+ * `'true'` / `'false'` and is coerced here rather than in the handler. Both
+ * fields absent is a plain upload, exactly as today.
+ */
+export const UploadAttachmentSchema = z.object({
+  id: IdSchema.optional(),
+  isCampgroundMap: z.stringbool().optional(),
+});
+export type UploadAttachment = z.infer<typeof UploadAttachmentSchema>;

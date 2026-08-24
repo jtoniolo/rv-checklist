@@ -5,9 +5,11 @@ import type {
   EquipmentItem,
   EquipmentItemRepository as EquipmentItemRepositoryPort,
   Id,
+  InsertResult,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { EquipmentItemEntity } from './entities/equipment-item.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link EquipmentItemRepositoryPort} as a concrete Nest DI token (an
@@ -19,7 +21,11 @@ import { EquipmentItemEntity } from './entities/equipment-item.entity.js';
  */
 export abstract class EquipmentItemRepository implements EquipmentItemRepositoryPort {
   abstract findById(id: Id): Promise<EquipmentItem | undefined>;
-  abstract save(item: EquipmentItem): Promise<EquipmentItem>;
+  abstract save(item: EquipmentItem, editedAt?: Date): Promise<EquipmentItem>;
+  abstract insert(
+    item: EquipmentItem,
+    editedAt?: Date,
+  ): Promise<InsertResult<EquipmentItem>>;
   abstract saveIfNewer(
     item: EquipmentItem,
     editedAt: Date,
@@ -79,12 +85,42 @@ export class TypeOrmEquipmentItemRepository extends EquipmentItemRepository {
     return found ? toEquipmentItem(found) : undefined;
   }
 
-  async save(item: EquipmentItem): Promise<EquipmentItem> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
-    const saved = await this.repo.save(
-      this.repo.create({ ...toRow(item), editedAt: new Date() }),
+  async save(item: EquipmentItem, editedAt?: Date): Promise<EquipmentItem> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...toRow(item), editedAt: new Date() }),
+      );
+      return toEquipmentItem(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
+    const saved = await this.repo.save(this.repo.create({ ...toRow(item) }));
+    await this.repo.update(
+      { id: item.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toEquipmentItem(saved);
+  }
+
+  async insert(
+    item: EquipmentItem,
+    editedAt?: Date,
+  ): Promise<InsertResult<EquipmentItem>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...toRow(item),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: item.id });
+      return { created: false, record: toEquipmentItem(existing) };
+    }
+    return { created: true, record: item };
   }
 
   async saveIfNewer(

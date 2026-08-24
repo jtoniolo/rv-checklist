@@ -1,11 +1,12 @@
 import {
   AttachmentSchema,
-  CreateStopSchema,
-  CreateTripSchema,
+  CreateStopWithIdSchema,
+  CreateTripWithIdSchema,
   ReorderStopSchema,
   SetCampgroundMapSchema,
   SetStopArrivedSchema,
   StopReadSchema,
+  UploadAttachmentSchema,
   TripReadSchema,
   UpdateStopSchema,
   UpdateTripSchema,
@@ -20,8 +21,12 @@ import { createZodDto } from 'nestjs-zod';
  * hand-written validators.
  */
 
-/** `POST /trips` body — the client names the rig and the trip; the server owns the id. */
-export class CreateTripDto extends createZodDto(CreateTripSchema) {}
+/**
+ * `POST /trips` body — the client names the rig and the trip, and may supply
+ * ids for the trip and each of its initial stops (issue #143). The HTTP-only
+ * schema keeps `id` off the MCP surface.
+ */
+export class CreateTripDto extends createZodDto(CreateTripWithIdSchema) {}
 
 /** `PATCH /trips/:id` body — any subset; `null` clears a start-point field. */
 export class UpdateTripDto extends createZodDto(UpdateTripSchema) {}
@@ -29,8 +34,11 @@ export class UpdateTripDto extends createZodDto(UpdateTripSchema) {}
 /** The response shape for every trip endpoint: stops embedded, status derived. */
 export class TripDto extends createZodDto(TripReadSchema) {}
 
-/** `POST /stops` body — the server owns id, position (appends), and arrived. */
-export class CreateStopDto extends createZodDto(CreateStopSchema) {}
+/**
+ * `POST /stops` body — `id` may be client-generated (issue #143); position
+ * (appends) and arrived stay server-owned.
+ */
+export class CreateStopDto extends createZodDto(CreateStopWithIdSchema) {}
 
 /** `PATCH /stops/:id` body — any subset of the detail fields; `null` clears. */
 export class UpdateStopDto extends createZodDto(UpdateStopSchema) {}
@@ -49,3 +57,9 @@ export class AttachmentDto extends createZodDto(AttachmentSchema) {}
 
 /** `POST /attachments/:id/campground-map` body — the explicit flag / unflag. */
 export class SetCampgroundMapDto extends createZodDto(SetCampgroundMapSchema) {}
+
+/**
+ * `POST /stops/:stopId/attachments` text fields — the multipart parts riding
+ * beside `file` (issue #143). Both optional; absent is a plain upload.
+ */
+export class UploadAttachmentDto extends createZodDto(UploadAttachmentSchema) {}

@@ -1,4 +1,5 @@
 export * from './lib/ownership.js';
+export * from './lib/unique-violation.js';
 export * from './lib/stores.js';
 export * from './lib/typeorm-stores.js';
 export * from './lib/rig.repository.js';

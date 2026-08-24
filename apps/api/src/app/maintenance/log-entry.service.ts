@@ -12,13 +12,14 @@ import {
 } from '@rv-checklist/api-data-access';
 import {
   validateFieldValues,
-  type CreateLogEntry,
+  type CreateLogEntryWithId,
   type Id,
   type LogEntry,
   type LoggedField,
   type MaintenanceTask,
   type UpdateLogEntry,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 
 /**
  * Reject a snapshot whose `required` fields carry no value (spec §Testing —
@@ -66,44 +67,114 @@ export class LogEntryService {
   }
 
   /**
-   * The task if the owner owns it (via its rig, ADR-0006), else reject — the
-   * gate for both logging a completion and listing a task's history. A foreign
-   * or missing task is indistinguishable: both are "not found".
+   * The task if the owner owns it (via its rig, ADR-0006), else `undefined` —
+   * a foreign task and a missing one are the same answer.
+   */
+  private async ownedTaskOrUndefined(
+    ownerId: Id,
+    taskId: Id,
+  ): Promise<MaintenanceTask | undefined> {
+    const task = await this.tasks.findById(taskId);
+    return task && (await this.ownsRig(ownerId, task.rigId)) ? task : undefined;
+  }
+
+  /**
+   * The task if the owner owns it, else reject — the gate for both logging a
+   * completion and listing a task's history. A foreign or missing task is
+   * indistinguishable: both are "not found".
    */
   private async ownedTask(ownerId: Id, taskId: Id): Promise<MaintenanceTask> {
-    const task = await this.tasks.findById(taskId);
-    if (!task || !(await this.ownsRig(ownerId, task.rigId))) {
+    const task = await this.ownedTaskOrUndefined(ownerId, taskId);
+    if (!task) {
       throw new NotFoundException('Maintenance task not found');
     }
     return task;
   }
 
-  /** Record that one of the owner's tasks was performed — the rig comes from the task. */
-  async create(ownerId: Id, input: CreateLogEntry): Promise<LogEntry> {
-    const task = await this.ownedTask(ownerId, input.taskId);
+  /**
+   * The entry a create already wrote, for a create whose task no longer exists
+   * — the replay of a completed one-time task (ADR-0028's named trap). The task
+   * is gone *because* the first call deleted it, so there is nothing left to
+   * resolve the create against; the stored entry is the proof it succeeded.
+   *
+   * Ownership resolves through the entry's own rig, exactly as {@link get}
+   * does, because the id is client input: a row belonging to someone else is
+   * never handed back and stays indistinguishable from the missing task it
+   * would otherwise have reported. An orphan (`taskId` null — the task was
+   * deleted under ON DELETE SET NULL, issue #28) is the shape this trap leaves
+   * behind, and an orphan no longer records *which* task it was, so ownership
+   * is the whole of the check there; an entry still naming some other, living
+   * task is visibly not this create's and is refused.
+   */
+  private async replayedEntry(
+    ownerId: Id,
+    input: CreateLogEntryWithId,
+  ): Promise<LogEntry> {
+    const entry =
+      input.id === undefined
+        ? undefined
+        : await this.logEntries.findById(input.id);
+    if (
+      entry &&
+      (entry.taskId === null || entry.taskId === input.taskId) &&
+      (await this.ownsRig(ownerId, entry.rigId))
+    ) {
+      return entry;
+    }
+    throw new NotFoundException('Maintenance task not found');
+  }
+
+  /**
+   * Record that one of the owner's tasks was performed — the rig comes from
+   * the task. `id` may be the client's own (issue #143): a replayed create
+   * writes nothing and returns the entry already stored, edit time included.
+   * The task is resolved first, but a *missing* task is not the end of the
+   * road — a one-time task deletes itself on completion (below), so the replay
+   * of that very create arrives to find no task, and {@link replayedEntry}
+   * answers it from the entry instead.
+   */
+  async create(
+    ownerId: Id,
+    input: CreateLogEntryWithId,
+    editedAt?: Date,
+  ): Promise<LogEntry> {
+    const task = await this.ownedTaskOrUndefined(ownerId, input.taskId);
+    if (task === undefined) {
+      return this.replayedEntry(ownerId, input);
+    }
     assertRequiredValues(input.fields);
-    const entry = await this.logEntries.save({
-      id: randomUUID(),
-      taskId: task.id,
-      rigId: task.rigId,
-      // Snapshot the task's name as it is now (issue #27) — a later rename must
-      // not relabel this entry, exactly as the field snapshot is frozen.
-      taskName: task.name,
-      performedOn: input.performedOn,
-      // The rig's Distance reading at the time (issue #32), if the owner gave
-      // one — the anchor a distance Interval measures from. Absent means absent.
-      ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
-      // The cost in cents (issue #39), if the owner recorded one. Absent means absent.
-      ...(input.costCents !== undefined && { costCents: input.costCents }),
-      // The free-text comment (issue #101), if the owner wrote one. Absent means absent.
-      ...(input.comment !== undefined && { comment: input.comment }),
-      fields: input.fields,
-    });
+    const inserted = await this.logEntries.insert(
+      {
+        id: input.id ?? randomUUID(),
+        taskId: task.id,
+        rigId: task.rigId,
+        // Snapshot the task's name as it is now (issue #27) — a later rename must
+        // not relabel this entry, exactly as the field snapshot is frozen.
+        taskName: task.name,
+        performedOn: input.performedOn,
+        // The rig's Distance reading at the time (issue #32), if the owner gave
+        // one — the anchor a distance Interval measures from. Absent means absent.
+        ...(input.distanceKm !== undefined && { distanceKm: input.distanceKm }),
+        // The cost in cents (issue #39), if the owner recorded one. Absent means absent.
+        ...(input.costCents !== undefined && { costCents: input.costCents }),
+        // The free-text comment (issue #101), if the owner wrote one. Absent means absent.
+        ...(input.comment !== undefined && { comment: input.comment }),
+        fields: input.fields,
+      },
+      editedAt,
+    );
+    const entry = adoptCreated(
+      inserted,
+      (existing) => existing.taskId === task.id,
+      'Log entry not found',
+    );
     // A one-time task is done once (issue #29): performing it writes this entry,
     // then the task deletes itself. The entry is the permanent record — it
     // outlives the task, kept and orphaned via ON DELETE SET NULL (issue #28),
     // still owned through its rig and labeled by its snapshotted taskName.
-    if (task.oneTime) {
+    // Only a call that really wrote deletes: a replay that still finds its task
+    // (the owner re-created it in between) wrote nothing, so it undoes nothing.
+    if (inserted.created && task.oneTime) {
       await this.tasks.delete(task.id);
     }
     return entry;

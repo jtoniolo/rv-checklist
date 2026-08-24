@@ -24,7 +24,11 @@ import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
 import { EditedAt } from '../common/edited-at.decorator.js';
 import { AttachmentService } from './attachment.service.js';
-import { AttachmentDto, SetCampgroundMapDto } from './trips.dto.js';
+import {
+  AttachmentDto,
+  SetCampgroundMapDto,
+  UploadAttachmentDto,
+} from './trips.dto.js';
 
 /** The slice of multer's file we consume — typed locally, no `@types/multer` dependency. */
 interface MultipartFile {
@@ -47,9 +51,15 @@ export class AttachmentController {
   constructor(private readonly attachments: AttachmentService) {}
 
   /**
-   * Keep a file on a stop: multipart, single `file` field. Multer's memory
-   * storage caps the read at the 15 MB limit (a 413 before the service is
-   * reached); the service re-validates size and type.
+   * Keep a file on a stop: multipart, a `file` field plus the optional text
+   * fields `id` and `isCampgroundMap` (issue #143) — an offline capture brings
+   * its own id so a Background-Sync replay lands on one row, and flags itself
+   * the campground map in the same request. Multer's memory storage caps the
+   * read at the 15 MB limit (a 413 before the service is reached); the service
+   * re-validates size and type.
+   *
+   * `stopId` stays the route parameter and `rigId` stays server-derived: a
+   * client-supplied id names the new row, never its parents.
    */
   @Post('stops/:stopId/attachments')
   @UseInterceptors(
@@ -59,16 +69,29 @@ export class AttachmentController {
   upload(
     @CurrentOwner() owner: Owner,
     @Param('stopId', ParseUUIDPipe) stopId: string,
+    @Body() body: UploadAttachmentDto,
     @UploadedFile() file?: MultipartFile,
+    @EditedAt() editedAt?: Date,
   ): Promise<Attachment> {
     if (!file) {
       throw new BadRequestException('Expected a multipart "file" field');
     }
-    return this.attachments.upload(owner.id, stopId, {
-      filename: file.originalname,
-      mimeType: file.mimetype,
-      content: file.buffer,
-    });
+    return this.attachments.upload(
+      owner.id,
+      stopId,
+      {
+        filename: file.originalname,
+        mimeType: file.mimetype,
+        content: file.buffer,
+      },
+      {
+        ...(body.id !== undefined && { id: body.id }),
+        ...(body.isCampgroundMap !== undefined && {
+          isCampgroundMap: body.isCampgroundMap,
+        }),
+        ...(editedAt !== undefined && { editedAt }),
+      },
+    );
   }
 
   /** Stream the original bytes back with the stored Content-Type and filename. */

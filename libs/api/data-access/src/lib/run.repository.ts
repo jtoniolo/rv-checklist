@@ -3,11 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type {
   ConditionalWrite,
   Id,
+  InsertResult,
   Run,
   RunRepository as RunRepositoryPort,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { RunEntity } from './entities/run.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link RunRepositoryPort} as a concrete Nest DI token (an abstract class,
@@ -19,7 +21,8 @@ import { RunEntity } from './entities/run.entity.js';
  */
 export abstract class RunRepository implements RunRepositoryPort {
   abstract findById(id: Id): Promise<Run | undefined>;
-  abstract save(run: Run): Promise<Run>;
+  abstract save(run: Run, editedAt?: Date): Promise<Run>;
+  abstract insert(run: Run, editedAt?: Date): Promise<InsertResult<Run>>;
   abstract saveIfNewer(
     run: Run,
     editedAt: Date,
@@ -75,12 +78,39 @@ export class TypeOrmRunRepository extends RunRepository {
     return found ? toRun(found) : undefined;
   }
 
-  async save(run: Run): Promise<Run> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
-    const saved = await this.repo.save(
-      this.repo.create({ ...toRow(run), editedAt: new Date() }),
+  async save(run: Run, editedAt?: Date): Promise<Run> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...toRow(run), editedAt: new Date() }),
+      );
+      return toRun(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
+    const saved = await this.repo.save(this.repo.create({ ...toRow(run) }));
+    await this.repo.update(
+      { id: run.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toRun(saved);
+  }
+
+  async insert(run: Run, editedAt?: Date): Promise<InsertResult<Run>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...toRow(run),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: run.id });
+      return { created: false, record: toRun(existing) };
+    }
+    return { created: true, record: run };
   }
 
   async saveIfNewer(run: Run, editedAt: Date): Promise<ConditionalWrite<Run>> {

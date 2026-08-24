@@ -45,6 +45,24 @@ export const CreateRigSchema = RigSchema.omit({ id: true, ownerId: true });
 export type CreateRig = z.infer<typeof CreateRigSchema>;
 
 /**
+ * The create body as the HTTP endpoints take it: {@link CreateRigSchema} plus
+ * an optional client-generated `id` (ADR-0028, issue #143). An offline create
+ * mints its own id so the edits queued behind it can name the row long before
+ * it reaches the server, and so a replayed create lands on the same row instead
+ * of a second one. Omitting `id` keeps today's behaviour exactly — the server
+ * mints one.
+ *
+ * Deliberately a schema of its own rather than an extension of the shared
+ * create schema: the MCP tools bind those straight through as tool parameters
+ * (`mcp-tools.controller.ts`), and a client-supplied id has no business on that
+ * surface.
+ */
+export const CreateRigWithIdSchema = CreateRigSchema.extend({
+  id: IdSchema.optional(),
+});
+export type CreateRigWithId = z.infer<typeof CreateRigWithIdSchema>;
+
+/**
  * Edit body — any subset of the editable fields. `distanceKm` (issue #32) and
  * the Dimensions fields (issue #139) are additionally nullable: an explicit
  * `null` clears the value, while an omitted key leaves it unchanged — the same

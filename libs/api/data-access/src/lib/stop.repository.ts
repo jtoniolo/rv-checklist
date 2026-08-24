@@ -3,11 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type {
   ConditionalWrite,
   Id,
+  InsertResult,
   StoredStop,
   StopRepository as StopRepositoryPort,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { StopEntity } from './entities/stop.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link StopRepositoryPort} as a concrete Nest DI token (an abstract
@@ -18,7 +20,11 @@ import { StopEntity } from './entities/stop.entity.js';
  */
 export abstract class StopRepository implements StopRepositoryPort {
   abstract findById(id: Id): Promise<StoredStop | undefined>;
-  abstract save(stop: StoredStop): Promise<StoredStop>;
+  abstract save(stop: StoredStop, editedAt?: Date): Promise<StoredStop>;
+  abstract insert(
+    stop: StoredStop,
+    editedAt?: Date,
+  ): Promise<InsertResult<StoredStop>>;
   abstract saveIfNewer(
     stop: StoredStop,
     editedAt: Date,
@@ -102,12 +108,44 @@ export class TypeOrmStopRepository extends StopRepository {
     return found ? toStop(found) : undefined;
   }
 
-  async save(stop: StoredStop): Promise<StoredStop> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+  async save(stop: StoredStop, editedAt?: Date): Promise<StoredStop> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...stopToRow(stop), editedAt: new Date() }),
+      );
+      return toStop(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
     const saved = await this.repo.save(
-      this.repo.create({ ...stopToRow(stop), editedAt: new Date() }),
+      this.repo.create({ ...stopToRow(stop) }),
+    );
+    await this.repo.update(
+      { id: stop.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toStop(saved);
+  }
+
+  async insert(
+    stop: StoredStop,
+    editedAt?: Date,
+  ): Promise<InsertResult<StoredStop>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...stopToRow(stop),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: stop.id });
+      return { created: false, record: toStop(existing) };
+    }
+    return { created: true, record: stop };
   }
 
   async saveIfNewer(

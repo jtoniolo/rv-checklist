@@ -22,6 +22,7 @@ import {
   type StoredAttachment,
   type StoredStop,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 import { ObjectStorage } from '../storage/object-storage.js';
 import { attachmentObjectKey } from './attachment-keys.js';
 
@@ -30,6 +31,18 @@ export interface NewAttachmentFile {
   readonly filename: string;
   readonly mimeType: string;
   readonly content: Buffer;
+}
+
+/**
+ * What an upload may carry besides the bytes (issue #143): the client's own
+ * attachment id — so a Background-Sync replay of a queued capture lands on the
+ * row it already named — the campground-map flag, set with the bytes instead of
+ * by a second request, and the client's edit stamp for the new row's LWW clock.
+ */
+export interface NewAttachmentOptions {
+  readonly id?: Id;
+  readonly isCampgroundMap?: boolean;
+  readonly editedAt?: Date;
 }
 
 /** A proxied download: the metadata row plus the byte stream from the bucket. */
@@ -123,13 +136,23 @@ export class AttachmentService {
   /**
    * Keep a file on one of the owner's stops: validate type and size
    * (ADR-0026 — JPEG/PNG/WebP/HEIC/PDF, 15 MB, no count limit), put the
-   * original bytes in the bucket, then save the metadata row. Never the
-   * campground map on arrival — that is the explicit flag operation.
+   * original bytes in the bucket, then insert the metadata row.
+   *
+   * `options.isCampgroundMap` rides on the inserted row, so the flag lands in
+   * the same write as the bytes rather than needing a second request a queued
+   * upload could lose (issue #143) — and it sweeps the flag off the stop's
+   * other attachments exactly as {@link setCampgroundMap} does, so an upload
+   * can never leave a stop with two campground maps.
+   *
+   * A re-posted client id returns the stored row untouched: one row, one
+   * object, no second copy. Its bytes were re-put first, at the same key —
+   * harmless for the replay this path exists for.
    */
   async upload(
     ownerId: Id,
     stopId: Id,
     file: NewAttachmentFile,
+    options: NewAttachmentOptions = {},
   ): Promise<Attachment> {
     const stop = await this.ownedStop(ownerId, stopId);
     const mimeType = AttachmentMimeTypeSchema.safeParse(file.mimeType);
@@ -149,8 +172,9 @@ export class AttachmentService {
         `Attachment exceeds the ${String(maxAttachmentSizeBytes)}-byte (15 MB) cap`,
       );
     }
+    const isCampgroundMap = options.isCampgroundMap ?? false;
     const attachment: StoredAttachment = {
-      id: randomUUID(),
+      id: options.id ?? randomUUID(),
       stopId: stop.id,
       // The owning rig's id, denormalized for sync (ADR-0028) — the stop
       // already carries it, so the ownership chain is walked only once;
@@ -159,7 +183,7 @@ export class AttachmentService {
       filename: file.filename,
       mimeType: mimeType.data,
       sizeBytes: file.content.byteLength,
-      isCampgroundMap: false,
+      isCampgroundMap,
     };
     // Bytes first: a row without an object breaks download, while an object
     // without a row is unreachable and merely wastes bucket space.
@@ -168,7 +192,19 @@ export class AttachmentService {
       file.content,
       attachment.mimeType,
     );
-    return this.toWire(await this.attachments.save(attachment));
+    const inserted = await this.attachments.insert(
+      attachment,
+      options.editedAt,
+    );
+    const record = adoptCreated(
+      inserted,
+      (existing) => existing.stopId === stop.id,
+      'Attachment not found',
+    );
+    if (isCampgroundMap && inserted.created) {
+      await this.sweepSiblingFlags(stop.id, attachment.id);
+    }
+    return this.toWire(record);
   }
 
   /** The original bytes, streamed, plus the row whose metadata sets the response headers. */

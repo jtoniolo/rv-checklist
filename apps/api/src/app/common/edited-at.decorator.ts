@@ -52,7 +52,20 @@ export function parseEditedAt(
  * Handlers pass the value to their use-case, which applies the write only if
  * the stamp is strictly newer than the record's stored edit time; equal or
  * older is a no-op returning the current record with the normal 200 response.
- * Delta operations (stop arrival/reorder, deletes) ignore the header entirely.
+ *
+ * Two kinds of write sit outside that gate:
+ *
+ * - **Exempt writes** — stop arrival, stop reorder, and the rig-Distance delta
+ *   they trigger (issue #143). Exemption is from the *gate*, not from the
+ *   stamp: the effect always applies, and the record's edit time becomes
+ *   `max(stored, clamped)` so the clock only ever runs forward. See
+ *   `Repository.save` for the full rule.
+ * - **Creates** — there is nothing to compare against, so the stamp
+ *   initialises the new record's edit time. A create replayed onto an id
+ *   already stored writes nothing at all and leaves that record's edit time
+ *   where it was.
+ *
+ * Deletes carry no edit time to record and ignore the header entirely.
  */
 export const EditedAt = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): Date | undefined => {

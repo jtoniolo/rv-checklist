@@ -574,4 +574,207 @@ describe('LogEntryService', () => {
       await expect(service.get(alice, entry.id)).resolves.toEqual(entry);
     });
   });
+
+  // Client-generated ids (ADR-0028, issue #143).
+  describe('create with a client-generated id', () => {
+    const clientId = '550e8400-e29b-41d4-a716-446655440077';
+
+    it('records the entry under the supplied id', async () => {
+      const { service } = await makeService();
+
+      const entry = await service.create(alice, {
+        ...performSeals,
+        id: clientId,
+      });
+
+      expect(entry.id).toBe(clientId);
+    });
+
+    it('treats a re-post as success, leaving exactly one entry', async () => {
+      const { service } = await makeService();
+      await service.create(alice, { ...performSeals, id: clientId });
+
+      const replayed = await service.create(alice, {
+        ...performSeals,
+        id: clientId,
+      });
+
+      expect(replayed.id).toBe(clientId);
+      await expect(
+        service.listByTask(alice, sealsTaskId),
+      ).resolves.toHaveLength(1);
+    });
+
+    it('never adopts an entry logged against another owner’s task', async () => {
+      const { service, logEntries } = await makeService();
+      await service.create(bob, {
+        taskId: bobTaskId,
+        performedOn: '2026-07-21',
+        fields: [],
+        id: clientId,
+      });
+
+      await expect(
+        service.create(alice, { ...performSeals, id: clientId }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(logEntries.findById(clientId)).resolves.toMatchObject({
+        taskId: bobTaskId,
+      });
+    });
+
+    it('initialises the entry’s edit time from X-Edited-At', async () => {
+      const { service, logEntries } = await makeService();
+      const stamp = new Date(Date.now() - 60_000);
+
+      await service.create(alice, { ...performSeals, id: clientId }, stamp);
+
+      expect(logEntries.editedAtOf(clientId)).toEqual(stamp);
+    });
+
+    /**
+     * The replay trap ADR-0028 names: performing a one-time task deletes it,
+     * so a replay must not re-run that side effect against whatever else the
+     * queue did in between. It writes nothing, so it triggers nothing.
+     */
+    it('does not re-run the one-time task deletion on a replay', async () => {
+      const oneTimeTaskId = '550e8400-e29b-41d4-a716-446655440031';
+      const { service, tasks } = await makeService();
+      const oneTime = {
+        id: oneTimeTaskId,
+        rigId: aliceRigId,
+        name: 'Re-glue loose trim',
+        oneTime: true as const,
+        fieldSchema: [],
+        tags: [],
+      };
+      await tasks.save(oneTime);
+      const body = {
+        taskId: oneTimeTaskId,
+        performedOn: '2026-07-22',
+        fields: [],
+        id: clientId,
+      };
+      await service.create(alice, body);
+      // The owner re-created the task after the first completion; the queued
+      // create then replays.
+      await tasks.save(oneTime);
+
+      const replayed = await service.create(alice, body);
+
+      expect(replayed.id).toBe(clientId);
+      await expect(tasks.findById(oneTimeTaskId)).resolves.toMatchObject({
+        id: oneTimeTaskId,
+      });
+    });
+
+    /**
+     * The same trap without the owner re-creating the task in between — the
+     * ordinary case. Performing the one-time task deleted it, so the replay
+     * arrives with nothing left to resolve the create against and must answer
+     * from the entry the first call wrote. Resolving the task first would turn
+     * a create that really succeeded into a 404, and the offline upload queue
+     * would mark a completion the server is holding as permanently failed.
+     */
+    describe('replaying a create whose one-time task deleted itself', () => {
+      const goneTaskId = '550e8400-e29b-41d4-a716-446655440032';
+      const otherTaskId = '550e8400-e29b-41d4-a716-446655440033';
+      const body = {
+        taskId: goneTaskId,
+        performedOn: '2026-07-22',
+        fields: [],
+        id: clientId,
+      };
+
+      async function performOnce(): Promise<{
+        service: LogEntryService;
+        logEntries: InMemoryLogEntryRepository;
+        entryId: string;
+      }> {
+        const { service, tasks, logEntries } = await makeService();
+        await tasks.save({
+          id: goneTaskId,
+          rigId: aliceRigId,
+          name: 'Re-glue loose trim',
+          oneTime: true,
+          fieldSchema: [],
+          tags: [],
+        });
+        const entry = await service.create(alice, body);
+        // The double doesn't cascade, so drive the end state ON DELETE SET NULL
+        // leaves behind: the task gone, the entry kept and orphaned (issue #28).
+        // eslint-disable-next-line unicorn/no-null
+        await logEntries.save({ ...entry, taskId: null });
+        return { service, logEntries, entryId: entry.id };
+      }
+
+      it('returns the stored entry instead of reporting the task missing', async () => {
+        const { service, entryId } = await performOnce();
+
+        const replayed = await service.create(alice, body);
+
+        expect(replayed.id).toBe(entryId);
+        expect(replayed).toMatchObject({
+          taskName: 'Re-glue loose trim',
+          performedOn: '2026-07-22',
+        });
+      });
+
+      it('leaves exactly one entry on the rig', async () => {
+        const { service } = await performOnce();
+
+        await service.create(alice, body);
+
+        await expect(
+          service.listByRig(alice, aliceRigId),
+        ).resolves.toHaveLength(1);
+      });
+
+      it('writes nothing, so the entry’s edit time does not move', async () => {
+        const { service, logEntries } = await performOnce();
+        const before = logEntries.editedAtOf(clientId);
+
+        await service.create(alice, body, new Date());
+
+        expect(logEntries.editedAtOf(clientId)).toEqual(before);
+      });
+
+      it('still refuses a client id naming another owner’s entry', async () => {
+        const { service, logEntries } = await makeService();
+        const bobEntry = await service.create(bob, {
+          taskId: bobTaskId,
+          performedOn: '2026-07-21',
+          fields: [],
+          id: clientId,
+        });
+        // eslint-disable-next-line unicorn/no-null
+        await logEntries.save({ ...bobEntry, taskId: null });
+
+        await expect(service.create(alice, body)).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        await expect(logEntries.findById(clientId)).resolves.toMatchObject({
+          rigId: bobRigId,
+        });
+      });
+
+      it('refuses a client id naming an entry still attached to another task', async () => {
+        const { service } = await makeService();
+        // One of Alice's own entries, recorded against a task that still
+        // exists — so it is demonstrably not the row this create would write.
+        await service.create(alice, { ...performSeals, id: clientId });
+
+        await expect(
+          service.create(alice, { ...body, taskId: otherTaskId }),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
+
+      it('still reports a genuinely missing task when no client id was sent', async () => {
+        const { service } = await performOnce();
+
+        await expect(
+          service.create(alice, { ...body, id: undefined }),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+  });
 });

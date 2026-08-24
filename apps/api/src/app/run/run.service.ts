@@ -17,7 +17,7 @@ import {
   toLoggedFields,
   validateFieldValues,
   type Checklist,
-  type CreateRun,
+  type CreateRunWithId,
   type Id,
   type LogEntry,
   type MaintenanceTask,
@@ -28,6 +28,7 @@ import {
   type UpdateRun,
 } from '@rv-checklist/domain';
 import { Clock } from '../auth/clock.js';
+import { adoptCreated } from '../common/adopt-created.js';
 
 /**
  * Copy a checklist step into a fresh run step: it starts `incomplete`, with a new
@@ -225,8 +226,16 @@ export class RunService {
    * steps. A `tripId` links the run to a trip from the start (issue #111); the
    * trip must be the owner's and live on the same rig as the checklist (a run
    * belongs to its checklist's rig, so a cross-rig trip link is nonsense).
+   *
+   * The run's own id may be the client's (issue #143); its step ids stay
+   * server-minted, since the steps are copied from the checklist rather than
+   * sent (per-step client ids ride with issue #144).
    */
-  async create(ownerId: Id, input: CreateRun): Promise<Run> {
+  async create(
+    ownerId: Id,
+    input: CreateRunWithId,
+    editedAt?: Date,
+  ): Promise<Run> {
     const checklist = await this.ownedChecklist(ownerId, input.checklistId);
     if (input.tripId !== undefined) {
       const trip = await this.ownedTrip(ownerId, input.tripId);
@@ -236,14 +245,21 @@ export class RunService {
         );
       }
     }
-    return this.runs.save({
-      id: randomUUID(),
-      checklistId: checklist.id,
-      rigId: checklist.rigId,
-      ...(input.tripId !== undefined && { tripId: input.tripId }),
-      startedOn: input.startedOn ?? this.today(),
-      steps: checklist.steps.map((step) => toRunStep(step)),
-    });
+    return adoptCreated(
+      await this.runs.insert(
+        {
+          id: input.id ?? randomUUID(),
+          checklistId: checklist.id,
+          rigId: checklist.rigId,
+          ...(input.tripId !== undefined && { tripId: input.tripId }),
+          startedOn: input.startedOn ?? this.today(),
+          steps: checklist.steps.map((step) => toRunStep(step)),
+        },
+        editedAt,
+      ),
+      (run) => run.checklistId === checklist.id,
+      'Run not found',
+    );
   }
 
   /** One of the owner's runs, or `NotFound` if missing or another's. */

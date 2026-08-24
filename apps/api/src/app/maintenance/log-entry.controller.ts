@@ -37,14 +37,20 @@ import {
 export class LogEntryController {
   constructor(private readonly logEntries: LogEntryService) {}
 
-  /** Perform a task standalone — record a dated completion with its snapshot. */
+  /**
+   * Perform a task standalone — record a dated completion with its snapshot.
+   * `X-Edited-At` initialises the new row's LWW edit time (issue #143), so a
+   * create replayed at reconnect never stamps itself later than the edits
+   * already queued behind it.
+   */
   @Post()
   @ZodSerializerDto(LogEntryDto)
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateLogEntryDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<LogEntry> {
-    return this.logEntries.create(owner.id, body);
+    return this.logEntries.create(owner.id, body, editedAt);
   }
 
   /**

@@ -6,11 +6,12 @@ import {
   RigRepository,
 } from '@rv-checklist/api-data-access';
 import type {
-  CreateMaintenanceTask,
+  CreateMaintenanceTaskWithId,
   Id,
   MaintenanceTask,
   UpdateMaintenanceTask,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 
 /**
  * Maintenance-task CRUD, owner-scoped (issue #17). A task belongs to a rig
@@ -39,15 +40,21 @@ export class MaintenanceTaskService {
     );
   }
 
-  /** Create a task on one of the owner's rigs — the server assigns the id. */
+  /** Create a task on one of the owner's rigs — `id` may be the client's own (issue #143). */
   async create(
     ownerId: Id,
-    input: CreateMaintenanceTask,
+    input: CreateMaintenanceTaskWithId,
+    editedAt?: Date,
   ): Promise<MaintenanceTask> {
     if (!(await this.ownsRig(ownerId, input.rigId))) {
       throw new NotFoundException('Rig not found');
     }
-    return this.tasks.save({ id: randomUUID(), ...input });
+    const { id = randomUUID(), ...fields } = input;
+    return adoptCreated(
+      await this.tasks.insert({ id, ...fields }, editedAt),
+      (task) => task.rigId === input.rigId,
+      'Maintenance task not found',
+    );
   }
 
   /** One of the owner's tasks, or `NotFound` if missing or another's. */

@@ -26,6 +26,16 @@ export type EquipmentItem = z.infer<typeof EquipmentItemSchema>;
 export const CreateEquipmentItemSchema = EquipmentItemSchema.omit({ id: true });
 export type CreateEquipmentItem = z.infer<typeof CreateEquipmentItemSchema>;
 
+/** The create body with an optional client-generated `id` — see {@link CreateRigWithIdSchema} (issue #143). */
+export const CreateEquipmentItemWithIdSchema = CreateEquipmentItemSchema.extend(
+  {
+    id: IdSchema.optional(),
+  },
+);
+export type CreateEquipmentItemWithId = z.infer<
+  typeof CreateEquipmentItemWithIdSchema
+>;
+
 /**
  * Edit body — all mutable fields are optional (omitted = unchanged).
  * Nullable fields can be explicitly set to `null` to clear them,

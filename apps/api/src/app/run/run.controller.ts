@@ -35,14 +35,19 @@ import { RunService } from './run.service.js';
 export class RunController {
   constructor(private readonly runs: RunService) {}
 
-  /** Start a run over one of the owner's checklists. */
+  /**
+   * Start a run over one of the owner's checklists. `X-Edited-At` initialises
+   * the new row's LWW edit time (issue #143), so a create replayed at reconnect
+   * never stamps itself later than the edits already queued behind it.
+   */
   @Post()
   @ZodSerializerDto(RunDto)
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateRunDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<Run> {
-    return this.runs.create(owner.id, body);
+    return this.runs.create(owner.id, body, editedAt);
   }
 
   /**

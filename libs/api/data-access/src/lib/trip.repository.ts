@@ -1,16 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type {
-  ConditionalWrite,
-  Id,
-  StoredStop,
-  Trip,
-  TripRepository as TripRepositoryPort,
+import {
+  DuplicateIdError,
+  type ConditionalWrite,
+  type Id,
+  type InsertResult,
+  type StoredStop,
+  type Trip,
+  type TripRepository as TripRepositoryPort,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { StopEntity } from './entities/stop.entity.js';
 import { TripEntity } from './entities/trip.entity.js';
 import { stopToRow } from './stop.repository.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link TripRepositoryPort} as a concrete Nest DI token (an abstract
@@ -23,14 +26,19 @@ import { stopToRow } from './stop.repository.js';
  */
 export abstract class TripRepository implements TripRepositoryPort {
   abstract findById(id: Id): Promise<Trip | undefined>;
-  abstract save(trip: Trip): Promise<Trip>;
+  abstract save(trip: Trip, editedAt?: Date): Promise<Trip>;
+  abstract insert(trip: Trip, editedAt?: Date): Promise<InsertResult<Trip>>;
   abstract saveIfNewer(
     trip: Trip,
     editedAt: Date,
   ): Promise<ConditionalWrite<Trip>>;
   abstract delete(id: Id): Promise<void>;
   abstract listByRig(rigId: Id): Promise<Trip[]>;
-  abstract createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip>;
+  abstract createWithStops(
+    trip: Trip,
+    stops: StoredStop[],
+    editedAt?: Date,
+  ): Promise<InsertResult<Trip>>;
 }
 
 /** The persisted row (with its timestamps) narrowed to the {@link Trip} wire model. */
@@ -77,12 +85,39 @@ export class TypeOrmTripRepository extends TripRepository {
     return found ? toTrip(found) : undefined;
   }
 
-  async save(trip: Trip): Promise<Trip> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
-    const saved = await this.repo.save(
-      this.repo.create({ ...toRow(trip), editedAt: new Date() }),
+  async save(trip: Trip, editedAt?: Date): Promise<Trip> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...toRow(trip), editedAt: new Date() }),
+      );
+      return toTrip(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
+    const saved = await this.repo.save(this.repo.create({ ...toRow(trip) }));
+    await this.repo.update(
+      { id: trip.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toTrip(saved);
+  }
+
+  async insert(trip: Trip, editedAt?: Date): Promise<InsertResult<Trip>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...toRow(trip),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: trip.id });
+      return { created: false, record: toTrip(existing) };
+    }
+    return { created: true, record: trip };
   }
 
   async saveIfNewer(
@@ -109,18 +144,42 @@ export class TypeOrmTripRepository extends TripRepository {
     return rows.map((row) => toTrip(row));
   }
 
-  async createWithStops(trip: Trip, stops: StoredStop[]): Promise<Trip> {
+  async createWithStops(
+    trip: Trip,
+    stops: StoredStop[],
+    editedAt?: Date,
+  ): Promise<InsertResult<Trip>> {
+    const stamp = editedAt ?? new Date();
     // One transaction (issue #120): stops carry a trip FK, so the trip row is
     // written first and everything rolls back together — a mid-save failure
-    // can never strand a stopless trip.
-    return this.repo.manager.transaction(async (manager) => {
-      const tripRepo = manager.getRepository(TripEntity);
-      const stopRepo = manager.getRepository(StopEntity);
-      const saved = await tripRepo.save(tripRepo.create(toRow(trip)));
-      for (const stop of stops) {
-        await stopRepo.save(stopRepo.create(stopToRow(stop)));
+    // can never strand a stopless trip. Inserts, not saves, so a re-posted
+    // client id collides instead of overwriting (issue #143).
+    try {
+      await this.repo.manager.transaction(async (manager) => {
+        const tripRepo = manager.getRepository(TripEntity);
+        const stopRepo = manager.getRepository(StopEntity);
+        await tripRepo.insert({ ...toRow(trip), editedAt: stamp });
+        for (const stop of stops) {
+          await stopRepo.insert({ ...stopToRow(stop), editedAt: stamp });
+        }
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
       }
-      return toTrip(saved);
-    });
+      const existing = await this.repo.findOne({ where: { id: trip.id } });
+      if (!existing) {
+        // The trip id was free, so the collision was a *stop* id: the client
+        // reused one, which is not a replay of this create. The transaction
+        // already rolled the whole plan back; report it as the client error it
+        // is, so the caller answers 4xx. A raw QueryFailedError would leave the
+        // handler at 500, which the offline upload queue retries forever.
+        throw new DuplicateIdError(
+          'createWithStops: a stop id is already in use',
+        );
+      }
+      return { created: false, record: toTrip(existing) };
+    }
+    return { created: true, record: trip };
   }
 }

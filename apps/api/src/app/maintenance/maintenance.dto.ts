@@ -1,6 +1,6 @@
 import {
-  CreateLogEntrySchema,
-  CreateMaintenanceTaskSchema,
+  CreateLogEntryWithIdSchema,
+  CreateMaintenanceTaskWithIdSchema,
   LogEntrySchema,
   MaintenanceTaskSchema,
   UpdateLogEntrySchema,
@@ -17,9 +17,9 @@ import { createZodDto } from 'nestjs-zod';
  * for the wire model, no hand-written validators.
  */
 
-/** `POST /tasks` body. */
+/** `POST /tasks` body — `id` optional and client-generated (issue #143). */
 export class CreateMaintenanceTaskDto extends createZodDto(
-  CreateMaintenanceTaskSchema,
+  CreateMaintenanceTaskWithIdSchema,
 ) {}
 
 /** `PATCH /tasks/:id` body — any subset; `interval: null` stops due-tracking. */
@@ -30,8 +30,13 @@ export class UpdateMaintenanceTaskDto extends createZodDto(
 /** The response shape for every task endpoint. */
 export class MaintenanceTaskDto extends createZodDto(MaintenanceTaskSchema) {}
 
-/** `POST /log-entries` body — a standalone completion with its field snapshot. */
-export class CreateLogEntryDto extends createZodDto(CreateLogEntrySchema) {}
+/**
+ * `POST /log-entries` body — a standalone completion with its field snapshot,
+ * optionally under a client-generated id (issue #143).
+ */
+export class CreateLogEntryDto extends createZodDto(
+  CreateLogEntryWithIdSchema,
+) {}
 
 /** `PATCH /log-entries/:id` body — correct a date and/or recorded values. */
 export class UpdateLogEntryDto extends createZodDto(UpdateLogEntrySchema) {}

@@ -233,4 +233,65 @@ describe('ChecklistService', () => {
       );
     });
   });
+
+  // Client-generated ids (ADR-0028, issue #143).
+  describe('create with a client-generated id', () => {
+    const clientId = '550e8400-e29b-41d4-a716-446655440077';
+
+    it('creates under the supplied id, still minting the step ids', async () => {
+      const { service } = await makeService();
+
+      const checklist = await service.create(alice, {
+        ...preDeparture(aliceRigId),
+        id: clientId,
+      });
+
+      expect(checklist.id).toBe(clientId);
+      for (const step of checklist.steps) {
+        expect(step.id).toEqual(expect.any(String));
+      }
+    });
+
+    it('treats a re-post as success, leaving one checklist on the rig', async () => {
+      const { service } = await makeService();
+      await service.create(alice, {
+        ...preDeparture(aliceRigId),
+        id: clientId,
+      });
+
+      const replayed = await service.create(alice, {
+        ...preDeparture(aliceRigId),
+        id: clientId,
+      });
+
+      expect(replayed.id).toBe(clientId);
+      await expect(service.list(alice, aliceRigId)).resolves.toHaveLength(1);
+    });
+
+    it('never adopts a checklist on another owner’s rig', async () => {
+      const { service, checklists } = await makeService();
+      await service.create(bob, { ...preDeparture(bobRigId), id: clientId });
+
+      await expect(
+        service.create(alice, { ...preDeparture(aliceRigId), id: clientId }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(checklists.findById(clientId)).resolves.toMatchObject({
+        rigId: bobRigId,
+      });
+      await expect(service.list(alice, aliceRigId)).resolves.toEqual([]);
+    });
+
+    it('initialises the checklist’s edit time from X-Edited-At', async () => {
+      const { service, checklists } = await makeService();
+      const stamp = new Date(Date.now() - 60_000);
+
+      await service.create(
+        alice,
+        { ...preDeparture(aliceRigId), id: clientId },
+        stamp,
+      );
+
+      expect(checklists.editedAtOf(clientId)).toEqual(stamp);
+    });
+  });
 });

@@ -101,6 +101,12 @@ export const CreateChecklistSchema = z.object({
 });
 export type CreateChecklist = z.infer<typeof CreateChecklistSchema>;
 
+/** The create body with an optional client-generated `id` — see {@link CreateRigWithIdSchema} (issue #143). */
+export const CreateChecklistWithIdSchema = CreateChecklistSchema.extend({
+  id: IdSchema.optional(),
+});
+export type CreateChecklistWithId = z.infer<typeof CreateChecklistWithIdSchema>;
+
 /** Edit body — any subset of the editable fields (rig membership never changes). */
 export const UpdateChecklistSchema = z
   .object({

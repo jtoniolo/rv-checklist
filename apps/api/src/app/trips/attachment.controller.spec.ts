@@ -114,6 +114,26 @@ describe('AttachmentController over HTTP (through the Zod serializer)', () => {
     });
   };
 
+  /** The same upload with extra multipart text fields alongside `file`. */
+  const uploadWith = (
+    fields: Record<string, string>,
+    filename = 'site-map.png',
+  ): Promise<Response> => {
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob(['png bytes'], { type: 'image/png' }),
+      filename,
+    );
+    for (const [key, value] of Object.entries(fields)) {
+      form.append(key, value);
+    }
+    return fetch(`${baseUrl}/stops/${stopId}/attachments`, {
+      method: 'POST',
+      body: form,
+    });
+  };
+
   it('uploads a file and responds with the metadata row', async () => {
     const response = await upload('png bytes');
 
@@ -129,6 +149,59 @@ describe('AttachmentController over HTTP (through the Zod serializer)', () => {
     // The denormalized rig_id (ADR-0028) is sync plumbing — the serializer
     // must keep it off the wire.
     expect(body).not.toHaveProperty('rigId');
+  });
+
+  /**
+   * The multipart text fields (ADR-0028, issue #143). They arrive as strings,
+   * so this is the seam that proves the coercing DTO parses them through the
+   * global validation pipe rather than in the handler.
+   */
+  describe('the id and isCampgroundMap text fields', () => {
+    it('creates under the supplied id', async () => {
+      const id = '550e8400-e29b-41d4-a716-4466554400b1';
+
+      const response = await uploadWith({ id });
+
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ id });
+    });
+
+    it('rejects a malformed id with 400', async () => {
+      const response = await uploadWith({ id: 'not-a-uuid' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("coerces isCampgroundMap from the string 'true'", async () => {
+      const response = await uploadWith({
+        id: '550e8400-e29b-41d4-a716-4466554400b2',
+        isCampgroundMap: 'true',
+      });
+
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ isCampgroundMap: true });
+    });
+
+    it("coerces isCampgroundMap from the string 'false'", async () => {
+      const response = await uploadWith({
+        id: '550e8400-e29b-41d4-a716-4466554400b3',
+        isCampgroundMap: 'false',
+      });
+
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({ isCampgroundMap: false });
+    });
+
+    it('re-posting the same id leaves one row', async () => {
+      const id = '550e8400-e29b-41d4-a716-4466554400b4';
+      const first = await uploadWith({ id });
+      expect(first.status).toBe(201);
+
+      const replay = await uploadWith({ id });
+
+      expect(replay.status).toBe(201);
+      expect(await replay.json()).toMatchObject({ id });
+    });
   });
 
   it('rejects a request without a "file" field with 400', async () => {

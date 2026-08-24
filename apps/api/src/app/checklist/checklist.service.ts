@@ -7,12 +7,13 @@ import {
 } from '@rv-checklist/api-data-access';
 import type {
   Checklist,
-  CreateChecklist,
+  CreateChecklistWithId,
   Id,
   Step,
   StepPatch,
   UpdateChecklist,
 } from '@rv-checklist/domain';
+import { adoptCreated } from '../common/adopt-created.js';
 
 /**
  * Assign a stable id to every step, minting one only for a step that has none.
@@ -56,16 +57,31 @@ export class ChecklistService {
     }
   }
 
-  /** Add a checklist to one of the owner's rigs — the server assigns the ids. */
-  async create(ownerId: Id, input: CreateChecklist): Promise<Checklist> {
+  /**
+   * Add a checklist to one of the owner's rigs. The checklist's own id may be
+   * the client's (issue #143); step ids stay server-minted, as they are on
+   * every other write.
+   */
+  async create(
+    ownerId: Id,
+    input: CreateChecklistWithId,
+    editedAt?: Date,
+  ): Promise<Checklist> {
     await this.assertOwnsRig(ownerId, input.rigId);
-    return this.checklists.save({
-      id: randomUUID(),
-      rigId: input.rigId,
-      name: input.name,
-      tags: input.tags,
-      steps: withStepIds(input.steps),
-    });
+    return adoptCreated(
+      await this.checklists.insert(
+        {
+          id: input.id ?? randomUUID(),
+          rigId: input.rigId,
+          name: input.name,
+          tags: input.tags,
+          steps: withStepIds(input.steps),
+        },
+        editedAt,
+      ),
+      (checklist) => checklist.rigId === input.rigId,
+      'Checklist not found',
+    );
   }
 
   /** The checklists of one of the owner's rigs. */

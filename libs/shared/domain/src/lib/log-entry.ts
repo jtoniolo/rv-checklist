@@ -93,6 +93,12 @@ export const CreateLogEntrySchema = LogEntrySchema.omit({
 }).extend({ taskId: IdSchema });
 export type CreateLogEntry = z.infer<typeof CreateLogEntrySchema>;
 
+/** The create body with an optional client-generated `id` — see {@link CreateRigWithIdSchema} (issue #143). */
+export const CreateLogEntryWithIdSchema = CreateLogEntrySchema.extend({
+  id: IdSchema.optional(),
+});
+export type CreateLogEntryWithId = z.infer<typeof CreateLogEntryWithIdSchema>;
+
 /**
  * Snapshot a field schema into log-entry fields, attaching each recorded value to its
  * definition by name (ADR-0004's copy-with-values). Fields nobody filled stay value-less;

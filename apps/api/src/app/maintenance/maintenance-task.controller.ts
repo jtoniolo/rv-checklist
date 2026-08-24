@@ -38,14 +38,19 @@ import {
 export class MaintenanceTaskController {
   constructor(private readonly tasks: MaintenanceTaskService) {}
 
-  /** Create a task on one of the owner's rigs. */
+  /**
+   * Create a task on one of the owner's rigs. `X-Edited-At` initialises the new
+   * row's LWW edit time (issue #143), so a create replayed at reconnect never
+   * stamps itself later than the edits already queued behind it.
+   */
   @Post()
   @ZodSerializerDto(MaintenanceTaskDto)
   create(
     @CurrentOwner() owner: Owner,
     @Body() body: CreateMaintenanceTaskDto,
+    @EditedAt() editedAt?: Date,
   ): Promise<MaintenanceTask> {
-    return this.tasks.create(owner.id, body);
+    return this.tasks.create(owner.id, body, editedAt);
   }
 
   /** List a rig's tasks — the maintenance screen's read. */

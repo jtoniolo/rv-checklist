@@ -158,21 +158,39 @@ export const MaintenanceTaskSchema = z
   .refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
 export type MaintenanceTask = z.infer<typeof MaintenanceTaskSchema>;
 
+/**
+ * The create body's fields, before the cross-field rules are applied. Named
+ * separately only because both the plain create schema and its
+ * client-generated-id variant refine the same object, and a refined schema can
+ * no longer be extended.
+ */
+const CreateMaintenanceTaskFieldsSchema = z.object({
+  rigId: IdSchema,
+  name: z.string().min(1),
+  description: DescriptionSchema.optional(),
+  interval: IntervalSchema.optional(),
+  oneTime: OneTimeSchema.optional(),
+  lastPerformed: IsoDateSchema.optional(),
+  fieldSchema: FieldSchemaSchema.default([]),
+  tags: TagsSchema.default([]),
+});
+
 /** Create body — `id` is server-assigned; the field schema defaults to empty. */
-export const CreateMaintenanceTaskSchema = z
-  .object({
-    rigId: IdSchema,
-    name: z.string().min(1),
-    description: DescriptionSchema.optional(),
-    interval: IntervalSchema.optional(),
-    oneTime: OneTimeSchema.optional(),
-    lastPerformed: IsoDateSchema.optional(),
-    fieldSchema: FieldSchemaSchema.default([]),
-    tags: TagsSchema.default([]),
-  })
-  .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE)
-  .refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
+export const CreateMaintenanceTaskSchema =
+  CreateMaintenanceTaskFieldsSchema.refine(
+    isIntervalOneTimeExclusive,
+    ONE_TIME_INTERVAL_ISSUE,
+  ).refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
 export type CreateMaintenanceTask = z.infer<typeof CreateMaintenanceTaskSchema>;
+
+/** The create body with an optional client-generated `id` — see {@link CreateRigWithIdSchema} (issue #143). */
+export const CreateMaintenanceTaskWithIdSchema =
+  CreateMaintenanceTaskFieldsSchema.extend({ id: IdSchema.optional() })
+    .refine(isIntervalOneTimeExclusive, ONE_TIME_INTERVAL_ISSUE)
+    .refine(isLastPerformedCalendarOnly, LAST_PERFORMED_CALENDAR_ISSUE);
+export type CreateMaintenanceTaskWithId = z.infer<
+  typeof CreateMaintenanceTaskWithIdSchema
+>;
 
 /**
  * Edit body — any subset of the editable fields (rig membership never changes).

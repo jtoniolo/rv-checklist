@@ -5,10 +5,12 @@ import type {
   AttachmentRepository as AttachmentRepositoryPort,
   ConditionalWrite,
   Id,
+  InsertResult,
   StoredAttachment,
 } from '@rv-checklist/domain';
 import { LessThan, Repository } from 'typeorm';
 import { AttachmentEntity } from './entities/attachment.entity.js';
+import { isUniqueViolation } from './unique-violation.js';
 
 /**
  * The {@link AttachmentRepositoryPort} as a concrete Nest DI token (an
@@ -21,7 +23,14 @@ import { AttachmentEntity } from './entities/attachment.entity.js';
  */
 export abstract class AttachmentRepository implements AttachmentRepositoryPort {
   abstract findById(id: Id): Promise<StoredAttachment | undefined>;
-  abstract save(attachment: StoredAttachment): Promise<StoredAttachment>;
+  abstract save(
+    attachment: StoredAttachment,
+    editedAt?: Date,
+  ): Promise<StoredAttachment>;
+  abstract insert(
+    attachment: StoredAttachment,
+    editedAt?: Date,
+  ): Promise<InsertResult<StoredAttachment>>;
   abstract saveIfNewer(
     attachment: StoredAttachment,
     editedAt: Date,
@@ -76,12 +85,47 @@ export class TypeOrmAttachmentRepository extends AttachmentRepository {
     return found ? toAttachment(found) : undefined;
   }
 
-  async save(attachment: StoredAttachment): Promise<StoredAttachment> {
-    // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+  async save(
+    attachment: StoredAttachment,
+    editedAt?: Date,
+  ): Promise<StoredAttachment> {
+    if (editedAt === undefined) {
+      // A plain save re-stamps the LWW edit time (issue #141) — see RigRepository.
+      const saved = await this.repo.save(
+        this.repo.create({ ...toRow(attachment), editedAt: new Date() }),
+      );
+      return toAttachment(saved);
+    }
+    // An exempt write carrying the client's clamped stamp: the row lands, then
+    // the edit clock moves to max(stored, editedAt) — see RigRepository (issue #143).
     const saved = await this.repo.save(
-      this.repo.create({ ...toRow(attachment), editedAt: new Date() }),
+      this.repo.create({ ...toRow(attachment) }),
+    );
+    await this.repo.update(
+      { id: attachment.id, editedAt: LessThan(editedAt) },
+      { editedAt },
     );
     return toAttachment(saved);
+  }
+
+  async insert(
+    attachment: StoredAttachment,
+    editedAt?: Date,
+  ): Promise<InsertResult<StoredAttachment>> {
+    // Insert-then-catch, never check-then-insert — see RigRepository (issue #143).
+    try {
+      await this.repo.insert({
+        ...toRow(attachment),
+        editedAt: editedAt ?? new Date(),
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+      const existing = await this.repo.findOneByOrFail({ id: attachment.id });
+      return { created: false, record: toAttachment(existing) };
+    }
+    return { created: true, record: attachment };
   }
 
   async saveIfNewer(

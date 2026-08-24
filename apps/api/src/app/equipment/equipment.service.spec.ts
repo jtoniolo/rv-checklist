@@ -250,4 +250,59 @@ describe('EquipmentService', () => {
       );
     });
   });
+
+  // Client-generated ids (ADR-0028, issue #143).
+  describe('create with a client-generated id', () => {
+    const clientId = '550e8400-e29b-41d4-a716-446655440077';
+
+    it('creates under the supplied id', async () => {
+      const { service } = await makeService();
+
+      const item = await service.create(alice, {
+        ...generator(aliceRigId),
+        id: clientId,
+      });
+
+      expect(item.id).toBe(clientId);
+    });
+
+    it('treats a re-post as success, leaving one item on the rig', async () => {
+      const { service } = await makeService();
+      await service.create(alice, { ...generator(aliceRigId), id: clientId });
+
+      const replayed = await service.create(alice, {
+        ...generator(aliceRigId),
+        id: clientId,
+      });
+
+      expect(replayed.id).toBe(clientId);
+      await expect(service.list(alice, aliceRigId)).resolves.toHaveLength(1);
+    });
+
+    it('never adopts an item on another owner’s rig', async () => {
+      const { service, items } = await makeService();
+      await service.create(bob, { ...generator(bobRigId), id: clientId });
+
+      await expect(
+        service.create(alice, { ...generator(aliceRigId), id: clientId }),
+      ).rejects.toThrow(NotFoundException);
+      await expect(items.findById(clientId)).resolves.toMatchObject({
+        rigId: bobRigId,
+      });
+      await expect(service.list(alice, aliceRigId)).resolves.toEqual([]);
+    });
+
+    it('initialises the item’s edit time from X-Edited-At', async () => {
+      const { service, items } = await makeService();
+      const stamp = new Date(Date.now() - 60_000);
+
+      await service.create(
+        alice,
+        { ...generator(aliceRigId), id: clientId },
+        stamp,
+      );
+
+      expect(items.editedAtOf(clientId)).toEqual(stamp);
+    });
+  });
 });
