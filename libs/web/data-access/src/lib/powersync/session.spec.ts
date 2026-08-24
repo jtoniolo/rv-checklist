@@ -90,6 +90,7 @@ function originStorage() {
       // makes the leak instant rather than racy.
       waitForFirstSync: () => Promise.resolve(),
       onChange: () => noDispose,
+      onConnectionChange: () => noDispose,
       clear: () => {
         files.delete(filename);
         return dispose();
@@ -297,6 +298,7 @@ describe('local store ownership', () => {
           store: { getAll: () => Promise.resolve([]) },
           waitForFirstSync: () => Promise.resolve(),
           onChange: () => noDispose,
+          onConnectionChange: () => noDispose,
           clear: () => Promise.resolve(),
           close: () => Promise.resolve(),
         });

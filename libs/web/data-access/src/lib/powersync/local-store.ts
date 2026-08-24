@@ -26,6 +26,18 @@ export interface LocalDatabase {
   /** Calls `notify` whenever one of `tables` changes. Returns a dispose function. */
   onChange(tables: readonly LocalTableName[], notify: () => void): () => void;
   /**
+   * Calls `notify` with the sync client's connection state — immediately with
+   * the current value, and again on every change. Returns a dispose function.
+   *
+   * This is the signal behind the offline indicator (issue #153): it says
+   * whether replication is flowing, which is the thing the owner cares about,
+   * and it is more truthful than `navigator.onLine` on a captive portal. It
+   * says nothing about whether the server is reachable *before* the first
+   * connection succeeds — the sync client starts disconnected — so a consumer
+   * that has never seen `true` must not read `false` as "offline".
+   */
+  onConnectionChange(notify: (isConnected: boolean) => void): () => void;
+  /**
    * Stop replicating, delete every locally stored row, and close the store.
    * This is sign-out: the store outlives the session that filled it, so
    * without this the next owner on this browser inherits the previous one's

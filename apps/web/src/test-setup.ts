@@ -74,3 +74,14 @@ class ResizeObserverStub {
   }
 }
 Object.assign(globalThis, { ResizeObserver: ResizeObserverStub });
+
+// jsdom implements `navigator.onLine` as a prototype getter hard-wired to
+// `true`, so the offline-indicator specs (issue #153) cannot flip it. Shadow it
+// with a writable own property, still defaulting to online; a spec assigns to
+// it and dispatches the matching `online`/`offline` event, the way a browser
+// does, and restores it afterwards.
+Object.defineProperty(globalThis.navigator, 'onLine', {
+  configurable: true,
+  writable: true,
+  value: true,
+});

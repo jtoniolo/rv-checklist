@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, type JSX, type ReactNode } from 'react';
 import { AvatarMenu } from '../../avatar-menu';
+import { OfflineIndicator } from '../../offline-indicator';
 import { themeFor } from '../../themes';
 import { equivalentPath } from './equivalent-path';
 
@@ -43,6 +44,10 @@ const frameClass = 'mx-auto w-full max-w-5xl px-4 lg:px-6';
  * server layout seeds both, so the header still renders in the SSR HTML,
  * and a rig rename updates the pill and selector via tag invalidation with
  * no navigation. Navigations use Next.js Link/router.
+ *
+ * This is the app's only header, so it is where the app-wide offline indicator
+ * lives (issue #153); the signed-out routes render bare wrappers with no chrome
+ * to put it in.
  */
 export function RigShell({
   rigId,
@@ -119,6 +124,7 @@ export function RigShell({
               </span>
             </div>
             <div className="flex items-center gap-3">
+              <OfflineIndicator />
               {rigs.length > 0 ? (
                 <div className="hidden items-center gap-1.5 text-sm text-brand-muted lg:flex">
                   <RigSelect
