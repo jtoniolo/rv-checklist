@@ -237,13 +237,21 @@ disagrees with a reachable server is the stale one.
   has, and the sync layer's own auth handling is #149.
 
   **Amended by [#150](https://github.com/jtoniolo/rv-checklist/issues/150):
-  `/@powersync/` is now a public prefix.** The residual above was accepted
-  because it cost one page load. The service worker precaches these assets
-  (ADR-0028 — a cold offline start has no other way to get them), and a
-  redirect there is answered during `install`, where it either lands in the
-  precache as the SDK's worker or fails the install outright. Making them
-  public removes the case: they are the SDK's own bytes, identical for every
-  user and carrying no data of theirs, so a session gates nothing.
+  `/@powersync/` is now a public prefix — and the residual above never existed
+  in production.** `apps/web/wrangler.jsonc` binds `.open-next/assets` as the
+  worker's asset directory and does not set `run_worker_first`, so Cloudflare's
+  Asset Worker answers any request that matches a file in there and the Next
+  middleware is never invoked. `@powersync/` and `sw.js` are both in that
+  directory, so on the deployed site these paths have always been served
+  unauthenticated, redirect or no redirect. Where the middleware genuinely does
+  sit in front of them is `next start` and `nx serve-static`, which serve
+  `public/` through Next itself — the dev-mode gap #150 names. There a redirect
+  is answered during the worker's `install`, and would either land in the
+  precache as the SDK's worker or fail the install outright. Adding the prefix
+  is therefore not a change to the production security boundary but an
+  alignment of the two environments, and it is safe on the same grounds either
+  way: these are the SDK's own bytes, identical for every user and carrying no
+  data of theirs, so a session gates nothing.
 - **A host without `Worker`, `indexedDB` and `WebAssembly` has no local
   store** and silently falls back to the network path. That covers the server
   render and jsdom under test as well as a locked-down browser.

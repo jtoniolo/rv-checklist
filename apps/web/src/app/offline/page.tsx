@@ -1,9 +1,7 @@
 import { Page } from '@rv-checklist/web-ui';
 import type { Metadata } from 'next';
-import { cookies } from 'next/headers';
 import type { JSX } from 'react';
-
-const LAST_RIG_COOKIE = 'rv.last-rig';
+import { OfflineLinks } from './offline-links';
 
 export const metadata: Metadata = {
   title: 'Offline',
@@ -17,35 +15,16 @@ export const metadata: Metadata = {
  *
  * It renders no data — there is none to render off grid without opening the
  * local store, and this page must be one static document that was captured
- * whole at install time. The one exception is the destination of its links:
- * `rv.last-rig` is the same non-httpOnly hint cookie the root route redirects
- * on (never used for auth), read here on the server so the precached HTML
- * points at the owner's rig rather than at a rig picker.
+ * whole at install time. Nothing on it reads a request either, which is what
+ * keeps it statically prerendered: `sw/build.mjs` reads the prerendered HTML to
+ * find the assets this page needs and precaches those too, so the one page
+ * nobody ever opens online still arrives styled and running.
  *
- * The links are plain anchors, not `next/link`. A `Link` would prefetch its
- * target — pointless off grid — and would navigate client-side, which needs an
- * RSC payload this device may not have. A full navigation is exactly right
- * here: it goes back through the service worker, which answers from the cached
- * page.
- *
- * Nothing here needs to hydrate, and that is deliberate. This is the one page
- * nobody ever opens online, so its own JavaScript chunk may not be on the
- * device — the worker precaches the stylesheet for exactly this reason, but
- * not the whole build. With static markup and plain anchors, a chunk that
- * fails to load costs nothing: the server-rendered page is the whole page.
+ * Where its links point is the one thing that cannot be decided here — see
+ * `offline-links.tsx`, which works that out in the browser from the same
+ * `rv.last-rig` hint cookie the root route redirects on.
  */
-export default async function OfflinePage(): Promise<JSX.Element> {
-  const cookieStore = await cookies();
-  const lastRig = cookieStore.get(LAST_RIG_COOKIE)?.value;
-
-  const links = lastRig
-    ? [
-        { href: `/rig/${lastRig}`, label: 'Rig home' },
-        { href: `/rig/${lastRig}/trips`, label: 'Trips' },
-        { href: '/rigs', label: 'Your rigs' },
-      ]
-    : [{ href: '/rigs', label: 'Your rigs' }];
-
+export default function OfflinePage(): JSX.Element {
   return (
     <Page>
       <header className="flex flex-col gap-2">
@@ -65,20 +44,7 @@ export default async function OfflinePage(): Promise<JSX.Element> {
           trips and maintenance records — they are stored on the device.
           Anything you change now is sent as soon as you have signal again.
         </p>
-        <nav aria-label="Saved pages">
-          <ul className="flex flex-col gap-2">
-            {links.map((link) => (
-              <li key={link.href}>
-                <a
-                  href={link.href}
-                  className="font-medium text-brand underline underline-offset-4 dark:text-ink-inverted"
-                >
-                  {link.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        <OfflineLinks />
       </section>
     </Page>
   );

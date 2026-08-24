@@ -127,12 +127,15 @@ transfer.
   `/_next/static/*` is cache-first (immutable). `/@powersync/*` worker assets
   are excluded from runtime caching but **precached with revisions derived
   from the installed SDK version** — required for offline cold boot. #150 adds
-  one exception on the other side: the build's **stylesheet** is precached too,
-  because the fallback page is the one page nobody ever opens online, so its
-  styling cannot be assumed to be in a cache filled by the owner's own visits,
-  and an unstyled fallback is not a branded one. The rest of the build's
-  JavaScript is not precached — that would be several megabytes on every
-  deploy, for chunks the cache-first rule already holds.
+  one exception on the other side: the **fallback page's own assets** — its
+  stylesheet, and the chunks its prerendered HTML loads — are precached too,
+  because the fallback is the one page nobody ever opens online, so nothing it
+  needs can be assumed to be in a cache filled by the owner's own visits. An
+  unstyled fallback is not a branded one, and without its script the page
+  cannot work out where its links point (`offline-links.tsx`). The list comes
+  from the emitted `offline.html`, so it is exactly what that page asks for and
+  nothing else; the rest of the build's JavaScript is left to the cache-first
+  rule, which already holds the chunks the owner fetched.
 - **Current-trip warming:** when a trip becomes current, the client messages
   the SW to fetch and cache that trip's routes and attachments.
 

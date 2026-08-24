@@ -8,7 +8,8 @@
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "copy-powersync-assets": "powersync-web copy-assets -o public",
     "postinstall": "powersync-web copy-assets -o public",
-    "build-sw": "node sw/build.mjs"
+    "build-sw": "node sw/build.mjs",
+    "typecheck": "tsc -p sw/tsconfig.json --noEmit"
   },
   "nx": {
     "targets": {
@@ -29,10 +30,22 @@
         "cache": false,
         "dependsOn": [
           "build"
-        ],
-        "outputs": [
-          "{projectRoot}/public/sw.js"
         ]
+      },
+      "typecheck": {
+        "//": "`sw/` only. Everything under `src/` is typechecked by `next build`, which runs tsc over `tsconfig.json`; `sw/` is outside that config's `include` and is bundled by esbuild, which strips types without reading them. Without this target a type error in the service worker source would compile straight into `public/sw.js` with the whole gate green.",
+        "cache": true,
+        "inputs": [
+          "{projectRoot}/sw/**/*",
+          "{workspaceRoot}/tsconfig.base.json",
+          {
+            "externalDependencies": [
+              "typescript",
+              "serwist"
+            ]
+          }
+        ],
+        "outputs": []
       },
       "dev": {
         "dependsOn": [

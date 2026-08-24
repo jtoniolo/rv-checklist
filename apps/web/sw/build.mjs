@@ -30,9 +30,11 @@ const OFFLINE_URL = '/offline';
 
 /**
  * Never precached: the worker itself, the placeholder that keeps `public/` in
- * git, and `_headers` — Cloudflare consumes that one to configure the asset
- * responses and never serves it, so precaching it would 404 and, because a
- * single failed entry fails the whole install, leave the app with no worker.
+ * git, and Cloudflare's two config files. Cloudflare consumes `_headers` and
+ * `_redirects` to configure the asset responses and never serves either, so
+ * precaching one would 404 and, because a single failed entry fails the whole
+ * install, leave the app with no worker. Only `_headers` exists today;
+ * `_redirects` is listed so that adding it cannot quietly break the worker.
  */
 const PUBLIC_EXCLUDED = new Set([
   'sw.js',
@@ -80,6 +82,68 @@ function toUrl(relativePath) {
  */
 function fail(message) {
   throw new Error(`sw/build.mjs: ${message}`);
+}
+
+/**
+ * Every `/_next/static/` URL the prerendered fallback document asks the browser
+ * for: its stylesheet, the framework and app chunks, and its own page chunk.
+ *
+ * Taken from the emitted HTML rather than from a build manifest because the
+ * HTML is the artefact that is actually served, and because Turbopack emits no
+ * per-route manifest to read. `/offline` stays statically prerendered — it
+ * reads nothing off the request — so this file exists on every build; if it
+ * ever stops existing, that is a page that started reading a request, and the
+ * build fails rather than shipping a fallback with no assets.
+ *
+ * Why precache these at all, when `/_next/static/` is already cache-first at
+ * runtime: that runtime cache holds the chunks the owner's own visits fetched,
+ * and the fallback is the one page nobody ever visits online. Its styling
+ * cannot be assumed to be there — an unstyled fallback is not a branded one —
+ * and neither can its script, which is what works out where its links point
+ * (`offline-links.tsx`). Most of these chunks are shared with every other
+ * route, so the cost is one extra download of roughly 300 kB compressed on the
+ * first install after a deploy; the filenames are content-hashed, so a redeploy
+ * only re-fetches the chunks that actually changed.
+ *
+ * @returns {{ url: string, revision: string | null }[]}
+ */
+function fallbackPageAssets() {
+  const prerendered = path.join(
+    nextDir,
+    'server',
+    'app',
+    `${OFFLINE_URL.slice(1)}.html`,
+  );
+  if (!existsSync(prerendered)) {
+    fail(
+      `no ${path.relative(appDir, prerendered)} — ${OFFLINE_URL} must stay ` +
+        'statically prerendered, or its assets cannot be precached.',
+    );
+  }
+
+  const html = readFileSync(prerendered, 'utf8');
+  const referenced = new Set(html.match(/\/_next\/static\/[\w./-]+/g));
+  const urls = [...referenced].filter((url) =>
+    // The inline flight payload repeats these URLs escaped, which yields a few
+    // matches with a trailing backslash; on-disk existence is what separates a
+    // real asset from one of those.
+    existsSync(path.join(nextDir, url.replace('/_next/', ''))),
+  );
+
+  const has = (/** @type {string} */ extension) =>
+    urls.some((url) => url.endsWith(extension));
+  if (!has('.css') || !has('.js')) {
+    fail(
+      `${path.relative(appDir, prerendered)} references no stylesheet or no ` +
+        'script — the asset scrape is broken, and the fallback page would be ' +
+        'precached without the files it needs.',
+    );
+  }
+
+  // Content-hashed filenames, hence no revision — which Serwist spells `null`,
+  // `undefined` meaning "revision unknown".
+  // eslint-disable-next-line unicorn/no-null
+  return urls.map((url) => ({ url, revision: null }));
 }
 
 /**
@@ -148,22 +212,12 @@ function buildManifest() {
     });
   }
 
-  // The stylesheet, and only the stylesheet, out of the build's own assets.
-  // Everything else under `/_next/static/` is left to the cache-first runtime
-  // rule, which holds exactly the chunks the owner's own visits fetched —
-  // precaching the lot would mean downloading every route's JavaScript plus
-  // several megabytes of bundled wasm on every deploy. The stylesheet is the
-  // exception because the fallback page is the one page nobody ever visits
-  // online, so its styling cannot be assumed to be in that runtime cache, and
-  // an unstyled fallback is not a branded one. Filenames are content-hashed,
-  // hence no revision — which Serwist spells `null`, `undefined` meaning
-  // "revision unknown".
-  const staticDir = path.join(nextDir, 'static');
-  for (const file of filesUnder(staticDir)) {
-    if (!file.endsWith('.css')) continue;
-    // eslint-disable-next-line unicorn/no-null
-    entries.push({ url: `/_next/static${toUrl(file)}`, revision: null });
-  }
+  // The fallback page's own assets, and nothing else out of the build. Every
+  // other route's JavaScript is left to the cache-first runtime rule, which
+  // holds exactly the chunks the owner's own visits fetched — precaching the
+  // lot would mean downloading every route's bundle plus several megabytes of
+  // bundled wasm.
+  entries.push(...fallbackPageAssets());
 
   return entries;
 }

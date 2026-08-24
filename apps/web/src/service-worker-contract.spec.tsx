@@ -83,6 +83,20 @@ describe('service worker build wiring', () => {
     ).toBe(true);
   });
 
+  it('keeps the fallback page prerenderable', () => {
+    // `sw/build.mjs` reads `.next/server/app/offline.html` to find the assets
+    // the fallback needs and precaches those. That file only exists while the
+    // route is statically prerendered, which it only is while it reads nothing
+    // off the request — so a `cookies()` or `headers()` call here is a build
+    // that fails at the worker compile, long after this suite could have said
+    // so. The links that used to want the cookie are worked out in the browser
+    // instead (`offline-links.tsx`).
+    const page = read('apps/web/src/app/offline/page.tsx');
+
+    expect(page).not.toContain('next/headers');
+    expect(page).toContain('./offline-links');
+  });
+
   it('documents the worker as part of the deployment’s web build', () => {
     const deployment = read('docs/deployment.md');
     const web = deployment.slice(
