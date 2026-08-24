@@ -63,9 +63,13 @@ Required at build time (inlined into the bundle):
 - `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — Google OAuth client id
 
 DNS belongs to the deployer.
-The service worker (`public/sw.js`, ADR-0028) is a build output served as a
-static asset; it needs `max-age=0, must-revalidate` response headers (declared
-in `public/_headers` once built — nothing extra to configure).
+
+The service worker is a build output too. `npx opennextjs-cloudflare build`
+compiles `apps/web/sw/` into `apps/web/public/sw.js` after the Next build
+(ADR-0028) and ships it with the rest of `public/`; the file is gitignored, so a
+build that reaches Next some other way deploys no worker, and the app then works
+only while online. Its `max-age=0, must-revalidate` response headers are already
+declared in `public/_headers` — nothing extra to configure.
 
 ## API
 

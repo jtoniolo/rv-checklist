@@ -7,7 +7,8 @@
     "preview:worker": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "copy-powersync-assets": "powersync-web copy-assets -o public",
-    "postinstall": "powersync-web copy-assets -o public"
+    "postinstall": "powersync-web copy-assets -o public",
+    "build-sw": "node sw/build.mjs"
   },
   "nx": {
     "targets": {
@@ -24,6 +25,15 @@
           "{projectRoot}/public/@powersync"
         ]
       },
+      "build-sw": {
+        "cache": false,
+        "dependsOn": [
+          "build"
+        ],
+        "outputs": [
+          "{projectRoot}/public/sw.js"
+        ]
+      },
       "dev": {
         "dependsOn": [
           "copy-powersync-assets"
@@ -36,6 +46,16 @@
         "dependsOn": [
           "^build",
           "copy-powersync-assets"
+        ]
+      },
+      "start": {
+        "dependsOn": [
+          "build-sw"
+        ]
+      },
+      "serve-static": {
+        "dependsOn": [
+          "build-sw"
         ]
       },
       "build:worker": {
@@ -70,6 +90,8 @@
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.20.2",
     "@powersync/web": "^2.2.0",
+    "esbuild": "^0.28.2",
+    "serwist": "^9.5.12",
     "wrangler": "^4.123.0"
   }
 }

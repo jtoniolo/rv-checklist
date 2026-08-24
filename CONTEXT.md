@@ -117,6 +117,13 @@ when a trip becomes current, when a new attachment appears on the current trip,
 and on app open while online.
 _Avoid_: preload, download manager (there is no user-visible download control)
 
+**Offline fallback page**:
+What the app shows off grid when the owner asks for a page this device has
+never opened: it says so and links to the pages that are on the device. Every
+page they have opened before is served from the device instead and looks
+exactly as it always does.
+_Avoid_: error page, not found (the page exists — this device just does not have a copy)
+
 **Offline indicator**:
 The app-wide header signal that the device is offline, driven by the sync
 engine's connection state. Degraded-by-nature functions (place autocomplete,

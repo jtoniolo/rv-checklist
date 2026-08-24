@@ -75,3 +75,9 @@ tsconfig.tsbuildinfo
 # PowerSync worker and wasm assets, copied into the web app by
 # `nx copy-powersync-assets @rv-checklist/web` (ADR-0029).
 /apps/web/public/@powersync/
+
+# The compiled service worker (ADR-0028). Built from apps/web/sw/ by
+# `nx build-sw @rv-checklist/web` and by the deploy's own build command. Its
+# precache manifest describes one specific build's output, so a committed copy
+# could only ever be wrong.
+/apps/web/public/sw.js

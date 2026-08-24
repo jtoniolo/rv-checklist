@@ -235,6 +235,15 @@ disagrees with a reachable server is the stale one.
   worker request with a redirect to `/welcome` and the constructor fails until
   the next page load. That is the same exposure every other same-origin asset
   has, and the sync layer's own auth handling is #149.
+
+  **Amended by [#150](https://github.com/jtoniolo/rv-checklist/issues/150):
+  `/@powersync/` is now a public prefix.** The residual above was accepted
+  because it cost one page load. The service worker precaches these assets
+  (ADR-0028 — a cold offline start has no other way to get them), and a
+  redirect there is answered during `install`, where it either lands in the
+  precache as the SDK's worker or fails the install outright. Making them
+  public removes the case: they are the SDK's own bytes, identical for every
+  user and carrying no data of theirs, so a session gates nothing.
 - **A host without `Worker`, `indexedDB` and `WebAssembly` has no local
   store** and silently falls back to the network path. That covers the server
   render and jsdom under test as well as a locked-down browser.

@@ -1,0 +1,16 @@
+{
+  "//": "The service worker runs in ServiceWorkerGlobalScope, not the DOM, so it needs its own lib set — `webworker` instead of the app's `dom`. It is bundled by esbuild (sw/build.mjs), never emitted by tsc; this config exists so the editor and the type-aware lint rules see the right globals. `exactOptionalPropertyTypes` is the one workspace flag dropped here: Serwist's plugin classes declare their optional callbacks as `T | undefined`, which the flag rejects when one is passed as a `SerwistPlugin`. The mismatch is in the SDK's declarations, not in this directory's code.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "noEmit": true,
+    "exactOptionalPropertyTypes": false,
+    "lib": ["esnext", "webworker"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": []
+  },
+  "include": ["**/*.ts"]
+}
