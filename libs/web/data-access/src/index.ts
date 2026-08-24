@@ -4,6 +4,7 @@ export * from './lib/api.js';
 // resolves a second copy of the unique symbol, which the hooks then reject.
 export { skipToken } from '@reduxjs/toolkit/query';
 export * from './lib/auth.slice.js';
+export * from './lib/connectivity.js';
 export * from './lib/theme.slice.js';
 export * from './lib/store.js';
 export * from './lib/hooks.js';

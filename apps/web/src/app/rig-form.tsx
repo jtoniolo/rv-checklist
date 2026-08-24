@@ -6,6 +6,7 @@ import {
   type Rig,
   type UpdateRig,
 } from '@rv-checklist/domain';
+import { useIsOffline } from '@rv-checklist/web-data-access';
 import { Button, Input, Label } from '@rv-checklist/web-ui';
 import { useState, type ChangeEvent, type JSX } from 'react';
 
@@ -51,6 +52,14 @@ export function toRigUpdate(values: CreateRig): UpdateRig {
  * schemas), so a bad VIN or year is caught before the request. The same form
  * serves creation (empty initial values) and editing (the rig's current
  * values). First screen on the shadcn/ui controls (issue #23).
+ *
+ * Distance carries an offline note (issue #153). It is the one field whose
+ * offline behaviour surprises: a manual entry is an absolute newest-wins write,
+ * while marking a stop arrived is a delta that is exempt from newest-wins
+ * (CONTEXT.md), so a correction typed off grid and the arrivals queued beside
+ * it both land and the total can end a few km out. The note explains it; it
+ * does not block saving, because the figure is the owner's to set and the drift
+ * is theirs to correct.
  */
 export interface RigFormProps {
   readonly initial?: CreateRig;
@@ -121,6 +130,7 @@ export function RigForm({
 }: RigFormProps): JSX.Element {
   const [fields, setFields] = useState<FormFields>(() => toFields(initial));
   const [error, setError] = useState<string | undefined>(undefined);
+  const isOffline = useIsOffline();
 
   const set =
     (key: keyof FormFields) =>
@@ -209,18 +219,33 @@ export function RigForm({
           />
         </Label>
       </div>
-      <Label className={`${labelClass} w-40`}>
-        Current distance (km)
-        <Input
-          value={fields.distance}
-          onChange={set('distance')}
-          inputMode="numeric"
-          placeholder="38200"
-        />
-        <span className="text-xs font-normal">
-          Optional — tracks distance-based maintenance.
-        </span>
-      </Label>
+      {/* The warning is a sibling of the label, not a child: this label wraps
+          its input, so anything inside it joins the field's accessible name.
+          `role="status"` announces it politely on its own when it appears. */}
+      <div className="flex flex-col gap-1">
+        <Label className={`${labelClass} w-40`}>
+          Current distance (km)
+          <Input
+            value={fields.distance}
+            onChange={set('distance')}
+            inputMode="numeric"
+            placeholder="38200"
+          />
+          <span className="text-xs font-normal">
+            Optional — tracks distance-based maintenance.
+          </span>
+        </Label>
+        {isOffline ? (
+          <span
+            role="status"
+            className="text-xs font-normal text-muted-foreground"
+          >
+            Offline — this replaces the whole figure, but arrivals recorded
+            offline add to it when they sync. The total can end a few km out;
+            check it once you are back online.
+          </span>
+        ) : undefined}
+      </div>
       <fieldset className="flex flex-col gap-3 border-t border-hairline pt-3">
         <legend className="pb-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
           Dimensions

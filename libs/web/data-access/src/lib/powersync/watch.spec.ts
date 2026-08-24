@@ -17,6 +17,10 @@ interface FakeDatabase extends LocalDatabase {
   readonly disposed: () => number;
 }
 
+function noDispose(): void {
+  // Nothing to dispose.
+}
+
 function fakeDatabase({ synced = false } = {}): FakeDatabase {
   let hasSynced = synced;
   let releaseSync: (() => void) | undefined;
@@ -46,6 +50,9 @@ function fakeDatabase({ synced = false } = {}): FakeDatabase {
       listeners.push(notify);
       return dispose;
     },
+    // The watch path never looks at the connection; the offline indicator does
+    // (issue #153), and it reaches it through a subscription of its own.
+    onConnectionChange: () => noDispose,
     clear: () => Promise.resolve(),
     close: () => Promise.resolve(),
     completeFirstSync: () => {

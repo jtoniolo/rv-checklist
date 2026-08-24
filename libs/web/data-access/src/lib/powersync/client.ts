@@ -82,6 +82,14 @@ async function open(owner: string): Promise<LocalDatabase> {
         },
         { tables: [...tables] },
       ),
+    onConnectionChange: (notify) => {
+      notify(database.currentStatus.connected);
+      return database.registerListener({
+        statusChanged: (status) => {
+          notify(status.connected);
+        },
+      });
+    },
     clear: async () => {
       await database.disconnectAndClear();
       await database.close();
