@@ -214,16 +214,24 @@ export class RunService {
   /**
    * The Log Entry a client says it authored for a completion, if it is safe to honour
    * (ADR-0030, issue #144) — with `logEntryId` now arriving *from* the client, this is the
-   * whole of the forgery guard, so it never trusts the id alone. The entry must exist, sit
-   * on **this run's rig** (the run was resolved through {@link get}, so matching its rig is
-   * the ownership check — another owner's entry can never match), and name the step's own
-   * task, so a link can neither claim someone else's maintenance nor cross-file one task's
-   * work under another.
+   * whole of the forgery guard, so it never trusts the id alone. Four things must hold:
    *
-   * An orphan (`taskId` null — a one-time task deleted itself on completion, issue #28)
-   * passes on the rig check alone, exactly as {@link LogEntryService.replayedEntry} does:
-   * the entry no longer records which task it was, so there is nothing else left to match,
-   * and the alternative is losing the link on the one path that cannot be re-derived.
+   * - **The entry exists.** A named id that resolves to nothing is not a link.
+   * - **It sits on this run's rig.** The run was resolved through {@link get}, so matching
+   *   its rig *is* the ownership check — another owner's entry can never match.
+   * - **It names the step's own task**, so one task's work is never cross-filed under
+   *   another. An orphan (`taskId` null — a one-time task deleted itself on completion,
+   *   issue #28) passes this one on the rig check alone, exactly as
+   *   {@link LogEntryService.replayedEntry} does: the entry no longer records which task
+   *   it was, so there is nothing left to match, and the alternative is losing the link on
+   *   the one path that cannot be re-derived.
+   * - **Nothing already holds it.** An entry another step wrote is *not* adoptable, or a
+   *   client could point a second step at it and then delete it by un-completing that
+   *   step — destroying maintenance history and leaving the first step dangling. The
+   *   check is rig-wide rather than run-wide because the theft works just as well from
+   *   another run on the same rig (the same weekly checklist run again next week), and
+   *   an orphan makes it widest of all: with no task left to match, the rig check would
+   *   otherwise be the only thing standing between any task-linked step and any orphan.
    *
    * Anything that fails is discarded rather than rejected — the server then writes its own
    * entry, which is the same outcome a client that sent nothing would get.
@@ -237,7 +245,14 @@ export class RunService {
     if (entry?.rigId !== run.rigId) {
       return undefined;
     }
-    return entry.taskId === null || entry.taskId === taskId ? entry : undefined;
+    if (entry.taskId !== null && entry.taskId !== taskId) {
+      return undefined;
+    }
+    // Only reached for a step holding no link of its own (a stored link wins earlier), so
+    // any link found here belongs to some *other* step.
+    return (await this.runs.anyStepLinksEntry(run.rigId, entry.id))
+      ? undefined
+      : entry;
   }
 
   /**
@@ -294,12 +309,16 @@ export class RunService {
     }
 
     const entries: LogEntry[] = [];
-    const detachedEntryIds: Id[] = [];
+    const detached: Id[] = [];
+    // Links this batch has already handed out. Nothing is written yet, so
+    // `adoptableEntry`'s stored-link check cannot see them, and two ops in one
+    // batch naming the same entry would otherwise both adopt it.
+    const takenLinks = new Set<Id>();
     for (const [stepId, step] of merged) {
       const written = stored.get(stepId)?.logEntryId;
       if (step.taskId === undefined || step.state !== 'complete') {
         if (written !== undefined) {
-          detachedEntryIds.push(written);
+          detached.push(written);
         }
         continue;
       }
@@ -309,11 +328,12 @@ export class RunService {
       }
       const claimed = claimedLinks.get(stepId);
       const adopted =
-        claimed === undefined
+        claimed === undefined || takenLinks.has(claimed)
           ? undefined
           : await this.adoptableEntry(run, step.taskId, claimed);
       if (adopted !== undefined) {
         step.logEntryId = adopted.id;
+        takenLinks.add(adopted.id);
         continue;
       }
       // A gone task, or one not on the run's rig (authoring doesn't referentially
@@ -334,7 +354,21 @@ export class RunService {
     }
 
     const steps = run.steps.map((step) => merged.get(step.id) ?? step);
-    return { steps, entries, detachedEntryIds };
+    // Second belt on the same guarantee as `adoptableEntry`'s fourth check: never delete
+    // an entry another step of this run still points at. Adoption is checked before a
+    // link is granted, but that check reads the row and this one reads the merged result,
+    // so a claim that slipped through concurrently still costs nobody their history —
+    // the thief simply un-completes with the entry left where it was.
+    const stillLinked = new Set(
+      steps.flatMap((step) =>
+        step.logEntryId === undefined ? [] : [step.logEntryId],
+      ),
+    );
+    return {
+      steps,
+      entries,
+      detachedEntryIds: detached.filter((id) => !stillLinked.has(id)),
+    };
   }
 
   /**
@@ -509,6 +543,12 @@ export class RunService {
    * got, while a stale one can only lose the steps it is actually stale about. Neither
    * path can veto the other: a run whose steps merged still refuses an out-of-date
    * re-dating, and an accepted re-dating cannot roll back another device's completions.
+   *
+   * The re-dating therefore writes `startedOn` **alone**. Writing the whole run instead
+   * would ship the steps read at the top of this method, and since the run screen now
+   * fires a step operation on every tap, a re-dating from a second device would quietly
+   * swallow the taps made while it was in flight — the record clock cannot catch that,
+   * because a step merge deliberately never moves it.
    */
   async update(
     ownerId: Id,
@@ -542,11 +582,7 @@ export class RunService {
     if (changes.startedOn === undefined) {
       return current;
     }
-    const next: Run = { ...current, startedOn };
-    if (editedAt === undefined) {
-      return this.runs.save(next);
-    }
-    const gated = await this.runs.saveIfNewer(next, editedAt);
+    const gated = await this.runs.saveStartedOn(id, startedOn, editedAt);
     return gated.record;
   }
 

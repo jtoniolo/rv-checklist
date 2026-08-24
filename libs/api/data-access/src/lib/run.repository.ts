@@ -4,6 +4,7 @@ import type {
   ConditionalWrite,
   Id,
   InsertResult,
+  IsoDate,
   Run,
   RunRepository as RunRepositoryPort,
   RunStep,
@@ -37,6 +38,12 @@ export abstract class RunRepository implements RunRepositoryPort {
     steps: readonly RunStep[],
     expected: readonly RunStep[],
   ): Promise<ConditionalWrite<Run>>;
+  abstract saveStartedOn(
+    id: Id,
+    startedOn: IsoDate,
+    editedAt?: Date,
+  ): Promise<ConditionalWrite<Run>>;
+  abstract anyStepLinksEntry(rigId: Id, logEntryId: Id): Promise<boolean>;
 }
 
 /** The persisted row (with its timestamps) narrowed to the {@link Run} wire model. */
@@ -142,10 +149,53 @@ export class TypeOrmRunRepository extends RunRepository {
     return { applied: (result.affected ?? 0) > 0, record: toRun(current) };
   }
 
+  /**
+   * Re-date the run, writing `started_on` alone (ADR-0030, issue #144) — the record-level
+   * sibling of {@link saveStepsIfUnchanged}. Naming the one column is the whole point: a
+   * whole-row write would carry the caller's `steps` and erase a merge that landed between
+   * its read and this write, and the record clock cannot notice, since a step merge never
+   * moves it.
+   *
+   * With `editedAt` the comparison and the write are one conditional UPDATE (ADR-0028),
+   * strictly newer to land. Without it the edit is authoritative: it always lands and
+   * stamps server now.
+   */
+  async saveStartedOn(
+    id: Id,
+    startedOn: IsoDate,
+    editedAt?: Date,
+  ): Promise<ConditionalWrite<Run>> {
+    const stamp = editedAt ?? new Date();
+    const gate: FindOptionsWhere<RunEntity> =
+      editedAt === undefined ? { id } : { id, editedAt: LessThan(editedAt) };
+    const result = await this.repo.update(gate, { startedOn, editedAt: stamp });
+    const current = await this.repo.findOneByOrFail({ id });
+    return { applied: (result.affected ?? 0) > 0, record: toRun(current) };
+  }
+
+  /**
+   * Whether any run on the rig already links a step to this Log Entry (ADR-0030, issue
+   * #144). A jsonb containment test — `steps @> '[{"logEntryId": …}]'` — because the link
+   * sits inside one element of the array and the rest of that element is irrelevant.
+   */
+  async anyStepLinksEntry(rigId: Id, logEntryId: Id): Promise<boolean> {
+    const linked: FindOptionsWhere<RunEntity> = {
+      rigId,
+      steps: Raw((column) => `${column} @> CAST(:link AS jsonb)`, {
+        link: JSON.stringify([{ logEntryId }]),
+      }),
+    };
+    return (await this.repo.count({ where: linked })) > 0;
+  }
+
   async saveIfNewer(run: Run, editedAt: Date): Promise<ConditionalWrite<Run>> {
     // The strictly-newer comparison and the write are one conditional UPDATE
     // (ADR-0028) — no read-compare-write window. Record-level over the whole
-    // run; per-step merges take `saveStepsIfUnchanged` instead (ADR-0030).
+    // run, `steps` included, which is why editing a run never comes through
+    // here: the record clock cannot see a step merge (a merge deliberately
+    // leaves it alone), so a whole-row write would carry a stale array past the
+    // gate unnoticed. `startedOn` takes `saveStartedOn`, steps take
+    // `saveStepsIfUnchanged` (ADR-0030).
     const { id: _id, ...row } = toRow(run);
     const result = await this.repo.update(
       { id: run.id, editedAt: LessThan(editedAt) },

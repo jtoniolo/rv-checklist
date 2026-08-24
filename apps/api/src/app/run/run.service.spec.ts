@@ -103,6 +103,29 @@ const sealsChecklist: Checklist = {
   ],
 };
 
+// Nothing forbids a checklist naming one task twice — front and rear slides are the
+// same job done in two places. It is the shape that makes "an entry another step
+// already owns" reachable while passing every task-identity check (ADR-0030).
+const twinChecklistId = '550e8400-e29b-41d4-a716-446655440025';
+const twinChecklist: Checklist = {
+  id: twinChecklistId,
+  rigId: aliceRigId,
+  name: 'Both slides',
+  tags: ['procedure'],
+  steps: [
+    {
+      id: '550e8400-e29b-41d4-a716-446655440035',
+      text: 'Condition the front slide seals',
+      taskId: sealsTaskId,
+    },
+    {
+      id: '550e8400-e29b-41d4-a716-446655440036',
+      text: 'Condition the rear slide seals',
+      taskId: sealsTaskId,
+    },
+  ],
+};
+
 /** The run's steps with one step (found by text) patched. */
 const patchStep = (
   run: Run,
@@ -148,6 +171,7 @@ async function makeService(): Promise<{
   await checklists.save(aliceChecklist);
   await checklists.save(bobChecklist);
   await checklists.save(sealsChecklist);
+  await checklists.save(twinChecklist);
   await tasks.save(sealsTask);
   await tasks.save(bobTask);
   await trips.save({
@@ -1409,7 +1433,7 @@ describe('RunService step operations (ADR-0030, issue #144)', () => {
       await expect(logEntries.listByTask(sealsTaskId)).resolves.toHaveLength(1);
     });
 
-    it('cannot detach an entry by claiming it on a step that never wrote it', async () => {
+    it('a plain step carries no link at all, so claiming one detaches nothing', async () => {
       const { service, logEntries } = await makeService();
       const run = await service.create(
         alice,
@@ -1427,6 +1451,8 @@ describe('RunService step operations (ADR-0030, issue #144)', () => {
       const realId = taskStepOf(completed)?.logEntryId;
 
       // A plain step claims the entry the task-linked one wrote, then un-completes.
+      // A step with no task never links an entry, so the claim is dropped before
+      // adoption is even considered — see the task-linked cases below for the guard.
       const roofId = stepIdOf(run, ROOF);
       await service.applyStepOps(alice, run.id, [
         {
@@ -1443,6 +1469,216 @@ describe('RunService step operations (ADR-0030, issue #144)', () => {
       const entries = await logEntries.listByTask(sealsTaskId);
       expect(entries).toHaveLength(1);
       expect(entries[0]?.id).toBe(realId);
+    });
+  });
+
+  /**
+   * The fourth check (ADR-0030): an entry another step already holds is not adoptable.
+   * Every case here passes the first three — the entry exists, sits on the run's own rig,
+   * and matches the step's task (or is an orphan, which matches anything) — so the only
+   * thing between the claimant and the victim's maintenance history is that fourth check.
+   * Un-completing a step that never wrote an entry must destroy nothing.
+   */
+  describe('an entry another step already wrote', () => {
+    const FRONT = 'Condition the front slide seals';
+    const REAR = 'Condition the rear slide seals';
+    const orphanId = '550e8400-e29b-41d4-a716-446655440089';
+
+    /** An orphan — the shape a completed one-time task leaves behind (issue #28). */
+    const orphanEntry = (): LogEntry => ({
+      id: orphanId,
+      // eslint-disable-next-line unicorn/no-null
+      taskId: null,
+      rigId: aliceRigId,
+      taskName: 'Register the warranty',
+      performedOn: '2026-07-01',
+      fields: [],
+    });
+
+    it('refuses a second step on the same task, so un-completing it deletes nothing', async () => {
+      const { service, logEntries } = await makeService();
+      const run = await service.create(
+        alice,
+        { checklistId: twinChecklistId },
+        createdAt(),
+      );
+      const frontId = stepIdOf(run, FRONT);
+      const rearId = stepIdOf(run, REAR);
+      const completed = await service.applyStepOps(alice, run.id, [
+        {
+          stepId: frontId,
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          editedAt: at(40_000),
+        },
+      ]);
+      const frontEntryId = completed.steps.find(
+        (s) => s.id === frontId,
+      )?.logEntryId;
+      expect(frontEntryId).toBeDefined();
+
+      // The rear step claims the front step's entry — same rig, same task, so only
+      // "someone already holds it" can refuse it.
+      const stolen = await service.applyStepOps(alice, run.id, [
+        {
+          stepId: rearId,
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          logEntryId: frontEntryId,
+          editedAt: at(30_000),
+        },
+      ]);
+      expect(stolen.steps.find((s) => s.id === rearId)?.logEntryId).not.toBe(
+        frontEntryId,
+      );
+
+      const reopened = await service.applyStepOps(alice, run.id, [
+        { stepId: rearId, state: 'incomplete', editedAt: at(20_000) },
+      ]);
+
+      // The front step's completion — and its entry — are exactly as they were.
+      expect(reopened.steps.find((s) => s.id === frontId)?.logEntryId).toBe(
+        frontEntryId,
+      );
+      await expect(
+        logEntries.findById(frontEntryId ?? ''),
+      ).resolves.toBeDefined();
+    });
+
+    it('refuses an orphan another run on the rig already holds', async () => {
+      const { service, logEntries } = await makeService();
+      await logEntries.save(orphanEntry());
+      const holder = await service.create(
+        alice,
+        { checklistId: sealsChecklistId },
+        createdAt(),
+      );
+      // The first run adopts the orphan honestly: nothing else held it.
+      const held = await service.applyStepOps(alice, holder.id, [
+        {
+          stepId: stepIdOf(holder, SEALS),
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          logEntryId: orphanId,
+          editedAt: at(40_000),
+        },
+      ]);
+      expect(taskStepOf(held)?.logEntryId).toBe(orphanId);
+
+      // A second run — same rig, same checklist next week — claims the same orphan.
+      // An orphan names no task, so the task check cannot refuse it.
+      const thief = await service.create(
+        alice,
+        { checklistId: sealsChecklistId },
+        createdAt(),
+      );
+      const thiefStepId = stepIdOf(thief, SEALS);
+      const claimed = await service.applyStepOps(alice, thief.id, [
+        {
+          stepId: thiefStepId,
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          logEntryId: orphanId,
+          editedAt: at(30_000),
+        },
+      ]);
+      expect(taskStepOf(claimed)?.logEntryId).not.toBe(orphanId);
+
+      await service.applyStepOps(alice, thief.id, [
+        { stepId: thiefStepId, state: 'incomplete', editedAt: at(20_000) },
+      ]);
+
+      await expect(logEntries.findById(orphanId)).resolves.toBeDefined();
+      const stillHeld = await service.get(alice, holder.id);
+      expect(taskStepOf(stillHeld)?.logEntryId).toBe(orphanId);
+    });
+
+    it('refuses an entry a step of another run on the rig wrote', async () => {
+      const { service, logEntries } = await makeService();
+      const holder = await service.create(
+        alice,
+        { checklistId: sealsChecklistId },
+        createdAt(),
+      );
+      const held = await service.applyStepOps(alice, holder.id, [
+        {
+          stepId: stepIdOf(holder, SEALS),
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          editedAt: at(40_000),
+        },
+      ]);
+      const heldId = held.steps.find((s) => s.taskId !== undefined)?.logEntryId;
+
+      const thief = await service.create(
+        alice,
+        { checklistId: sealsChecklistId },
+        createdAt(),
+      );
+      const thiefStepId = stepIdOf(thief, SEALS);
+      await service.applyStepOps(alice, thief.id, [
+        {
+          stepId: thiefStepId,
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          logEntryId: heldId,
+          editedAt: at(30_000),
+        },
+      ]);
+      await service.applyStepOps(alice, thief.id, [
+        { stepId: thiefStepId, state: 'incomplete', editedAt: at(20_000) },
+      ]);
+
+      await expect(logEntries.findById(heldId ?? '')).resolves.toBeDefined();
+      const stillHeld = await service.get(alice, holder.id);
+      expect(taskStepOf(stillHeld)?.logEntryId).toBe(heldId);
+    });
+
+    it('hands one client entry to one step only, even within a single batch', async () => {
+      const { service, logEntries } = await makeService();
+      const clientEntryId = '550e8400-e29b-41d4-a716-446655440088';
+      await logEntries.save({
+        id: clientEntryId,
+        taskId: sealsTaskId,
+        rigId: aliceRigId,
+        taskName: 'Condition slide seals',
+        performedOn: '2026-07-01',
+        fields: [
+          { name: 'Product used', type: 'text', required: true, value: '303' },
+        ],
+      });
+      const run = await service.create(
+        alice,
+        { checklistId: twinChecklistId },
+        createdAt(),
+      );
+      const frontId = stepIdOf(run, FRONT);
+      const rearId = stepIdOf(run, REAR);
+
+      // Nothing is written until the batch settles, so the stored-link check cannot
+      // see the first adoption — the batch has to remember it itself.
+      const completed = await service.applyStepOps(alice, run.id, [
+        {
+          stepId: frontId,
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          logEntryId: clientEntryId,
+          editedAt: at(40_000),
+        },
+        {
+          stepId: rearId,
+          state: 'complete',
+          values: [{ name: 'Product used', value: '303' }],
+          logEntryId: clientEntryId,
+          editedAt: at(30_000),
+        },
+      ]);
+
+      const links = completed.steps.map((s) => s.logEntryId);
+      expect(links).toContain(clientEntryId);
+      expect(new Set(links).size).toBe(links.length);
+      // The rear step got an entry of its own rather than a share of the front's.
+      expect(await logEntries.listByTask(sealsTaskId)).toHaveLength(2);
     });
   });
 
@@ -1599,5 +1835,62 @@ describe('RunService step operations (ADR-0030, issue #144)', () => {
       expect(stateOf(echoed, WATER)).toBe('skipped');
       expect(merged.startedOn).toBe(echoed.startedOn);
     });
+
+    // The run screen now fires a step operation on every tap, so a re-dating from a
+    // second device is concurrent with taps by default. A re-dating that wrote the whole
+    // run would ship the steps it read a moment earlier and swallow them — and the record
+    // clock cannot catch it, because a merge deliberately never moves that clock. The
+    // merge is injected into the exact window: after `update` reads the run, before it
+    // writes. Both stampings are covered; the un-stamped one is the online edit, which
+    // used to take the same whole-run write.
+    const stampings: readonly [string, Date | undefined][] = [
+      ['a stamped re-dating', new Date()],
+      ['an un-stamped re-dating', undefined],
+    ];
+
+    it.each(stampings)(
+      'keeps a merge that landed between %s’s read and its write',
+      async (_label, stamp) => {
+        const { service, runs } = await makeService();
+        const run = await service.create(
+          alice,
+          { checklistId: aliceChecklistId },
+          createdAt(),
+        );
+        const realFindById = runs.findById.bind(runs);
+        let hasInjected = false;
+        jest.spyOn(runs, 'findById').mockImplementation(async (id) => {
+          const found = await realFindById(id);
+          if (hasInjected || found === undefined) {
+            return found;
+          }
+          // Set before the nested read, so the merge's own lookups run clean.
+          hasInjected = true;
+          await service.applyStepOps(alice, run.id, [
+            {
+              stepId: stepIdOf(run, VENTS),
+              state: 'complete',
+              editedAt: at(10_000),
+            },
+          ]);
+          // The caller gets the run as it was *before* the merge — the stale read.
+          return found;
+        });
+
+        const redated = await service.update(
+          alice,
+          run.id,
+          { startedOn: '2026-01-01' },
+          stamp,
+        );
+
+        jest.restoreAllMocks();
+        expect(redated.startedOn).toBe('2026-01-01');
+        expect(stateOf(redated, VENTS)).toBe('complete');
+        const stored = await service.get(alice, run.id);
+        expect(stateOf(stored, VENTS)).toBe('complete');
+        expect(stored.startedOn).toBe('2026-01-01');
+      },
+    );
   });
 });

@@ -89,6 +89,28 @@ run's `edited_at`. That separation is load-bearing in both directions: a stale
 whole-run stamp cannot erase a fresh per-step merge, and a merge cannot bump the
 clock that gates `startedOn` and thereby veto an honest re-dating.
 
+### A run's two editable fields are written by two different statements
+
+The corollary, and it is not optional. `started_on` is written by
+`RunRepository.saveStartedOn`, which names that one column; nothing edits a run
+through a whole-row write any more.
+
+Leaving `edited_at` alone on a step merge is what keeps the two clocks
+independent, but it also makes the record gate **blind** to step work: no stamp
+moves, so no whole-row write can be turned away for being stale about the steps.
+A re-dating that wrote the whole row would ship the `steps` it read at the top of
+the request and silently swallow any merge that landed in between — not a stale
+re-dating, which the LWW gate does refuse, but a perfectly *fresh* one. Since the
+run screen now fires a step operation on every tap, "concurrent with a merge" is
+the ordinary case: correcting the date on a second device while someone taps
+through the list on the first.
+
+The record clock cannot be taught to see this without re-coupling the two, which
+is the thing this ADR exists to break. Writing one column instead is the cheaper
+and stronger answer: the steps are simply not part of the statement, so there is
+nothing stale to ship. The `startedOn` write keeps per-record LWW exactly as
+before — a stale stamp still leaves the date where it was.
+
 ### A client may author the Log Entry, and the server checks the link
 
 The offline path for a task-linked completion is: create the Log Entry locally
@@ -98,9 +120,10 @@ supplied link instead of writing its own entry, so the entry keeps the date the
 work was really done and due status is right through the offline stretch.
 
 `logEntryId` is therefore no longer server-only, which reverses the invariant
-that used to keep it safe. Three checks replace it, and a link failing any of
-them is **discarded** rather than rejected — the server then writes its own
-entry, which is the same outcome a client that sent nothing would get:
+that used to keep it safe. Four checks replace it — one for each thing the old
+invariant made impossible — and a link failing any of them is **discarded**
+rather than rejected: the server then writes its own entry, which is the same
+outcome a client that sent nothing would get.
 
 - **The entry must exist.** A named id that resolves to nothing is not a link.
 - **It must sit on this run's rig.** The run was already resolved through the
@@ -109,12 +132,30 @@ entry, which is the same outcome a client that sent nothing would get:
   nothing (ADR-0003).
 - **It must name the step's own task.** Without this an owner's own entry could
   be cross-filed onto a different task and corrupt that task's due status.
+- **Nothing may already hold it.** An entry some step already links to is not
+  adoptable. Without this a client points a second step at the entry the first
+  step wrote and then un-completes that second step — and the detach deletes the
+  entry, destroying maintenance history and leaving the first step pointing at
+  nothing. The check is rig-wide rather than run-wide, because the theft works
+  just as well from a different run on the same rig, which is what running the
+  same weekly checklist again next week produces. It also needs no forged id:
+  two steps of one checklist naming one task (front and rear slide seals) is an
+  ordinary shape, and either may claim the other's entry.
 
 An orphaned entry (`taskId` null — a one-time task deleted itself on completion,
-issue #28) passes on the rig check alone, exactly as `LogEntryService`'s replay
-path already does: the entry no longer records which task it was, so there is
-nothing else left to match, and the alternative is losing the link on the one
-path that cannot be re-derived.
+issue #28) passes the *task* check on the rig check alone, exactly as
+`LogEntryService`'s replay path already does: the entry no longer records which
+task it was, so there is nothing else left to match, and the alternative is
+losing the link on the one path that cannot be re-derived. That is what makes the
+fourth check load-bearing rather than belt-and-braces — for an orphan it is the
+only thing left between any task-linked step on the rig and any orphan on it.
+
+Two seams sit under that fourth check, because it is a read followed by a write.
+Within one batch nothing is stored yet, so the batch remembers the links it has
+already handed out and never gives one entry to two steps. And an un-completion
+never deletes an entry another step of the run still points at, so a claim that
+slipped through concurrently costs nobody their history: the thief simply
+un-completes with the entry left where it was.
 
 A link **already stored** always beats one the client brings, so a replayed
 operation adopts the entry the first delivery wrote rather than writing a second.
@@ -153,7 +194,13 @@ now.
 - **Trusting the client's `logEntryId` outright.** It is the whole forgery
   surface: an unchecked link could claim another owner's entry, cross-file work
   onto the wrong task, or detach an entry by naming it on a step that never wrote
-  it.
+  it. Each of those is one of the four checks above, in that order — the last of
+  them is why the list is four long and not three.
+- **Re-dating a run with a whole-row write, and trusting the record clock to
+  catch a concurrent merge.** It cannot: the merge leaves `edited_at` where it
+  was, by design, so the gate sees nothing to refuse and the fresh re-dating
+  carries its stale `steps` straight through. Writing `started_on` alone costs
+  one narrow repository method and needs no clock at all.
 
 ## Consequences
 

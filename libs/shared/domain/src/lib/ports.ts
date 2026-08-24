@@ -1,6 +1,6 @@
 import type { StoredAttachment } from './attachment.js';
 import type { Checklist } from './checklist.js';
-import type { Id } from './common.js';
+import type { Id, IsoDate } from './common.js';
 import type { EquipmentItem } from './equipment.js';
 import type { LogEntry } from './log-entry.js';
 import type { MaintenanceTask } from './maintenance-task.js';
@@ -139,6 +139,38 @@ export interface RunRepository extends Repository<Run> {
     steps: readonly RunStep[],
     expected: readonly RunStep[],
   ): Promise<ConditionalWrite<Run>>;
+  /**
+   * Re-date the run, writing `started_on` **alone** (ADR-0030, issue #144).
+   *
+   * The record-level counterpart to {@link saveStepsIfUnchanged}, and narrow for the same
+   * reason that one is: a run's two editable fields are written by two different
+   * statements, so neither can carry a stale opinion about the other. A whole-row write
+   * would ship the `steps` its caller read a moment earlier and silently erase any merge
+   * that landed in between — and the record clock cannot catch that, because a step merge
+   * deliberately never moves it.
+   *
+   * With `editedAt` the write is per-record LWW (ADR-0028): it lands only if that stamp is
+   * strictly newer than the record's stored one, and becomes the new stamp. Without it the
+   * edit is an authoritative online one — it always lands, and stamps server now. Either
+   * way `record` is the run as it stands afterwards. The record must already exist:
+   * callers resolve (and ownership-check) it first.
+   */
+  saveStartedOn(
+    id: Id,
+    startedOn: IsoDate,
+    editedAt?: Date,
+  ): Promise<ConditionalWrite<Run>>;
+  /**
+   * Whether **any** step of any run on the rig already links to this Log Entry (ADR-0030,
+   * issue #144) — the check that stops one step adopting the entry another step wrote,
+   * and with it stops un-completing the thief from deleting the victim's maintenance
+   * history.
+   *
+   * Rig-scoped because that is the whole reach of an adoption: a link is honoured only
+   * when the entry sits on the run's own rig, so a run on any other rig can never be
+   * competing for it.
+   */
+  anyStepLinksEntry(rigId: Id, logEntryId: Id): Promise<boolean>;
 }
 
 /** Maintenance tasks — recurring upkeep jobs on a rig. */

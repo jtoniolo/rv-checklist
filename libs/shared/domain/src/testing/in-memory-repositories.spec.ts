@@ -52,6 +52,12 @@ const step = (id: string, state: 'incomplete' | 'complete'): RunStep => ({
   state,
 });
 
+/** A completed step holding the link to the Log Entry its completion wrote. */
+const linked = (id: string, logEntryId: string): RunStep => ({
+  ...step(id, 'complete'),
+  logEntryId,
+});
+
 const withSteps = (id: string, steps: RunStep[]): Run => ({
   ...run(id),
   steps,
@@ -456,6 +462,63 @@ describe('in-memory repositories', () => {
       // Step recency rides inside the steps; the record clock governs only the
       // fields that have no per-step equivalent.
       expect(runs.editedAtOf('r1')).toEqual(stamp);
+    });
+  });
+
+  describe('saveStartedOn — the re-dating that cannot touch the steps (ADR-0030)', () => {
+    it('re-dates the run and leaves a merge that landed since alone', async () => {
+      const { runs } = createInMemoryRepositories();
+      const before = [step('a', 'incomplete')];
+      await runs.save(withSteps('r1', before), earlier());
+      const merged = [step('a', 'complete')];
+      await runs.saveStepsIfUnchanged('r1', merged, before);
+
+      const result = await runs.saveStartedOn('r1', '2026-09-01', new Date());
+
+      expect(result.applied).toBe(true);
+      expect(result.record.startedOn).toBe('2026-09-01');
+      expect(result.record.steps).toEqual(merged);
+    });
+
+    it('refuses a stamp no newer than the record’s, leaving the date where it was', async () => {
+      const { runs } = createInMemoryRepositories();
+      await runs.save(withSteps('r1', [step('a', 'incomplete')]), new Date());
+
+      const result = await runs.saveStartedOn('r1', '2026-09-01', earlier());
+
+      expect(result.applied).toBe(false);
+      expect(result.record.startedOn).toBe('2026-08-19');
+    });
+
+    it('applies an un-stamped re-dating outright — the authoritative online edit', async () => {
+      const { runs } = createInMemoryRepositories();
+      await runs.save(withSteps('r1', [step('a', 'incomplete')]), later());
+
+      const result = await runs.saveStartedOn('r1', '2026-09-01');
+
+      expect(result.applied).toBe(true);
+      expect(result.record.startedOn).toBe('2026-09-01');
+    });
+  });
+
+  describe('anyStepLinksEntry — is this entry already spoken for? (ADR-0030)', () => {
+    it('finds the link wherever on the rig it sits, and misses one on another rig', async () => {
+      const { runs } = createInMemoryRepositories();
+      await runs.save(withSteps('r1', [linked('a', 'entry-1')]));
+      await runs.save({
+        ...withSteps('r2', [linked('b', 'entry-2')]),
+        rigId: 'rig-2',
+      });
+
+      await expect(runs.anyStepLinksEntry('rig-1', 'entry-1')).resolves.toBe(
+        true,
+      );
+      await expect(runs.anyStepLinksEntry('rig-1', 'entry-2')).resolves.toBe(
+        false,
+      );
+      await expect(runs.anyStepLinksEntry('rig-1', 'entry-3')).resolves.toBe(
+        false,
+      );
     });
   });
 });
