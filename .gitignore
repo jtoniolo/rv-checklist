@@ -71,3 +71,7 @@ out
 # Nx / tsc incremental build info
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# PowerSync worker and wasm assets, copied into the web app by
+# `nx copy-powersync-assets @rv-checklist/web` (ADR-0029).
+/apps/web/public/@powersync/

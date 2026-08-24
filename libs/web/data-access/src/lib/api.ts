@@ -63,6 +63,21 @@ import { Mutex } from 'async-mutex';
 import { z } from 'zod';
 import { signedIn, signedOut } from './auth.slice.js';
 import { config } from './config.js';
+import { resetLocalStore } from './powersync/browser-store.js';
+import {
+  checklistsQuery,
+  equipmentQuery,
+  logEntriesByRigQuery,
+  logEntriesByTaskQuery,
+  rigsQuery,
+  runQuery,
+  runsByChecklistQuery,
+  runsByRigQuery,
+  runsByTripQuery,
+  tasksQuery,
+  tripsByRigQuery,
+} from './powersync/queries.js';
+import { watchIntoCache } from './powersync/watch.js';
 
 const RigArraySchema = z.array(RigSchema);
 const ChecklistArraySchema = z.array(ChecklistSchema);
@@ -133,6 +148,18 @@ const baseQueryWithReauth: BaseQueryFn<
  * (sign-in, sign-out) live here too so they share the re-auth transport; the
  * auth slice is notified via `onQueryStarted` so the UI updates. No tokens
  * are read from the body — the server sets httpOnly cookies (ADR-0019).
+ *
+ * Endpoints whose payload is a faithful projection of the ten synced tables
+ * also carry an `onCacheEntryAdded` watch (ADR-0029): while anything is
+ * subscribed, the local PowerSync store feeds that entry, online and offline
+ * alike. Precedence is local store > network response > SSR seed — a watch
+ * emission leaves a fulfilled entry, which the seeder's clobber guard (#134)
+ * then skips, so `seed-cache.ts` needs no change.
+ *
+ * Endpoints without a watch stay network-only on purpose: the Maps proxies,
+ * the MCP and OAuth surfaces and the session list are network by nature, and
+ * `me` is left to the auth work in #149. Endpoints carrying a value the API
+ * computes from data that does not sync belong to #155.
  */
 export const api = createApi({
   reducerPath: 'api',
@@ -165,6 +192,11 @@ export const api = createApi({
       }),
       async onQueryStarted(_idToken, { dispatch, queryFulfilled }) {
         await queryFulfilled;
+        // Whoever the page last resolved as is now the wrong owner. Drop the
+        // handle (without clearing — the incoming owner's store is a different
+        // file) so the first watch after this re-resolves and connects with the
+        // new token (ADR-0029, decision 10).
+        await resetLocalStore({ clear: false });
         dispatch(signedIn());
         dispatch(api.util.invalidateTags(['Me', 'Rig']));
       },
@@ -181,6 +213,11 @@ export const api = createApi({
         } finally {
           dispatch(signedOut());
           dispatch(api.util.resetApiState());
+          // Resetting the API state tears the watches down but leaves the
+          // replicated rows on disk — and PowerSync keeps `hasSynced` there
+          // too, so without this the next owner to sign in on this browser is
+          // served the previous one's data (ADR-0029, decision 10).
+          await resetLocalStore({ clear: true });
         }
       },
     }),
@@ -195,6 +232,17 @@ export const api = createApi({
               { type: 'Rig' as const, id: 'LIST' },
             ]
           : [{ type: 'Rig' as const, id: 'LIST' }],
+      onCacheEntryAdded: (_arg, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: rigsQuery,
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listRigs', arg: undefined, value },
+              ]),
+            ),
+        }),
     }),
 
     createRig: builder.mutation<Rig, CreateRig>({
@@ -234,6 +282,17 @@ export const api = createApi({
               { type: 'Checklist' as const, id: `LIST:${rigId}` },
             ]
           : [{ type: 'Checklist' as const, id: `LIST:${rigId}` }],
+      onCacheEntryAdded: (rigId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: checklistsQuery(rigId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listChecklists', arg: rigId, value },
+              ]),
+            ),
+        }),
     }),
 
     createChecklist: builder.mutation<Checklist, CreateChecklist>({
@@ -277,6 +336,17 @@ export const api = createApi({
               { type: 'Run' as const, id: `LIST:${checklistId}` },
             ]
           : [{ type: 'Run' as const, id: `LIST:${checklistId}` }],
+      onCacheEntryAdded: (checklistId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: runsByChecklistQuery(checklistId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listRuns', arg: checklistId, value },
+              ]),
+            ),
+        }),
     }),
 
     listRunsByRig: builder.query<Run[], Id>({
@@ -289,6 +359,17 @@ export const api = createApi({
               { type: 'Run' as const, id: `RIG:${rigId}` },
             ]
           : [{ type: 'Run' as const, id: `RIG:${rigId}` }],
+      onCacheEntryAdded: (rigId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: runsByRigQuery(rigId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listRunsByRig', arg: rigId, value },
+              ]),
+            ),
+        }),
     }),
 
     listRunsByTrip: builder.query<Run[], Id>({
@@ -301,12 +382,34 @@ export const api = createApi({
               { type: 'Run' as const, id: `TRIP:${tripId}` },
             ]
           : [{ type: 'Run' as const, id: `TRIP:${tripId}` }],
+      onCacheEntryAdded: (tripId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: runsByTripQuery(tripId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listRunsByTrip', arg: tripId, value },
+              ]),
+            ),
+        }),
     }),
 
     getRun: builder.query<Run, Id>({
       query: (id) => `/runs/${id}`,
       transformResponse: (raw: unknown) => RunSchema.parse(raw),
       providesTags: (_result, _error, id) => [{ type: 'Run', id }],
+      onCacheEntryAdded: (id, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: runQuery(id),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'getRun', arg: id, value },
+              ]),
+            ),
+        }),
     }),
 
     createRun: builder.mutation<Run, CreateRun>({
@@ -353,6 +456,17 @@ export const api = createApi({
               { type: 'Trip' as const, id: `LIST:${rigId}` },
             ]
           : [{ type: 'Trip' as const, id: `LIST:${rigId}` }],
+      onCacheEntryAdded: (rigId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: tripsByRigQuery(rigId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listTripsByRig', arg: rigId, value },
+              ]),
+            ),
+        }),
     }),
 
     createTrip: builder.mutation<TripRead, CreateTrip>({
@@ -549,6 +663,17 @@ export const api = createApi({
               { type: 'Task' as const, id: `LIST:${rigId}` },
             ]
           : [{ type: 'Task' as const, id: `LIST:${rigId}` }],
+      onCacheEntryAdded: (rigId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: tasksQuery(rigId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listTasks', arg: rigId, value },
+              ]),
+            ),
+        }),
     }),
 
     createTask: builder.mutation<MaintenanceTask, CreateMaintenanceTask>({
@@ -595,6 +720,17 @@ export const api = createApi({
               { type: 'LogEntry' as const, id: `LIST:${taskId}` },
             ]
           : [{ type: 'LogEntry' as const, id: `LIST:${taskId}` }],
+      onCacheEntryAdded: (taskId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: logEntriesByTaskQuery(taskId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listLogEntries', arg: taskId, value },
+              ]),
+            ),
+        }),
     }),
 
     listLogEntriesByRig: builder.query<LogEntry[], Id>({
@@ -607,6 +743,17 @@ export const api = createApi({
               { type: 'LogEntry' as const, id: `RIG:${rigId}` },
             ]
           : [{ type: 'LogEntry' as const, id: `RIG:${rigId}` }],
+      onCacheEntryAdded: (rigId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: logEntriesByRigQuery(rigId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listLogEntriesByRig', arg: rigId, value },
+              ]),
+            ),
+        }),
     }),
 
     createLogEntry: builder.mutation<LogEntry, CreateLogEntry>({
@@ -666,6 +813,17 @@ export const api = createApi({
               { type: 'Equipment' as const, id: `LIST:${rigId}` },
             ]
           : [{ type: 'Equipment' as const, id: `LIST:${rigId}` }],
+      onCacheEntryAdded: (rigId, { dispatch, cacheEntryRemoved }) =>
+        watchIntoCache({
+          query: equipmentQuery(rigId),
+          removed: cacheEntryRemoved,
+          emit: (value) =>
+            dispatch(
+              api.util.upsertQueryEntries([
+                { endpointName: 'listEquipment', arg: rigId, value },
+              ]),
+            ),
+        }),
     }),
 
     createEquipment: builder.mutation<EquipmentItem, CreateEquipmentItem>({

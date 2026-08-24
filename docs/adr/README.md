@@ -35,6 +35,7 @@ these were reached; the ADRs here are the *source of truth* a build reads.
 | [0026](0026-stop-attachments-shared-garage-bucket.md) | Stop attachments — shared Garage bucket, API-proxied, campground-map flag, hard-delete cascade (extends 0007) |
 | [0027](0027-mcp-trips-and-stops-tools.md) | MCP trips and stops tools — full CRUD incl. `mark_stop_arrived`; arrival writes the rig's Distance as a service-owned side effect (amends 0023) |
 | [0028](0028-offline-first-pwa-powersync.md) | Offline-first PWA — PowerSync local store, operation-queue writes through the API, per-record LWW, Serwist-runtime service worker, offline attachments (amends 0018, 0012, 0011; extends 0026) |
+| [0029](0029-powersync-read-path-into-rtk-query.md) | PowerSync read path — watch queries into the RTK Query cache via `upsertQueryEntries`, gated on first sync; precedence local store > network > SSR seed (amends 0028's read path) |
 
 The domain model (entities, relationships, ubiquitous language) lives in
 `CONTEXT.md` at the repo root, written as the domain-model ticket (#2) is walked.

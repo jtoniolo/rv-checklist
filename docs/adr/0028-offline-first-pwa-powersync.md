@@ -10,6 +10,10 @@ Amends [ADR-0018](0018-true-hybrid-ssr-web-architecture.md) (offline rendering p
 [ADR-0012](0012-google-one-tap-passport-refresh-tokens.md) (refresh-token reuse interval),
 and [ADR-0011](0011-redux-rtk-state.md) (what feeds the RTK Query cache).
 Extends [ADR-0026](0026-stop-attachments-shared-garage-bucket.md) (attachments offline).
+Amended by [ADR-0029](0029-powersync-read-path-into-rtk-query.md): the read-path
+section below gives the shape; ADR-0029 fixes the contract — `upsertQueryEntries`
+as the one way in, no emission before the first sync completes, and precedence
+local store > network response > SSR seed.
 
 Charted on Wayfinder map [#124](https://github.com/jtoniolo/rv-checklist/issues/124);
 the closed tickets under it are the trail of how each part was decided.
