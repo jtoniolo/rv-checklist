@@ -6,8 +6,9 @@ import type {
   InsertResult,
   Run,
   RunRepository as RunRepositoryPort,
+  RunStep,
 } from '@rv-checklist/domain';
-import { LessThan, Repository } from 'typeorm';
+import { LessThan, Raw, Repository, type FindOptionsWhere } from 'typeorm';
 import { RunEntity } from './entities/run.entity.js';
 import { isUniqueViolation } from './unique-violation.js';
 
@@ -31,6 +32,11 @@ export abstract class RunRepository implements RunRepositoryPort {
   abstract listByRig(rigId: Id): Promise<Run[]>;
   abstract listByChecklist(checklistId: Id): Promise<Run[]>;
   abstract listByTrip(tripId: Id): Promise<Run[]>;
+  abstract saveStepsIfUnchanged(
+    id: Id,
+    steps: readonly RunStep[],
+    expected: readonly RunStep[],
+  ): Promise<ConditionalWrite<Run>>;
 }
 
 /** The persisted row (with its timestamps) narrowed to the {@link Run} wire model. */
@@ -113,10 +119,33 @@ export class TypeOrmRunRepository extends RunRepository {
     return { created: true, record: run };
   }
 
+  /**
+   * Compare-and-set the `steps` JSONB alone (ADR-0030, issue #144). The guard is jsonb
+   * equality against the array the caller merged from, so a concurrent merge that landed
+   * in between fails the WHERE instead of being overwritten — the caller re-reads and
+   * re-merges. `edited_at` is deliberately untouched: the run's record clock governs
+   * `started_on`, and each step carries its own.
+   */
+  async saveStepsIfUnchanged(
+    id: Id,
+    steps: readonly RunStep[],
+    expected: readonly RunStep[],
+  ): Promise<ConditionalWrite<Run>> {
+    const unchanged: FindOptionsWhere<RunEntity> = {
+      id,
+      steps: Raw((column) => `${column} = CAST(:expectedSteps AS jsonb)`, {
+        expectedSteps: JSON.stringify(expected),
+      }),
+    };
+    const result = await this.repo.update(unchanged, { steps: [...steps] });
+    const current = await this.repo.findOneByOrFail({ id });
+    return { applied: (result.affected ?? 0) > 0, record: toRun(current) };
+  }
+
   async saveIfNewer(run: Run, editedAt: Date): Promise<ConditionalWrite<Run>> {
     // The strictly-newer comparison and the write are one conditional UPDATE
-    // (ADR-0028) — no read-compare-write window. Record-level: the whole
-    // `steps` JSONB rides with the run (per-step merge is a later ticket).
+    // (ADR-0028) — no read-compare-write window. Record-level over the whole
+    // run; per-step merges take `saveStepsIfUnchanged` instead (ADR-0030).
     const { id: _id, ...row } = toRow(run);
     const result = await this.repo.update(
       { id: run.id, editedAt: LessThan(editedAt) },

@@ -1,6 +1,7 @@
 import type { Checklist } from '../lib/checklist.js';
 import { DuplicateIdError } from '../lib/ports.js';
 import type { Rig } from '../lib/rig.js';
+import type { Run, RunStep } from '../lib/run.js';
 import { createInMemoryRepositories } from './in-memory-repositories.js';
 
 const rig = (id: string, ownerId: string): Rig => ({
@@ -43,6 +44,17 @@ const run = (id: string, tripId?: string) => ({
   startedOn: '2026-08-19',
   steps: [],
   ...(tripId && { tripId }),
+});
+
+const step = (id: string, state: 'incomplete' | 'complete'): RunStep => ({
+  id,
+  text: `Step ${id}`,
+  state,
+});
+
+const withSteps = (id: string, steps: RunStep[]): Run => ({
+  ...run(id),
+  steps,
 });
 
 const attachment = (id: string, stopId: string) => ({
@@ -399,6 +411,51 @@ describe('in-memory repositories', () => {
       ).rejects.toBeInstanceOf(DuplicateIdError);
       await expect(trips.findById('t2')).resolves.toBeUndefined();
       await expect(stops.listByTrip('t1')).resolves.toHaveLength(1);
+    });
+  });
+
+  describe('saveStepsIfUnchanged — the per-step merge’s compare-and-set (ADR-0030)', () => {
+    it('writes the merged steps when the stored array is still the expected one', async () => {
+      const { runs } = createInMemoryRepositories();
+      const before = [step('a', 'incomplete'), step('b', 'incomplete')];
+      await runs.save(withSteps('r1', before));
+      const merged = [step('a', 'complete'), step('b', 'incomplete')];
+
+      const result = await runs.saveStepsIfUnchanged('r1', merged, before);
+
+      expect(result.applied).toBe(true);
+      expect(result.record.steps).toEqual(merged);
+    });
+
+    it('refuses the write when another merge landed first, reporting what did land', async () => {
+      const { runs } = createInMemoryRepositories();
+      const before = [step('a', 'incomplete'), step('b', 'incomplete')];
+      await runs.save(withSteps('r1', before));
+      const landed = [step('a', 'incomplete'), step('b', 'complete')];
+      await runs.saveStepsIfUnchanged('r1', landed, before);
+
+      // The loser computed its merge from `before`, which is no longer there.
+      const result = await runs.saveStepsIfUnchanged(
+        'r1',
+        [step('a', 'complete'), step('b', 'incomplete')],
+        before,
+      );
+
+      expect(result.applied).toBe(false);
+      expect(result.record.steps).toEqual(landed);
+    });
+
+    it('leaves the record’s LWW edit time exactly where it was', async () => {
+      const { runs } = createInMemoryRepositories();
+      const before = [step('a', 'incomplete')];
+      const stamp = earlier();
+      await runs.save(withSteps('r1', before), stamp);
+
+      await runs.saveStepsIfUnchanged('r1', [step('a', 'complete')], before);
+
+      // Step recency rides inside the steps; the record clock governs only the
+      // fields that have no per-step equivalent.
+      expect(runs.editedAtOf('r1')).toEqual(stamp);
     });
   });
 });

@@ -49,6 +49,7 @@ import {
   type WebSession,
   type Rig,
   type Run,
+  type RunStepOp,
   type TripRead,
   type UpdateChecklist,
   type UpdateEquipmentItem,
@@ -431,6 +432,36 @@ export const api = createApi({
         url: `/runs/${id}`,
         method: 'PATCH',
         body: changes,
+      }),
+      transformResponse: (raw: unknown) => RunSchema.parse(raw),
+      invalidatesTags: (result, _error, { id }) => [
+        { type: 'Run', id },
+        ...(result
+          ? [{ type: 'Run' as const, id: `LIST:${result.checklistId}` }]
+          : []),
+      ],
+    }),
+
+    /**
+     * Record run work as per-step operations (ADR-0030, issue #144) — the write the run
+     * screen makes on every tap, and the one shape that survives two devices working the
+     * same run offline: each op names a single step, so the request carries no opinion
+     * about the steps the user did not touch.
+     *
+     * It is the one call that generates its own `Idempotency-Key` (issue #142). The header
+     * is deliberately narrow rather than a client-wide interceptor — the general offline
+     * queue owns that everywhere else (issue #147). One key is minted per dispatch, so a
+     * replay of *this* operation is deduped while a genuine second tap is not.
+     */
+    applyRunStepOps: builder.mutation<
+      Run,
+      { id: Id; ops: readonly RunStepOp[] }
+    >({
+      query: ({ id, ops }) => ({
+        url: `/runs/${id}/step-ops`,
+        method: 'POST',
+        headers: { 'idempotency-key': crypto.randomUUID() },
+        body: { ops },
       }),
       transformResponse: (raw: unknown) => RunSchema.parse(raw),
       invalidatesTags: (result, _error, { id }) => [
@@ -946,6 +977,7 @@ export const {
   useGetRunQuery,
   useCreateRunMutation,
   useUpdateRunMutation,
+  useApplyRunStepOpsMutation,
   useDeleteRunMutation,
   useListTripsByRigQuery,
   useCreateTripMutation,

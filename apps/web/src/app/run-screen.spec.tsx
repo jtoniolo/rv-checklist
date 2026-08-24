@@ -5,7 +5,7 @@ import {
   seedSignedIn,
   seedRun,
 } from '@rv-checklist/web-data-access';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { RunScreen } from './run-screen';
 
@@ -57,6 +57,24 @@ function trackedStore(): ReturnType<typeof makeStore> {
 function resetStores(): void {
   for (const store of stores) store.dispatch(api.util.resetApiState());
   stores.length = 0;
+}
+
+/**
+ * The step-ops write among the screen's requests — the screen's reads are GETs, so the
+ * one POST is the write under test, whenever RTK Query gets round to dispatching it.
+ */
+async function stepOpRequestOf(fetchSpy: jest.SpyInstance): Promise<Request> {
+  let found: Request | undefined;
+  await waitFor(() => {
+    found = (fetchSpy.mock.calls as [Request][])
+      .map(([request]) => request)
+      .find((request) => request.method === 'POST');
+    expect(found).toBeDefined();
+  });
+  if (found === undefined) {
+    throw new Error('the screen made no step-ops request');
+  }
+  return found;
 }
 
 function renderWithSeededCache(seedData: Run = run): void {
@@ -140,5 +158,50 @@ describe('RunScreen — seeded cache (ADR-0018 Pattern C, issue #135)', () => {
     expect(
       await screen.findByText(/Check tire pressure — skipped/),
     ).toBeTruthy();
+  });
+
+  // ADR-0030, issue #144. The point of the shape is what the request *leaves out*:
+  // a tap says "this step, at this moment" and nothing about the other two, so it
+  // can never roll back work another device did on them.
+  describe('persisting a tap as a step operation', () => {
+    it('posts a single-step operation to the step-ops endpoint', async () => {
+      renderWithSeededCache();
+
+      fireEvent.click(await screen.findByLabelText('Close roof vents'));
+
+      const request = await stepOpRequestOf(fetchSpy);
+      expect(request.url).toMatch(new RegExp(`/runs/${run.id}/step-ops$`));
+      await expect(request.json()).resolves.toEqual({
+        ops: [
+          {
+            stepId: run.steps[0]?.id,
+            state: 'complete',
+            editedAt: expect.any(String) as unknown,
+          },
+        ],
+      });
+    });
+
+    it('names only the step the user tapped', async () => {
+      renderWithSeededCache();
+
+      // Resolved rows sink below the still-to-do one, so the first Skip control
+      // on screen belongs to "Close roof vents".
+      const [skip] = await screen.findAllByRole('button', { name: 'Skip' });
+      if (skip === undefined) {
+        throw new Error('the run rendered no Skip control');
+      }
+      fireEvent.click(skip);
+
+      const request = await stepOpRequestOf(fetchSpy);
+      const body = (await request.json()) as {
+        ops: { stepId: string; state: string }[];
+      };
+      expect(body.ops).toHaveLength(1);
+      expect(body.ops[0]).toMatchObject({
+        stepId: run.steps[0]?.id,
+        state: 'skipped',
+      });
+    });
   });
 });

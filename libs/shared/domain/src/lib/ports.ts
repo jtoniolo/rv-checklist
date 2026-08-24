@@ -5,7 +5,7 @@ import type { EquipmentItem } from './equipment.js';
 import type { LogEntry } from './log-entry.js';
 import type { MaintenanceTask } from './maintenance-task.js';
 import type { Rig } from './rig.js';
-import type { Run } from './run.js';
+import type { Run, RunStep } from './run.js';
 import type { StoredStop, Trip } from './trip.js';
 
 /**
@@ -123,6 +123,22 @@ export interface RunRepository extends Repository<Run> {
   listByRig(rigId: Id): Promise<Run[]>;
   listByChecklist(checklistId: Id): Promise<Run[]>;
   listByTrip(tripId: Id): Promise<Run[]>;
+  /**
+   * Compare-and-set the run's `steps` alone (ADR-0030, issue #144): replace them only if
+   * the stored array is still `expected`, so a merge computed against a read cannot be
+   * clobbered by one that landed in between. `applied: false` hands back the array that
+   * did land, for the caller to re-merge against and try again.
+   *
+   * Deliberately **outside** per-record LWW: it neither consults nor moves the run's
+   * `editedAt`. Step recency lives inside each step (`RunStep.editedAt`) precisely so that
+   * step work and non-step edits (`startedOn`) cannot veto each other — a stale whole-run
+   * stamp must never be able to erase a fresh per-step merge.
+   */
+  saveStepsIfUnchanged(
+    id: Id,
+    steps: readonly RunStep[],
+    expected: readonly RunStep[],
+  ): Promise<ConditionalWrite<Run>>;
 }
 
 /** Maintenance tasks — recurring upkeep jobs on a rig. */

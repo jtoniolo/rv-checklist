@@ -9,12 +9,13 @@ import {
   type MaintenanceTask,
   type Run,
   type RunStep,
+  type RunStepOp,
   type StepState,
 } from '@rv-checklist/domain';
 import {
+  useApplyRunStepOpsMutation,
   useGetRunQuery,
   useListTasksQuery,
-  useUpdateRunMutation,
 } from '@rv-checklist/web-data-access';
 import { fractionDone, ProgressBar } from '@rv-checklist/web-ui';
 import { useState, type JSX } from 'react';
@@ -37,13 +38,15 @@ import { formatIsoDate } from './dates';
  * has a value — mirroring the server's rule rather than surfacing its 400.
  * Skipping needs no values: it records nothing.
  *
- * Every change is persisted straight away (via {@link useUpdateRunMutation}) so
- * the owner can put the phone down and resume later — the whole `steps` array
- * travels on each save, the same write that covers state, answers, and
- * corrections. Local state mirrors the run so the UI stays responsive; state
- * taps and boolean/date/select edits save immediately, while free-text and
- * number fields save on blur to avoid a request per keystroke. The run is loaded
- * fresh on open so resuming always shows the server's truth.
+ * Every change is persisted straight away (via {@link useApplyRunStepOpsMutation}) so
+ * the owner can put the phone down and resume later. Each save is a **step
+ * operation** naming only the step that moved (ADR-0030, issue #144) — never the
+ * whole array — so the phone finishing one step and the tablet finishing another
+ * both survive, whichever queue drains first. Local state mirrors the run so the
+ * UI stays responsive; state taps and boolean/date/select edits save immediately,
+ * while free-text and number fields save on blur to avoid a request per
+ * keystroke. The run is loaded fresh on open so resuming always shows the
+ * server's truth.
  *
  * The run comes from {@link useGetRunQuery} alone (ADR-0018, issue #135) —
  * a server-component page seeds the cache so the first render already
@@ -134,7 +137,7 @@ function RunWorkspace({
   // the source of truth — each edit is persisted, so a refetch never needs to
   // clobber an in-flight change back over it.
   const [steps, setSteps] = useState<RunStep[]>(run.steps);
-  const [updateRun] = useUpdateRunMutation();
+  const [applyStepOps] = useApplyRunStepOpsMutation();
   // The rig's tasks: a task-linked step takes its fields from its task.
   const { data: rigTasks } = useListTasksQuery(run.rigId);
   const taskOf = (step: RunStep): MaintenanceTask | undefined =>
@@ -144,9 +147,21 @@ function RunWorkspace({
   // Steps whose completion was blocked on missing required task fields.
   const [blocked, setBlocked] = useState<readonly Id[]>([]);
 
-  const persist = (next: RunStep[]): void => {
+  /**
+   * Persist one step's change as a step operation (ADR-0030) and mirror it locally. The
+   * request names only the step that moved and carries the moment the user moved it, so a
+   * completion made here can never overwrite one made on another device meanwhile.
+   */
+  const persist = (
+    stepId: Id,
+    change: Pick<RunStepOp, 'state' | 'values'>,
+    next: RunStep[],
+  ): void => {
     setSteps(next);
-    void updateRun({ id: run.id, changes: { steps: next } });
+    void applyStepOps({
+      id: run.id,
+      ops: [{ stepId, ...change, editedAt: new Date().toISOString() }],
+    });
   };
 
   const setStepState = (index: number, state: StepState): void => {
@@ -169,7 +184,11 @@ function RunWorkspace({
       }
     }
     setBlocked((ids) => ids.filter((id) => id !== step.id));
-    persist(steps.map((s, i) => (i === index ? { ...s, state } : s)));
+    persist(
+      step.id,
+      { state },
+      steps.map((s, i) => (i === index ? { ...s, state } : s)),
+    );
   };
 
   const progress = runProgress({ steps });
@@ -279,6 +298,8 @@ function RunWorkspace({
                     onCommit={(values) => {
                       setBlocked((ids) => ids.filter((id) => id !== step.id));
                       persist(
+                        step.id,
+                        { values },
                         steps.map((s, i) =>
                           i === index ? { ...s, values } : s,
                         ),

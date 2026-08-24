@@ -19,7 +19,7 @@ import {
   type TripRepository,
 } from '../lib/ports.js';
 import type { Rig } from '../lib/rig.js';
-import type { Run } from '../lib/run.js';
+import type { Run, RunStep } from '../lib/run.js';
 import type { StoredStop, Trip } from '../lib/trip.js';
 
 /**
@@ -162,6 +162,30 @@ export class InMemoryRunRepository
 
   listByTrip(tripId: Id): Promise<Run[]> {
     return this.where((r) => r.tripId === tripId);
+  }
+
+  /**
+   * Compare-and-set on the steps alone (issue #144). The stored array is compared by
+   * value, standing in for the SQL `steps = <expected>::jsonb` guard. The record's LWW
+   * edit time is left exactly where it was — step recency rides inside the steps.
+   */
+  saveStepsIfUnchanged(
+    id: Id,
+    steps: readonly RunStep[],
+    expected: readonly RunStep[],
+  ): Promise<ConditionalWrite<Run>> {
+    const current = this.store.get(id);
+    if (current === undefined) {
+      return Promise.reject(
+        new Error(`saveStepsIfUnchanged: no stored run ${id}`),
+      );
+    }
+    if (JSON.stringify(current.steps) !== JSON.stringify(expected)) {
+      return Promise.resolve({ applied: false, record: clone(current) });
+    }
+    const next: Run = { ...clone(current), steps: clone([...steps]) };
+    this.store.set(id, next);
+    return Promise.resolve({ applied: true, record: clone(next) });
   }
 }
 
