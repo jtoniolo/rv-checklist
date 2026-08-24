@@ -130,14 +130,18 @@ export class StopService {
     );
   }
 
-  /** Renumber a trip's stops 0..n-1 in their current order, writing only movers. */
-  private async renumber(tripId: Id): Promise<StoredStop[]> {
+  /**
+   * Renumber a trip's stops 0..n-1 in their current order, writing only movers.
+   * An exempt write like reorder: each mover's edit clock becomes
+   * max(stored, `editedAt`) rather than server now (issue #157).
+   */
+  private async renumber(tripId: Id, editedAt?: Date): Promise<StoredStop[]> {
     const ordered = await this.stops.listByTrip(tripId);
     return Promise.all(
       ordered.map((stop, index) =>
         stop.position === index
           ? Promise.resolve(stop)
-          : this.stops.save({ ...stop, position: index }),
+          : this.stops.save({ ...stop, position: index }, editedAt),
       ),
     );
   }
@@ -321,14 +325,20 @@ export class StopService {
    * legs); the stop's slice of the bucket is cleared (ADR-0026 — the database
    * cascade only reaches the rows); the survivors are then renumbered
    * contiguously.
+   *
+   * The delete itself never joins the LWW gate — delete wins, stamp or no
+   * stamp. `X-Edited-At` governs only the clock left on the records this
+   * touches as a side effect: the rig it debits and the siblings it renumbers
+   * take max(stored, clamped) like arrival and reorder, so the edits a client
+   * queued *behind* an offline delete still land on replay (issue #157).
    */
-  async remove(ownerId: Id, id: Id): Promise<void> {
+  async remove(ownerId: Id, id: Id, editedAt?: Date): Promise<void> {
     const { stop, trip } = await this.ownedStop(ownerId, id);
     if (stop.arrived && stop.legKm !== undefined) {
-      await this.adjustDistance(trip.rigId, -stop.legKm);
+      await this.adjustDistance(trip.rigId, -stop.legKm, editedAt);
     }
     await this.storage.deletePrefix(stopAttachmentPrefix(stop.id));
     await this.stops.delete(stop.id);
-    await this.renumber(trip.id);
+    await this.renumber(trip.id, editedAt);
   }
 }

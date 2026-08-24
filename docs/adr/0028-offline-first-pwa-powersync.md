@@ -88,8 +88,14 @@ transfer.
   failed rather than retrying a request that can never succeed.
 - **Newest wins is server-enforced per-record LWW**: each write carries the
   client's edit timestamp, clamped to server time on receipt, applied only if
-  newer than the stored edit time. Delta operations are exempt — they always
-  apply.
+  newer than the stored edit time. Delta operations (arrival, reorder, the
+  rig-Distance adjustment, the sibling renumber a stop delete triggers) are
+  exempt from the *gate* — they always apply — but not from the *stamp*: every
+  record they write takes `max(stored, clamped)` as its new edit time rather
+  than server receipt time. Re-stamping those records "now" would silently drop
+  the same client's next queued edit, which is by definition older than the
+  replay that precedes it. A delete is never gated at all, and the stamp rule
+  still governs whatever it writes as a side effect.
 - **Run steps are per-step operations, merged server-side** — record-level LWW
   would erase one device's completions when phone and tablet finish different
   steps of the same run offline. Non-step run fields stay per-record LWW.

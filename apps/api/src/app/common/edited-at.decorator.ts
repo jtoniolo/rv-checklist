@@ -56,7 +56,8 @@ export function parseEditedAt(
  * Two kinds of write sit outside that gate:
  *
  * - **Exempt writes** — stop arrival, stop reorder, and the rig-Distance delta
- *   they trigger (issue #143). Exemption is from the *gate*, not from the
+ *   they trigger (issue #143), plus the rig debit and sibling renumber a stop
+ *   delete triggers (issue #157). Exemption is from the *gate*, not from the
  *   stamp: the effect always applies, and the record's edit time becomes
  *   `max(stored, clamped)` so the clock only ever runs forward. See
  *   `Repository.save` for the full rule.
@@ -65,7 +66,9 @@ export function parseEditedAt(
  *   already stored writes nothing at all and leaves that record's edit time
  *   where it was.
  *
- * Deletes carry no edit time to record and ignore the header entirely.
+ * A delete is never gated: it carries no edit time of its own to record and
+ * always applies. Where it writes *other* records as a side effect, those
+ * writes are exempt ones and take the stamp rule above.
  */
 export const EditedAt = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): Date | undefined => {

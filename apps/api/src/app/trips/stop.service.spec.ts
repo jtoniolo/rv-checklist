@@ -76,6 +76,8 @@ const newerStamp = () => new Date(Date.now() + 60_000);
 const longAgo = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
 const arrivalStamp = () => new Date(Date.now() - 60 * 60 * 1000);
 const renameStamp = () => new Date(Date.now() - 30 * 60 * 1000);
+// An offline delete replaying at the same point in that timeline (issue #157).
+const deleteStamp = arrivalStamp;
 
 /**
  * Seed the rig with an edit clock that is already old — the state a row is
@@ -649,6 +651,95 @@ describe('StopService', () => {
 
       expect(stops.editedAtOf(first.id)).toEqual(stamp);
       expect(stops.editedAtOf(second.id)).toEqual(stamp);
+    });
+
+    /**
+     * A delete never participates in the gate — it always applies, with or
+     * without a stamp. What it must not do is re-stamp the records it touches
+     * as a *side effect* to server now: that dropped the edits queued behind an
+     * offline delete exactly as an arrival used to (issue #157).
+     */
+    it('leaves the rig’s clock behind the edit queued after an offline delete', async () => {
+      const { service, rigs } = await makeService();
+      await backdateRig(rigs, longAgo());
+      const stop = await service.create(
+        alice,
+        { tripId: aliceTripId, legKm: 120 },
+        longAgo(),
+      );
+      await service.setArrived(alice, stop.id, true, longAgo());
+
+      await service.remove(alice, stop.id, deleteStamp());
+
+      const { applied } = await rigs.saveIfNewer(
+        { id: aliceRigId, ownerId: alice, nickname: 'Renamed offline' },
+        renameStamp(),
+      );
+      expect(applied).toBe(true);
+      await expect(rigs.findById(aliceRigId)).resolves.toMatchObject({
+        nickname: 'Renamed offline',
+      });
+    });
+
+    it('leaves a renumbered sibling’s clock behind that queued edit too', async () => {
+      const { service, stops } = await makeService();
+      const doomed = await service.create(
+        alice,
+        { tripId: aliceTripId },
+        longAgo(),
+      );
+      const survivor = await service.create(
+        alice,
+        { tripId: aliceTripId, campground: 'KOA Kingston' },
+        longAgo(),
+      );
+
+      // Deleting the first stop renumbers the survivor from 1 to 0.
+      await service.remove(alice, doomed.id, deleteStamp());
+
+      expect(stops.editedAtOf(survivor.id)).toEqual(deleteStamp());
+      const stored = await stops.findById(survivor.id);
+      if (!stored) throw new Error('the survivor should still be stored');
+      const { applied } = await stops.saveIfNewer(
+        { ...stored, campground: 'Renamed offline' },
+        renameStamp(),
+      );
+      expect(applied).toBe(true);
+    });
+
+    it('deletes regardless of the stamp — delete never joins the gate', async () => {
+      const { service, stops, rigs } = await makeService({ distanceKm: 500 });
+      const stop = await service.create(alice, {
+        tripId: aliceTripId,
+        legKm: 120,
+      });
+      await service.setArrived(alice, stop.id, true);
+
+      await service.remove(alice, stop.id, staleStamp());
+
+      await expect(stops.findById(stop.id)).resolves.toBeUndefined();
+      expect(await aliceDistance(rigs)).toBe(500);
+    });
+
+    it('stamps server now when a delete carries no header — unchanged from before', async () => {
+      const { service, stops } = await makeService();
+      const doomed = await service.create(
+        alice,
+        { tripId: aliceTripId },
+        longAgo(),
+      );
+      const survivor = await service.create(
+        alice,
+        { tripId: aliceTripId },
+        longAgo(),
+      );
+      const before = Date.now();
+
+      await service.remove(alice, doomed.id);
+
+      expect(stops.editedAtOf(survivor.id)?.getTime()).toBeGreaterThanOrEqual(
+        before,
+      );
     });
   });
 });

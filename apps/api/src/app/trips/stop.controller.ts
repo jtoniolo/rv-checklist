@@ -99,13 +99,19 @@ export class StopController {
     return this.stops.reorder(owner.id, id, body, editedAt);
   }
 
-  /** Delete a stop (an arrived one backs its leg out of the rig's Distance). */
+  /**
+   * Delete a stop (an arrived one backs its leg out of the rig's Distance).
+   * The delete is never gated on `X-Edited-At` — it always applies. The header
+   * only stamps what the delete touches on the way past, the rig and the
+   * renumbered siblings, at max(stored, clamped) (issue #157).
+   */
   @Delete(':id')
   @HttpCode(204)
   remove(
     @CurrentOwner() owner: Owner,
     @Param('id', ParseUUIDPipe) id: string,
+    @EditedAt() editedAt?: Date,
   ): Promise<void> {
-    return this.stops.remove(owner.id, id);
+    return this.stops.remove(owner.id, id, editedAt);
   }
 }
