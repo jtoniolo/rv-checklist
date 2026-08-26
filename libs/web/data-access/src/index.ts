@@ -5,6 +5,7 @@ export * from './lib/api.js';
 export { skipToken } from '@reduxjs/toolkit/query';
 export * from './lib/auth.slice.js';
 export * from './lib/connectivity.js';
+export * from './lib/sync-auth-status.js';
 export * from './lib/theme.slice.js';
 export * from './lib/store.js';
 export * from './lib/hooks.js';

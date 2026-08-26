@@ -1,5 +1,9 @@
 import type { CrudEntry, CrudTransaction } from '@powersync/web';
 import { RvSyncConnector, type UploadDatabase } from './connector.js';
+import {
+  currentSyncAuthStatus,
+  setSyncAuthStatus,
+} from './sync-auth-status.js';
 
 /** A `getAll`/`getNextCrudTransaction` stand-in with nothing queued. */
 function emptyDatabase(): UploadDatabase {
@@ -117,6 +121,7 @@ describe('RvSyncConnector', () => {
 
   afterEach(() => {
     fetchSpy.mockRestore();
+    setSyncAuthStatus('ok');
   });
 
   it('hands the engine the token minted for its own store’s owner', async () => {
@@ -165,6 +170,48 @@ describe('RvSyncConnector', () => {
     ).rejects.toThrow('503');
   });
 
+  it('marks sync ok once it hands the engine a token for its own owner', async () => {
+    fetchSpy.mockResolvedValue(tokenResponse(OWNER_A));
+
+    await new RvSyncConnector(OWNER_A).fetchCredentials();
+
+    expect(currentSyncAuthStatus()).toBe('ok');
+  });
+
+  it('reports the queue as signed-out when the token endpoint is dead even after a refresh attempt', async () => {
+    fetchSpy.mockResolvedValue(new Response(undefined, { status: 401 }));
+
+    await new RvSyncConnector(OWNER_A).fetchCredentials();
+
+    expect(currentSyncAuthStatus()).toBe('signed-out');
+  });
+
+  it('retries the token fetch after a successful refresh, invisibly', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(new Response(undefined, { status: 401 })) // powersync-token
+      .mockResolvedValueOnce(new Response(undefined, { status: 200 })) // auth/refresh
+      .mockResolvedValueOnce(tokenResponse(OWNER_A)); // powersync-token retry
+
+    await expect(
+      new RvSyncConnector(OWNER_A).fetchCredentials(),
+    ).resolves.toEqual({
+      token: tokenFor(OWNER_A),
+      endpoint: 'https://sync.example',
+    });
+    expect(currentSyncAuthStatus()).toBe('ok');
+    const refreshCall = fetchSpy.mock.calls[1];
+    expect(refreshCall?.[0]).toBe('https://api.test/auth/refresh');
+    expect(refreshCall?.[1]).toMatchObject({ method: 'POST' });
+  });
+
+  it('reports the queue as owner-mismatch when a different account is signed in', async () => {
+    fetchSpy.mockResolvedValue(tokenResponse(OWNER_B));
+
+    await new RvSyncConnector(OWNER_A).fetchCredentials();
+
+    expect(currentSyncAuthStatus()).toBe('owner-mismatch');
+  });
+
   it('returns from uploadData rather than throwing when the queue is empty', async () => {
     // A throw is how a connector reports a failed upload, and the SDK answers
     // it with an uncapped retry loop. An empty queue is not a failure.
@@ -208,6 +255,51 @@ describe('RvSyncConnector', () => {
         new RvSyncConnector(OWNER_A).uploadData(database),
       ).rejects.toThrow('503');
       expect(complete).not.toHaveBeenCalled();
+    });
+
+    it('refreshes and retries once on an expired access token mid-flush, invisibly', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(new Response(undefined, { status: 401 })) // replay
+        .mockResolvedValueOnce(new Response(undefined, { status: 200 })) // auth/refresh
+        .mockResolvedValueOnce(new Response(undefined, { status: 200 })); // replay retry
+      const { database, complete } = queuedDatabase([crudEntry({})]);
+
+      await new RvSyncConnector(OWNER_A).uploadData(database);
+
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(currentSyncAuthStatus()).toBe('ok');
+      const refreshCall = fetchSpy.mock.calls[1];
+      expect(refreshCall?.[0]).toBe('https://api.test/auth/refresh');
+      expect(refreshCall?.[1]).toMatchObject({ method: 'POST' });
+    });
+
+    it('holds the queue intact and reports signed-out on a dead refresh token', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(new Response(undefined, { status: 401 })) // replay
+        .mockResolvedValueOnce(new Response(undefined, { status: 401 })); // auth/refresh fails
+      const { database, complete } = queuedDatabase([crudEntry({})]);
+
+      await expect(
+        new RvSyncConnector(OWNER_A).uploadData(database),
+      ).rejects.toThrow();
+
+      expect(complete).not.toHaveBeenCalled();
+      expect(currentSyncAuthStatus()).toBe('signed-out');
+    });
+
+    it('holds the queue when refresh succeeds but the retried replay still 401s', async () => {
+      fetchSpy
+        .mockResolvedValueOnce(new Response(undefined, { status: 401 })) // replay
+        .mockResolvedValueOnce(new Response(undefined, { status: 200 })) // auth/refresh
+        .mockResolvedValueOnce(new Response(undefined, { status: 401 })); // replay retry
+      const { database, complete } = queuedDatabase([crudEntry({})]);
+
+      await expect(
+        new RvSyncConnector(OWNER_A).uploadData(database),
+      ).rejects.toThrow();
+
+      expect(complete).not.toHaveBeenCalled();
+      expect(currentSyncAuthStatus()).toBe('signed-out');
     });
   });
 });

@@ -131,6 +131,17 @@ automatic leg distances, attachment viewing for uncached files) say
 "available online" rather than erroring.
 _Avoid_: error banner (offline is a mode, not a failure)
 
+**Sign in to sync banner**:
+The app-wide banner shown when the sync layer's own token refresh (background
+sync has no page navigation to carry the edge middleware's silent refresh)
+cannot authenticate: no usable session (offer One Tap sign-in), or a session
+for an account other than the one this device's held write queue belongs to
+(explain the mismatch; a queue is never merged into another account). The
+offline shell keeps rendering local data throughout — this banner never blocks
+the rest of the page, and there is no forced sign-out.
+_Avoid_: error banner styling (same reasoning as the offline indicator — this
+is a call to action, not a failure state)
+
 ## Deployment contract
 
 `docs/deployment.md` is the public deployment contract a deploying repository

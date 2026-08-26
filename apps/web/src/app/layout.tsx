@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import type { JSX, ReactNode } from 'react';
 import { StoreProvider } from './store-provider';
 import { ServiceWorkerRegistrar } from './sw-register';
+import { SyncSignInBanner } from './sync-banner';
 
 export const metadata: Metadata = {
   applicationName: 'RV Checklist',
@@ -39,7 +40,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <StoreProvider>{children}</StoreProvider>
+        <StoreProvider>
+          <SyncSignInBanner />
+          {children}
+        </StoreProvider>
         <ServiceWorkerRegistrar />
       </body>
     </html>

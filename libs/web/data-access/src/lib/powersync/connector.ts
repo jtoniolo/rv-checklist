@@ -8,6 +8,7 @@ import { config } from '../config.js';
 import { syncDeviceId } from './device-id.js';
 import type { LocalStore } from './local-store.js';
 import { subjectOf } from './owner.js';
+import { setSyncAuthStatus } from './sync-auth-status.js';
 import { localColumns, type LocalRow, type LocalTableName } from './tables.js';
 import { parseUploadMetadata } from './upload-metadata.js';
 import { planUpload, type UploadRequest } from './upload-plan.js';
@@ -32,6 +33,15 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
   /** The owner whose store this connector replicates into. */
   private readonly owner: string;
 
+  /**
+   * A single in-flight `POST /auth/refresh`, shared by every 401 this
+   * connector hits while it is running — a whole `uploadData` transaction can
+   * throw several of those in a row (one per queued entry) and they must not
+   * each mint their own refresh call (ADR-0028: rotation reuse is a ~2 minute
+   * window, not an invitation to race it).
+   */
+  private refreshInFlight: Promise<boolean> | undefined;
+
   constructor(owner: string) {
     this.owner = owner;
   }
@@ -54,23 +64,76 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
     const request = planUpload(entry, row, metadata);
     if (request === undefined) return;
 
-    await send(request, entry.clientId);
+    await this.send(request, entry.clientId);
+  }
+
+  /**
+   * Send one replayed operation, refreshing and retrying once on a 401 — the
+   * access cookie can expire mid-flush with no page in the path to renew it
+   * (ADR-0028). A 401 that survives the retry means the refresh token itself
+   * is dead: the queue is held (this throws before `uploadData` can call
+   * `transaction.complete()`) and the "sign in to sync" banner takes over.
+   */
+  private async send(request: UploadRequest, clientId: number): Promise<void> {
+    let response = await sendOnce(request, clientId);
+
+    if (response.status === 401) {
+      if (await this.refreshSession()) {
+        response = await sendOnce(request, clientId);
+      }
+      if (response.status === 401) {
+        setSyncAuthStatus('signed-out');
+        throw new Error(
+          `${request.method} ${request.path} responded 401 after a refresh attempt`,
+        );
+      }
+    }
+
+    if (response.ok || request.fatalStatuses.includes(response.status)) return;
+
+    throw new Error(
+      `${request.method} ${request.path} responded ${String(response.status)}`,
+    );
+  }
+
+  /**
+   * `POST /auth/refresh`, single-flight per connector instance. Resolves
+   * `false` on any non-2xx response or a network failure — both mean "still
+   * not authenticated", and the caller's job either way is to stop rather
+   * than retry the refresh itself.
+   */
+  private async refreshSession(): Promise<boolean> {
+    this.refreshInFlight ??= (async () => {
+      try {
+        return await performRefresh();
+      } finally {
+        this.refreshInFlight = undefined;
+      }
+    })();
+    return this.refreshInFlight;
   }
 
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
-    const response = await fetch(`${config.apiBaseUrl}/auth/powersync-token`, {
-      credentials: 'include',
-    });
+    let response = await fetchToken();
 
-    // Signed out, or the session expired while the tab was open. Returning
-    // null tells the SDK to stop rather than retry, which is the correct
-    // behaviour for "no session" and the wrong one for "session recoverable" —
-    // the sync layer owning its own refresh, and the banner that goes with it,
-    // is #149. Until then the REST path's refresh (ADR-0019) restores the
-    // session on the next user action and the next page load reconnects.
-    // `null` is the SDK's contract for "not signed in"; undefined is not it.
-    // eslint-disable-next-line unicorn/no-null
-    if (response.status === 401) return null;
+    // The access cookie can die between page load and this call, with no
+    // navigation in between to carry the edge middleware's silent refresh
+    // (ADR-0028). One retry after a refresh covers that invisibly; a session
+    // that is truly gone still ends up at the 401 branch below.
+    if (response.status === 401 && (await this.refreshSession())) {
+      response = await fetchToken();
+    }
+
+    // Signed out, or the refresh token is dead too. Returning null tells the
+    // SDK to stop rather than retry, which is the correct behaviour for "no
+    // session" — the banner (#149) picks this signal up from the status
+    // module below. `null` is the SDK's contract for "not signed in";
+    // undefined is not it.
+    if (response.status === 401) {
+      setSyncAuthStatus('signed-out');
+      // eslint-disable-next-line unicorn/no-null
+      return null;
+    }
 
     // Anything else is transient: throwing makes the SDK back off and retry.
     if (!response.ok) {
@@ -81,10 +144,16 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
 
     // Someone else is signed in now. Stopping is the only safe answer: this
     // store is not theirs to fill, and the next page load opens the store the
-    // token names. Same `null` contract as the 401 above.
-    // eslint-disable-next-line unicorn/no-null
-    if (subjectOf(credentials.token) !== this.owner) return null;
+    // token names. Same `null` contract as the 401 above; the status module
+    // records *why*, distinctly from "not signed in", so the banner can say
+    // which one it is.
+    if (subjectOf(credentials.token) !== this.owner) {
+      setSyncAuthStatus('owner-mismatch');
+      // eslint-disable-next-line unicorn/no-null
+      return null;
+    }
 
+    setSyncAuthStatus('ok');
     return { token: credentials.token, endpoint: credentials.endpoint };
   }
 
@@ -103,6 +172,10 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
    * including the ones that already landed; that is safe only because each
    * carries its own `Idempotency-Key` (#142), so a re-sent success returns
    * its recorded response instead of double-applying.
+   *
+   * A dead refresh token (`send` below) is the same shape of failure — it
+   * throws before completing the transaction — so the whole queue is held
+   * intact, never dropped and never reordered, until the owner signs back in.
    */
   async uploadData(database: UploadDatabase): Promise<void> {
     const transaction = await database.getNextCrudTransaction();
@@ -113,6 +186,28 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
       await this.replay(database, entry);
     }
     await transaction.complete();
+    setSyncAuthStatus('ok');
+  }
+}
+
+/** `GET /auth/powersync-token`, cookie-authenticated (ADR-0019). */
+function fetchToken(): Promise<Response> {
+  return fetch(`${config.apiBaseUrl}/auth/powersync-token`, {
+    credentials: 'include',
+  });
+}
+
+async function performRefresh(): Promise<boolean> {
+  try {
+    const response = await fetch(`${config.apiBaseUrl}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return response.ok;
+  } catch {
+    // Offline, or the request never reached the API — not authenticated
+    // either way.
+    return false;
   }
 }
 
@@ -135,29 +230,23 @@ async function fetchRow(
 }
 
 /**
- * Send one replayed operation. A response the request itself flags as
- * `fatalStatuses` — a taken client id on a create, a row already gone on a
- * patch or delete — is treated the same as success: it can never succeed by
- * retrying, so the entry is done. Anything else non-2xx (or a network
- * failure fetch throws on its own) propagates so the caller backs off.
+ * Send one replayed operation once, with no retry of its own — `send` above
+ * owns the refresh-and-retry policy; this is just the HTTP call it repeats.
  */
-async function send(request: UploadRequest, clientId: number): Promise<void> {
+async function sendOnce(
+  request: UploadRequest,
+  clientId: number,
+): Promise<Response> {
   const headers: Record<string, string> = {
     'Idempotency-Key': `${syncDeviceId()}:${String(clientId)}`,
   };
   if (request.body !== undefined) headers['Content-Type'] = 'application/json';
   if (request.editedAt !== undefined) headers['X-Edited-At'] = request.editedAt;
 
-  const response = await fetch(`${config.apiBaseUrl}${request.path}`, {
+  return fetch(`${config.apiBaseUrl}${request.path}`, {
     method: request.method,
     credentials: 'include',
     headers,
     ...(request.body !== undefined && { body: JSON.stringify(request.body) }),
   });
-
-  if (response.ok || request.fatalStatuses.includes(response.status)) return;
-
-  throw new Error(
-    `${request.method} ${request.path} responded ${String(response.status)}`,
-  );
 }
