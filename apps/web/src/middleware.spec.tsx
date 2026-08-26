@@ -64,6 +64,10 @@ describe('edge middleware', () => {
       '/manifest.webmanifest',
       '/icons/icon-192.png',
       '/favicon.ico',
+      '/sw.js',
+      '/offline',
+      '/@powersync/worker.js',
+      '/@powersync/assets/wa-sqlite-async.wasm',
     ])('%s', async (path) => {
       const { middleware } = await loadMiddleware();
       const res = await middleware(makeRequest(path));

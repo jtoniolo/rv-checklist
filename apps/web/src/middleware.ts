@@ -3,13 +3,36 @@ import { NextRequest, NextResponse } from 'next/server';
 const ACCESS_COOKIE = 'rv.access';
 const REFRESH_COOKIE = 'rv.refresh';
 
-/** Paths that never require a session. */
+/**
+ * Paths that never require a session.
+ *
+ * The last three are here for the service worker (ADR-0028). The browser
+ * re-fetches the worker script to check for an update, and the worker itself
+ * fetches the fallback page and the PowerSync assets when it installs. None of
+ * those is a navigation, so a redirect to `/welcome` cannot sign anyone in — it
+ * just hands back HTML where a script, a wasm module or the offline page was
+ * expected — and during `install`, a poisoned precache entry or a failed
+ * install.
+ *
+ * On the deployed site this middleware never sees `/sw.js` or `/@powersync/`
+ * anyway: `wrangler.jsonc` binds `.open-next/assets` and does not set
+ * `run_worker_first`, so Cloudflare's Asset Worker answers anything that
+ * matches a file in there and the Next runtime is not invoked (ADR-0029's
+ * amended consequence records this). What these entries change is `next start`
+ * and `nx serve-static`, where `public/` is served through Next and the
+ * redirect is real. They make the two environments agree; the assets are the
+ * SDK's own bytes, identical for every user, so a session buys nothing here
+ * either way.
+ */
 const PUBLIC_PREFIXES = [
   '/welcome',
   '/_next/',
   '/manifest.webmanifest',
   '/icons/',
   '/favicon.ico',
+  '/sw.js',
+  '/offline',
+  '/@powersync/',
 ];
 
 /** Seconds before expiry at which we trigger a silent refresh. */

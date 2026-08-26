@@ -118,6 +118,16 @@ transfer.
 - The SW entry uses the `serwist` runtime package, compiled by a **post-build
   esbuild script** that injects the precache manifest and writes
   `public/sw.js` (`buildCommand` in `open-next.config.ts`); Turbopack stays.
+  Built in [#150](https://github.com/jtoniolo/rv-checklist/issues/150), which
+  settled three things this record did not: **`public/sw.js` is a gitignored
+  build output**, so development has no service worker at all (one left over
+  from a build would cache-first the dev server's chunks and fight every
+  edit) and the registrar clears any it finds; the manifest is wired twice, in
+  `buildCommand` and in a `build-sw` Nx target, the way ADR-0029 decision 8
+  wires the asset copy and for the same reason; and `/sw.js`, `/offline` and
+  `/@powersync/` become **public prefixes** in the middleware, because the
+  update check and the install fetch are not navigations and a redirect to
+  `/welcome` can only corrupt them (see ADR-0029's amended consequence).
 - **Cached-pages model, no HTML app-shell precache.** Navigations stay
   network-first — online behavior is byte-identical to today and the edge
   middleware is untouched. The SW runtime-caches each visited page's HTML and
@@ -127,7 +137,16 @@ transfer.
 - **Updates are immediate** (`skipWaiting` + `clientsClaim`, no reload prompt).
   `/_next/static/*` is cache-first (immutable). `/@powersync/*` worker assets
   are excluded from runtime caching but **precached with revisions derived
-  from the installed SDK version** — required for offline cold boot.
+  from the installed SDK version** — required for offline cold boot. #150 adds
+  one exception on the other side: the **fallback page's own assets** — its
+  stylesheet, and the chunks its prerendered HTML loads — are precached too,
+  because the fallback is the one page nobody ever opens online, so nothing it
+  needs can be assumed to be in a cache filled by the owner's own visits. An
+  unstyled fallback is not a branded one, and without its script the page
+  cannot work out where its links point (`offline-links.tsx`). The list comes
+  from the emitted `offline.html`, so it is exactly what that page asks for and
+  nothing else; the rest of the build's JavaScript is left to the cache-first
+  rule, which already holds the chunks the owner fetched.
 - **Current-trip warming:** when a trip becomes current, the client messages
   the SW to fetch and cache that trip's routes and attachments.
 

@@ -182,7 +182,7 @@ export default tseslint.config(
   // --- Service workers run in the ServiceWorkerGlobalScope, where `self` is
   //     the canonical global per the spec — not a stand-in for `globalThis`. ---
   {
-    files: ['**/public/sw.js'],
+    files: ['**/sw/*.ts'],
     rules: {
       'unicorn/prefer-global-this': 'off',
     },

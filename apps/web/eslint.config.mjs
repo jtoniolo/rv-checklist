@@ -25,6 +25,9 @@ export default [
       // The SDK's prebuilt worker and wasm, copied in by the
       // copy-powersync-assets target (ADR-0029) — not ours to lint.
       'public/@powersync/**/*',
+      // The compiled, minified service worker (ADR-0028); `sw/index.ts` is the
+      // source, and it is linted.
+      'public/sw.js',
       '**/out-tsc',
       'open-next.config.ts',
     ],
