@@ -1,11 +1,11 @@
 import type { StoredAttachment } from './attachment.js';
 import type { Checklist } from './checklist.js';
-import type { Id } from './common.js';
+import type { Id, IsoDate } from './common.js';
 import type { EquipmentItem } from './equipment.js';
 import type { LogEntry } from './log-entry.js';
 import type { MaintenanceTask } from './maintenance-task.js';
 import type { Rig } from './rig.js';
-import type { Run } from './run.js';
+import type { Run, RunStep } from './run.js';
 import type { StoredStop, Trip } from './trip.js';
 
 /**
@@ -123,6 +123,54 @@ export interface RunRepository extends Repository<Run> {
   listByRig(rigId: Id): Promise<Run[]>;
   listByChecklist(checklistId: Id): Promise<Run[]>;
   listByTrip(tripId: Id): Promise<Run[]>;
+  /**
+   * Compare-and-set the run's `steps` alone (ADR-0030, issue #144): replace them only if
+   * the stored array is still `expected`, so a merge computed against a read cannot be
+   * clobbered by one that landed in between. `applied: false` hands back the array that
+   * did land, for the caller to re-merge against and try again.
+   *
+   * Deliberately **outside** per-record LWW: it neither consults nor moves the run's
+   * `editedAt`. Step recency lives inside each step (`RunStep.editedAt`) precisely so that
+   * step work and non-step edits (`startedOn`) cannot veto each other — a stale whole-run
+   * stamp must never be able to erase a fresh per-step merge.
+   */
+  saveStepsIfUnchanged(
+    id: Id,
+    steps: readonly RunStep[],
+    expected: readonly RunStep[],
+  ): Promise<ConditionalWrite<Run>>;
+  /**
+   * Re-date the run, writing `started_on` **alone** (ADR-0030, issue #144).
+   *
+   * The record-level counterpart to {@link saveStepsIfUnchanged}, and narrow for the same
+   * reason that one is: a run's two editable fields are written by two different
+   * statements, so neither can carry a stale opinion about the other. A whole-row write
+   * would ship the `steps` its caller read a moment earlier and silently erase any merge
+   * that landed in between — and the record clock cannot catch that, because a step merge
+   * deliberately never moves it.
+   *
+   * With `editedAt` the write is per-record LWW (ADR-0028): it lands only if that stamp is
+   * strictly newer than the record's stored one, and becomes the new stamp. Without it the
+   * edit is an authoritative online one — it always lands, and stamps server now. Either
+   * way `record` is the run as it stands afterwards. The record must already exist:
+   * callers resolve (and ownership-check) it first.
+   */
+  saveStartedOn(
+    id: Id,
+    startedOn: IsoDate,
+    editedAt?: Date,
+  ): Promise<ConditionalWrite<Run>>;
+  /**
+   * Whether **any** step of any run on the rig already links to this Log Entry (ADR-0030,
+   * issue #144) — the check that stops one step adopting the entry another step wrote,
+   * and with it stops un-completing the thief from deleting the victim's maintenance
+   * history.
+   *
+   * Rig-scoped because that is the whole reach of an adoption: a link is honoured only
+   * when the entry sits on the run's own rig, so a run on any other rig can never be
+   * competing for it.
+   */
+  anyStepLinksEntry(rigId: Id, logEntryId: Id): Promise<boolean>;
 }
 
 /** Maintenance tasks — recurring upkeep jobs on a rig. */

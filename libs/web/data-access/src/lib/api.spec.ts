@@ -312,6 +312,63 @@ describe('run endpoints', () => {
     expect(request.url).toBe(`https://api.test/runs/${run.id}`);
   });
 
+  it('records run work with POST /runs/:id/step-ops (ADR-0030)', async () => {
+    const stepId = run.steps[0]?.id ?? '';
+    const completed: Run = {
+      ...run,
+      steps: run.steps.map((s) =>
+        s.id === stepId ? { ...s, state: 'complete' as const } : s,
+      ),
+    };
+    fetchSpy.mockResolvedValueOnce(jsonResponse(completed));
+
+    const result = await store.dispatch(
+      api.endpoints.applyRunStepOps.initiate({
+        id: run.id,
+        ops: [
+          { stepId, state: 'complete', editedAt: '2026-08-01T10:00:00.000Z' },
+        ],
+      }),
+    );
+
+    expect('data' in result && result.data).toEqual(completed);
+    const request = requestOf(fetchSpy, 0);
+    expect(request.method).toBe('POST');
+    expect(request.url).toBe(`https://api.test/runs/${run.id}/step-ops`);
+    // The one call that carries its own key (issue #142): without it a replayed
+    // task-linked completion could write a second Log Entry.
+    expect(request.headers.get('idempotency-key')).toMatch(
+      /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i,
+    );
+    await expect(request.json()).resolves.toEqual({
+      ops: [
+        { stepId, state: 'complete', editedAt: '2026-08-01T10:00:00.000Z' },
+      ],
+    });
+  });
+
+  it('mints a fresh idempotency key per dispatch, so a second tap is never deduped', async () => {
+    const stepId = run.steps[0]?.id ?? '';
+    fetchSpy.mockResolvedValue(jsonResponse(run));
+
+    await store.dispatch(
+      api.endpoints.applyRunStepOps.initiate({
+        id: run.id,
+        ops: [{ stepId, state: 'complete' }],
+      }),
+    );
+    await store.dispatch(
+      api.endpoints.applyRunStepOps.initiate({
+        id: run.id,
+        ops: [{ stepId, state: 'incomplete' }],
+      }),
+    );
+
+    const first = requestOf(fetchSpy, 0).headers.get('idempotency-key');
+    const second = requestOf(fetchSpy, 1).headers.get('idempotency-key');
+    expect(first).not.toBe(second);
+  });
+
   it('deletes a run with DELETE /runs/:id', async () => {
     fetchSpy.mockResolvedValueOnce(jsonResponse(undefined, 204));
     await store.dispatch(api.endpoints.deleteRun.initiate(run.id));

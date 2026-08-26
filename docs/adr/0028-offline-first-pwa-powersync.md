@@ -14,6 +14,11 @@ Amended by [ADR-0029](0029-powersync-read-path-into-rtk-query.md): the read-path
 section below gives the shape; ADR-0029 fixes the contract — `upsertQueryEntries`
 as the one way in, no emission before the first sync completes, and precedence
 local store > network response > SSR seed.
+Amended by [ADR-0030](0030-run-step-operations-merged-server-side.md): the
+run-steps and client-authored-Log-Entry bullets below give the shape; ADR-0030
+fixes the contract — merge by step id with a per-step stamp inside the jsonb,
+a compare-and-set outside the record clock, and the checks that keep a
+client-supplied `logEntryId` from being a forgery surface.
 
 Charted on Wayfinder map [#124](https://github.com/jtoniolo/rv-checklist/issues/124);
 the closed tickets under it are the trail of how each part was decided.

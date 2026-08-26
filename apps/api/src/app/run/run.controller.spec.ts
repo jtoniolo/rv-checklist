@@ -60,7 +60,7 @@ const checklist: Checklist = {
  * wires them — the seam the service-level spec bypasses. The list route returns
  * an array, so this guards against a `@ZodSerializerDto` mismatch (single vs
  * `[Dto]`) silently 500ing, and confirms a completed step's captured values
- * survive the PATCH round trip.
+ * survive the PATCH round trip and the step-ops round trip alike.
  */
 describe('RunController over HTTP (through the Zod serializer)', () => {
   let app: INestApplication;
@@ -225,6 +225,86 @@ describe('RunController over HTTP (through the Zod serializer)', () => {
     };
     expect(updated.steps[1]?.state).toBe('complete');
     expect(updated.steps[1]?.values).toEqual([{ name: 'Level', value: 80 }]);
+  });
+
+  it('merges a step operation and answers 200 with the whole run (ADR-0030)', async () => {
+    const started = await fetch(`${baseUrl}/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checklistId }),
+    });
+    const run = (await started.json()) as {
+      id: string;
+      steps: { id: string; text: string }[];
+    };
+
+    // A POST that creates nothing: 200, not 201, so a replay reads the same
+    // status back out of the idempotency ledger.
+    const applied = await fetch(`${baseUrl}/runs/${run.id}/step-ops`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ops: [
+          {
+            stepId: run.steps[1]?.id,
+            state: 'complete',
+            values: [{ name: 'Level', value: 80 }],
+            editedAt: new Date().toISOString(),
+          },
+        ],
+      }),
+    });
+    expect(applied.status).toBe(200);
+    const updated = (await applied.json()) as {
+      steps: { state: string; values?: { name: string; value: unknown }[] }[];
+    };
+    // The op named one step; the other must come back untouched.
+    expect(updated.steps[0]?.state).toBe('incomplete');
+    expect(updated.steps[1]?.state).toBe('complete');
+    expect(updated.steps[1]?.values).toEqual([{ name: 'Level', value: 80 }]);
+  });
+
+  it('rejects an empty batch of operations with a 400', async () => {
+    const started = await fetch(`${baseUrl}/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checklistId }),
+    });
+    const run = (await started.json()) as { id: string };
+
+    const bad = await fetch(`${baseUrl}/runs/${run.id}/step-ops`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ops: [] }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
+  it('rejects an operation whose stamp is not an offset date-time with a 400', async () => {
+    const started = await fetch(`${baseUrl}/runs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ checklistId }),
+    });
+    const run = (await started.json()) as {
+      id: string;
+      steps: { id: string }[];
+    };
+
+    const bad = await fetch(`${baseUrl}/runs/${run.id}/step-ops`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ops: [
+          {
+            stepId: run.steps[0]?.id,
+            state: 'complete',
+            editedAt: 'yesterday',
+          },
+        ],
+      }),
+    });
+    expect(bad.status).toBe(400);
   });
 
   it('rejects an unknown step state with a 400', async () => {

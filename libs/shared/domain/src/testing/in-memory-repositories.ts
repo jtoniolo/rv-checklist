@@ -1,6 +1,6 @@
 import type { StoredAttachment } from '../lib/attachment.js';
 import type { Checklist } from '../lib/checklist.js';
-import type { Id } from '../lib/common.js';
+import type { Id, IsoDate } from '../lib/common.js';
 import type { EquipmentItem } from '../lib/equipment.js';
 import type { LogEntry } from '../lib/log-entry.js';
 import type { MaintenanceTask } from '../lib/maintenance-task.js';
@@ -19,7 +19,7 @@ import {
   type TripRepository,
 } from '../lib/ports.js';
 import type { Rig } from '../lib/rig.js';
-import type { Run } from '../lib/run.js';
+import type { Run, RunStep } from '../lib/run.js';
 import type { StoredStop, Trip } from '../lib/trip.js';
 
 /**
@@ -162,6 +162,65 @@ export class InMemoryRunRepository
 
   listByTrip(tripId: Id): Promise<Run[]> {
     return this.where((r) => r.tripId === tripId);
+  }
+
+  /**
+   * Compare-and-set on the steps alone (issue #144). The stored array is compared by
+   * value, standing in for the SQL `steps = <expected>::jsonb` guard. The record's LWW
+   * edit time is left exactly where it was — step recency rides inside the steps.
+   */
+  saveStepsIfUnchanged(
+    id: Id,
+    steps: readonly RunStep[],
+    expected: readonly RunStep[],
+  ): Promise<ConditionalWrite<Run>> {
+    const current = this.store.get(id);
+    if (current === undefined) {
+      return Promise.reject(
+        new Error(`saveStepsIfUnchanged: no stored run ${id}`),
+      );
+    }
+    if (JSON.stringify(current.steps) !== JSON.stringify(expected)) {
+      return Promise.resolve({ applied: false, record: clone(current) });
+    }
+    const next: Run = { ...clone(current), steps: clone([...steps]) };
+    this.store.set(id, next);
+    return Promise.resolve({ applied: true, record: clone(next) });
+  }
+
+  /**
+   * Re-date the run, writing `startedOn` alone (issue #144): the stored `steps` are read
+   * back here and carried across, standing in for the SQL statement that names that one
+   * column and so cannot ship a caller's stale array. Without a stamp the edit is
+   * authoritative and always lands.
+   */
+  async saveStartedOn(
+    id: Id,
+    startedOn: IsoDate,
+    editedAt?: Date,
+  ): Promise<ConditionalWrite<Run>> {
+    const current = this.store.get(id);
+    if (current === undefined) {
+      throw new Error(`saveStartedOn: no stored run ${id}`);
+    }
+    const redated: Run = { ...clone(current), startedOn };
+    if (editedAt === undefined) {
+      return { applied: true, record: await this.save(redated) };
+    }
+    return this.saveIfNewer(redated, editedAt);
+  }
+
+  /** Whether any run on the rig links a step to this Log Entry (issue #144). */
+  anyStepLinksEntry(rigId: Id, logEntryId: Id): Promise<boolean> {
+    for (const run of this.store.values()) {
+      if (
+        run.rigId === rigId &&
+        run.steps.some((step) => step.logEntryId === logEntryId)
+      ) {
+        return Promise.resolve(true);
+      }
+    }
+    return Promise.resolve(false);
   }
 }
 

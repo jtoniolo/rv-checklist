@@ -1,6 +1,7 @@
 import {
   CreateRunWithIdSchema,
   RunSchema,
+  RunStepOpsSchema,
   UpdateRunSchema,
 } from '@rv-checklist/domain';
 import { createZodDto } from 'nestjs-zod';
@@ -22,6 +23,12 @@ export class CreateRunDto extends createZodDto(CreateRunWithIdSchema) {}
 
 /** `PATCH /runs/:id` body — any subset; a full `steps` array covers state and answers. */
 export class UpdateRunDto extends createZodDto(UpdateRunSchema) {}
+
+/**
+ * `POST /runs/:id/step-ops` body (ADR-0030, issue #144) — a batch of per-step
+ * operations, merged into the run by step id.
+ */
+export class RunStepOpsDto extends createZodDto(RunStepOpsSchema) {}
 
 /** The response shape for every run endpoint. */
 export class RunDto extends createZodDto(RunSchema) {}

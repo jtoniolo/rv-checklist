@@ -17,7 +17,12 @@ import { ZodSerializerDto } from 'nestjs-zod';
 import { CurrentOwner } from '../auth/current-user.decorator.js';
 import { JwtAuthGuard } from '../auth/guards.js';
 import { EditedAt } from '../common/edited-at.decorator.js';
-import { CreateRunDto, RunDto, UpdateRunDto } from './run.dto.js';
+import {
+  CreateRunDto,
+  RunDto,
+  RunStepOpsDto,
+  UpdateRunDto,
+} from './run.dto.js';
 import { RunService } from './run.service.js';
 
 /**
@@ -25,10 +30,14 @@ import { RunService } from './run.service.js';
  * behind the JWT guard and scoped to the authenticated owner (ADR-0003): the
  * handler only ever passes `owner.id` to the use-case, which resolves ownership
  * via the run's (or checklist's) rig, so a caller can act on their own rigs'
- * runs and no others. A run's whole `steps` array travels on PATCH, so marking
- * steps, capturing answers, and correcting past state are all one write — no
- * per-step endpoints. Bodies are validated by the shared Zod schemas via the
- * global `ZodValidationPipe`; responses are validated/serialised to {@link RunDto}.
+ * runs and no others.
+ *
+ * Run work goes through `POST :id/step-ops` (ADR-0030, issue #144): each operation names
+ * one step, so an offline queue only ever asserts the steps it actually touched. PATCH
+ * still takes a whole `steps` array and means the same thing — it is the record-level
+ * route, kept for `startedOn` and for callers written before the ops endpoint existed.
+ * Bodies are validated by the shared Zod schemas via the global `ZodValidationPipe`;
+ * responses are validated/serialised to {@link RunDto}.
  */
 @UseGuards(JwtAuthGuard)
 @Controller('runs')
@@ -101,6 +110,27 @@ export class RunController {
     @EditedAt() editedAt?: Date,
   ): Promise<Run> {
     return this.runs.update(owner.id, id, body, editedAt);
+  }
+
+  /**
+   * Record run work as per-step operations (ADR-0030, issue #144) — the write path the
+   * offline queue uses, and the one the run screen calls on every tap.
+   *
+   * A POST because it submits operations rather than a desired state, but it creates no
+   * resource, so it answers **200** with the whole run as it now stands (which is also the
+   * status a replay reads back out of the idempotency ledger, issue #142). `X-Edited-At`
+   * stamps any op that carries no clock reading of its own.
+   */
+  @Post(':id/step-ops')
+  @HttpCode(200)
+  @ZodSerializerDto(RunDto)
+  applyStepOps(
+    @CurrentOwner() owner: Owner,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: RunStepOpsDto,
+    @EditedAt() editedAt?: Date,
+  ): Promise<Run> {
+    return this.runs.applyStepOps(owner.id, id, body.ops, editedAt);
   }
 
   /** Delete one of the owner's runs (e.g. one started by mistake). */
