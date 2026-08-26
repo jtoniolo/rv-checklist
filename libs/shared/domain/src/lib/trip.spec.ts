@@ -2,6 +2,7 @@ import {
   CreateStopSchema,
   CreateTripSchema,
   currentTrip,
+  liveChecklistIds,
   ReorderStopSchema,
   SetStopArrivedSchema,
   StopSchema,
@@ -333,5 +334,29 @@ describe('currentTrip', () => {
   it('still surfaces an undated planned trip when it is the only one', () => {
     const undated = namedTrip('undated', [orderedStop(0, false)]);
     expect(currentTrip([undated])).toBe(undated);
+  });
+});
+
+describe('liveChecklistIds', () => {
+  const liveId = '550e8400-e29b-41d4-a716-446655440004';
+  const goneId = '550e8400-e29b-41d4-a716-446655440005';
+
+  it('is empty when the trip has no checklist ids', () => {
+    expect(liveChecklistIds([], [liveId])).toEqual([]);
+  });
+
+  it('keeps ids whose checklist still exists', () => {
+    expect(liveChecklistIds([liveId], [liveId])).toEqual([liveId]);
+  });
+
+  it('drops ids whose checklist no longer exists', () => {
+    expect(liveChecklistIds([liveId, goneId], [liveId])).toEqual([liveId]);
+  });
+
+  it("preserves the trip's own id order", () => {
+    expect(liveChecklistIds([goneId, liveId], [liveId, goneId])).toEqual([
+      goneId,
+      liveId,
+    ]);
   });
 });

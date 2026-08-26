@@ -1,4 +1,5 @@
 import {
+  liveChecklistIds,
   tripStatus,
   type Checklist,
   type EquipmentItem,
@@ -230,7 +231,7 @@ export function stitchTrips(
   attachments: readonly LocalRow<'attachments'>[],
   checklists: readonly { readonly id: string }[],
 ): TripRead[] {
-  const liveChecklistIds = new Set(checklists.map((row) => row.id));
+  const existingChecklistIds = checklists.map((row) => row.id);
 
   const attachmentsByStop = new Map<string, LocalRow<'attachments'>[]>();
   for (const row of attachments) {
@@ -263,7 +264,7 @@ export function stitchTrips(
     const tripStops = stopsByTrip.get(row.id) ?? [];
     return {
       ...trip,
-      checklistIds: trip.checklistIds.filter((id) => liveChecklistIds.has(id)),
+      checklistIds: liveChecklistIds(trip.checklistIds, existingChecklistIds),
       stops: tripStops,
       status: tripStatus(tripStops),
     };
