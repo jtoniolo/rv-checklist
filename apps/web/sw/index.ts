@@ -22,8 +22,11 @@ import {
   NetworkFirst,
   Serwist,
   type PrecacheEntry,
+  type RouteHandlerCallbackOptions,
   type RouteMatchCallbackOptions,
 } from 'serwist';
+import { respondToAttachment } from './attachment-cache.js';
+import { handleSwMessage } from './message-handler.js';
 
 declare const self: ServiceWorkerGlobalScope & {
   /** Injected by `sw/build.mjs` at build time. */
@@ -64,6 +67,18 @@ function isRouterPayload({
 
 function isBuildAsset({ url, sameOrigin }: RouteMatchCallbackOptions): boolean {
   return sameOrigin && url.pathname.startsWith('/_next/static/');
+}
+
+/**
+ * An attachment download (ADR-0026, ADR-0028) — the API's proxied byte
+ * stream, so cross-origin against `NEXT_PUBLIC_API_BASE_URL` rather than this
+ * worker's own origin (ADR-0019: the browser calls the API directly).
+ * Matched on path alone; current-trip warming (issue #151) is what puts the
+ * bytes in cache ahead of the first request, and {@link respondToAttachment}
+ * is what serves them cache-first once they are there.
+ */
+function isAttachmentRequest({ url }: RouteMatchCallbackOptions): boolean {
+  return url.pathname.startsWith('/attachments/');
 }
 
 const serwist = new Serwist({
@@ -151,6 +166,22 @@ const serwist = new Serwist({
         ],
       }),
     },
+    {
+      matcher: isAttachmentRequest,
+      // Not a built-in Serwist strategy: cache-first here means "check every
+      // named `attachments-*` cache", trip caches and the LRU alike, which
+      // `CacheFirst`'s single `cacheName` cannot express (issue #151).
+      handler: {
+        handle: ({ request }: RouteHandlerCallbackOptions) =>
+          // The original `request` already carries whatever credentials mode
+          // the page issued it with — cloned rather than rebuilt from the
+          // bare url, so a network fallback behaves exactly like the request
+          // this worker intercepted.
+          respondToAttachment(self.caches, request.url, () =>
+            fetch(request.clone()),
+          ),
+      },
+    },
   ],
   fallbacks: {
     entries: [
@@ -165,3 +196,18 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+/**
+ * Current-trip warming's client-to-SW side (ADR-0028, issue #151): a tab
+ * posts a `SwMessage` (`cache-trip`, `drop-trip`, `evict-attachment`) and
+ * this is the only listener for it. `event.waitUntil` keeps the worker alive
+ * for the warm — otherwise the browser is free to kill it the moment the
+ * `message` handler itself returns, mid-fetch.
+ */
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  event.waitUntil(
+    handleSwMessage(self.caches, event.data, (url) =>
+      fetch(url, { credentials: 'include' }),
+    ),
+  );
+});

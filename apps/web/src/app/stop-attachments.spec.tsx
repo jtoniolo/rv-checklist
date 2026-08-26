@@ -297,6 +297,43 @@ describe('Stop attachments (issue #117)', () => {
     expect(sentRequests('GET', `/attachments/${OLD_MAP}`)).toHaveLength(0);
   });
 
+  it('opens a "View" click through a fetch, not a raw navigation (issue #151)', async () => {
+    // A plain `<a target="_blank">` to a cross-origin url is never routed
+    // through this origin's service worker, so it can never be served from
+    // the warmed or LRU caches offline — only an in-page fetch can be.
+    trip = makeTrip([otherFile]);
+    const openSpy = jest
+      .spyOn(globalThis, 'open')
+      .mockReturnValue({ location: { href: '' } } as unknown as Window);
+    renderScreen();
+    await screen.findByRole('heading', { name: 'Killbear PP' });
+    await expandAttachments();
+
+    fireEvent.click(screen.getByRole('button', { name: 'View' }));
+
+    await waitFor(() => {
+      expect(sentRequests('GET', `/attachments/${OTHER_FILE}`)).toHaveLength(1);
+    });
+    openSpy.mockRestore();
+  });
+
+  it('disables "View" offline for an attachment with no cached bytes, no error dialog', async () => {
+    trip = makeTrip([otherFile]);
+    const matchSpy = jest.fn().mockResolvedValue(undefined);
+    Object.assign(globalThis, { caches: { match: matchSpy } });
+    Object.defineProperty(navigator, 'onLine', { value: false });
+
+    renderScreen();
+    await screen.findByRole('heading', { name: 'Killbear PP' });
+    await expandAttachments();
+
+    expect(await screen.findByText('View (available online)')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'View' })).toBeNull();
+
+    Object.defineProperty(navigator, 'onLine', { value: true });
+    Reflect.deleteProperty(globalThis, 'caches');
+  });
+
   it('routes a paste to exactly one stop — the section opened last', async () => {
     // The trip editor mounts a manager per stop with independent
     // disclosures; with two sections open, one Ctrl+V must reach exactly

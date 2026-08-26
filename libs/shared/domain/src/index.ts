@@ -16,3 +16,4 @@ export * from './lib/ports.js';
 export * from './lib/maps.js';
 export * from './lib/trip.js';
 export * from './lib/attachment.js';
+export * from './lib/sw-warming.js';

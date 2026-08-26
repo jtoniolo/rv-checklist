@@ -9,7 +9,10 @@ import {
 } from '@rv-checklist/domain';
 import {
   attachmentUrl,
+  evictAttachmentCache,
   useDeleteAttachmentMutation,
+  useIsAttachmentCached,
+  useIsOffline,
   useSetCampgroundMapMutation,
   useUploadAttachmentMutation,
 } from '@rv-checklist/web-data-access';
@@ -43,6 +46,41 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${String(Math.round(bytes / 1024))} KB`;
   const mb = bytes / (1024 * 1024);
   return `${Number.isSafeInteger(mb) ? String(mb) : mb.toFixed(1)} MB`;
+}
+
+/**
+ * Open an attachment in a new tab (issue #151). A `fetch` from the page, not
+ * a plain `<a target="_blank">`: a cross-origin top-level navigation is
+ * never routed through this origin's service worker (only a document's own
+ * subresource fetches are), so it is the one way the current-trip warming
+ * and browsed-attachment caches (ADR-0028) ever actually get to answer a
+ * "View" click instead of the network. The target tab opens synchronously,
+ * before the `await`, so the browser's popup blocker sees it as the direct
+ * result of the click.
+ */
+async function openAttachment(
+  id: Id,
+  onError: (message: string) => void,
+): Promise<void> {
+  const target = window.open('', '_blank');
+  try {
+    const response = await fetch(attachmentUrl(id), {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error(`Download failed (${String(response.status)})`);
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    if (target) {
+      target.location.href = url;
+    } else {
+      window.open(url, '_blank');
+    }
+  } catch {
+    target?.close();
+    onError("Couldn't open the file. Please try again.");
+  }
 }
 
 /**
@@ -232,6 +270,11 @@ function AttachmentRow({
     useSetCampgroundMapMutation();
   const [deleteAttachment, { isLoading: isDeleting }] =
     useDeleteAttachmentMutation();
+  const isOffline = useIsOffline();
+  // Only worth asking Cache Storage while offline — online, "View" always
+  // works regardless (the fetch falls back to the network).
+  const isCached = useIsAttachmentCached(attachment.id, isOffline);
+  const isViewDisabled = isOffline && isCached === false;
 
   const toggleFlag = async (): Promise<void> => {
     try {
@@ -249,6 +292,9 @@ function AttachmentRow({
   const remove = async (): Promise<void> => {
     try {
       await deleteAttachment({ id: attachment.id, tripId, rigId }).unwrap();
+      // Bytes are gone server-side; drop them from wherever they are cached
+      // too (ADR-0028's fourth acceptance criterion, issue #151).
+      evictAttachmentCache(attachment.id);
     } catch {
       onError(`Couldn't delete “${attachment.filename}”. Please try again.`);
     }
@@ -262,14 +308,22 @@ function AttachmentRow({
       <span className="shrink-0 text-xs text-brand-muted">
         {formatSize(attachment.sizeBytes)}
       </span>
-      <a
-        href={attachmentUrl(attachment.id)}
-        target="_blank"
-        rel="noreferrer"
-        className="shrink-0 text-xs font-medium text-brand underline hover:no-underline dark:text-ink-inverted"
-      >
-        View
-      </a>
+      {isViewDisabled ? (
+        <span
+          className="shrink-0 text-xs text-brand-muted"
+          title="This file has not been saved for offline use."
+        >
+          View (available online)
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void openAttachment(attachment.id, onError)}
+          className="shrink-0 text-xs font-medium text-brand underline hover:no-underline dark:text-ink-inverted"
+        >
+          View
+        </button>
+      )}
       <button
         type="button"
         aria-pressed={attachment.isCampgroundMap}
