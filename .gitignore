@@ -68,6 +68,9 @@ out
 # work-backlog run reports
 .reports/
 
+# Bucket plugin config and phase prompts (local only)
+.bucket/
+
 # Nx / tsc incremental build info
 tsconfig.tsbuildinfo
 *.tsbuildinfo
