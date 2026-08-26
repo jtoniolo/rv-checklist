@@ -1,9 +1,16 @@
 import type {
+  CrudEntry,
+  CrudTransaction,
   PowerSyncBackendConnector,
   PowerSyncCredentials,
 } from '@powersync/web';
 import { config } from '../config.js';
+import { syncDeviceId } from './device-id.js';
+import type { LocalStore } from './local-store.js';
 import { subjectOf } from './owner.js';
+import { localColumns, type LocalRow, type LocalTableName } from './tables.js';
+import { parseUploadMetadata } from './upload-metadata.js';
+import { planUpload, type UploadRequest } from './upload-plan.js';
 
 /**
  * How the sync engine authenticates against the PowerSync service (ADR-0028).
@@ -27,6 +34,27 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
 
   constructor(owner: string) {
     this.owner = owner;
+  }
+
+  /** Replay one queued entry through its semantic endpoint (ADR-0028). */
+  private async replay(
+    database: UploadDatabase,
+    entry: CrudEntry,
+  ): Promise<void> {
+    const table = entry.table as LocalTableName;
+    const metadata = parseUploadMetadata(entry.metadata);
+    // Widened to `string`, not compared as `entry.op === UpdateType.DELETE`:
+    // `@powersync/web`'s runtime export is ESM the Jest transform does not
+    // touch (`upload-plan.ts` has the same note), so this module imports no
+    // value from the SDK — only `CrudEntry`'s type, erased at compile.
+    const op: string = entry.op;
+    const row =
+      op === 'DELETE' ? undefined : await fetchRow(database, table, entry.id);
+
+    const request = planUpload(entry, row, metadata);
+    if (request === undefined) return;
+
+    await send(request, entry.clientId);
   }
 
   async fetchCredentials(): Promise<PowerSyncCredentials | null> {
@@ -60,11 +88,76 @@ export class RvSyncConnector implements PowerSyncBackendConnector {
     return { token: credentials.token, endpoint: credentials.endpoint };
   }
 
-  async uploadData(): Promise<void> {
-    // Nothing is written to the local store yet (#146 is the read path), so
-    // the upload queue is always empty. This must return rather than throw:
-    // a throw is how a connector reports a failed upload, and the SDK answers
-    // it with an uncapped retry loop. Replaying queued operations through the
-    // API is #147.
+  /**
+   * Replay the oldest not-yet-uploaded transaction through the semantic
+   * endpoints (ADR-0028), one entry at a time, in the order the local write
+   * path recorded them — the ordering a follow-up edit or an arrival after an
+   * offline-created stop depends on.
+   *
+   * Only `transaction.complete()` drops entries from the queue, and it is
+   * called once, after every entry in the transaction has either succeeded or
+   * failed in a way that can never succeed (`UploadRequest.fatalStatuses`) —
+   * so a transient failure partway through leaves the whole transaction
+   * queued and this throws, which is how a connector tells the SDK to back
+   * off and retry. The retry re-sends every entry from the top again,
+   * including the ones that already landed; that is safe only because each
+   * carries its own `Idempotency-Key` (#142), so a re-sent success returns
+   * its recorded response instead of double-applying.
+   */
+  async uploadData(database: UploadDatabase): Promise<void> {
+    const transaction = await database.getNextCrudTransaction();
+
+    if (transaction === null) return;
+
+    for (const entry of transaction.crud) {
+      await this.replay(database, entry);
+    }
+    await transaction.complete();
   }
+}
+
+/** What `uploadData` needs from the local store: reads, plus the upload queue. */
+export interface UploadDatabase extends LocalStore {
+  getNextCrudTransaction(): Promise<CrudTransaction | null>;
+}
+
+async function fetchRow(
+  database: LocalStore,
+  table: LocalTableName,
+  id: string,
+): Promise<Record<string, unknown> | undefined> {
+  if (table === 'users') return undefined;
+  const rows = await database.getAll<LocalRow<LocalTableName>>(
+    `SELECT ${localColumns(table)} FROM ${table} WHERE id = ?`,
+    [id],
+  );
+  return rows[0];
+}
+
+/**
+ * Send one replayed operation. A response the request itself flags as
+ * `fatalStatuses` — a taken client id on a create, a row already gone on a
+ * patch or delete — is treated the same as success: it can never succeed by
+ * retrying, so the entry is done. Anything else non-2xx (or a network
+ * failure fetch throws on its own) propagates so the caller backs off.
+ */
+async function send(request: UploadRequest, clientId: number): Promise<void> {
+  const headers: Record<string, string> = {
+    'Idempotency-Key': `${syncDeviceId()}:${String(clientId)}`,
+  };
+  if (request.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (request.editedAt !== undefined) headers['X-Edited-At'] = request.editedAt;
+
+  const response = await fetch(`${config.apiBaseUrl}${request.path}`, {
+    method: request.method,
+    credentials: 'include',
+    headers,
+    ...(request.body !== undefined && { body: JSON.stringify(request.body) }),
+  });
+
+  if (response.ok || request.fatalStatuses.includes(response.status)) return;
+
+  throw new Error(
+    `${request.method} ${request.path} responded ${String(response.status)}`,
+  );
 }

@@ -1,4 +1,76 @@
-import { RvSyncConnector } from './connector.js';
+import type { CrudEntry, CrudTransaction } from '@powersync/web';
+import { RvSyncConnector, type UploadDatabase } from './connector.js';
+
+/** A `getAll`/`getNextCrudTransaction` stand-in with nothing queued. */
+function emptyDatabase(): UploadDatabase {
+  return {
+    getAll: () => Promise.resolve([]),
+    // eslint-disable-next-line unicorn/no-null
+    getNextCrudTransaction: () => Promise.resolve(null),
+  };
+}
+
+const rigId = '550e8400-e29b-41d4-a716-446655440010';
+
+/** A `CrudEntry`-shaped fake — only the fields the connector reads matter. */
+function crudEntry(overrides: Record<string, unknown>): CrudEntry {
+  return {
+    clientId: 7,
+    id: rigId,
+    op: 'PATCH',
+    opData: { nickname: 'x' },
+    previousValues: undefined,
+    table: 'rigs',
+    transactionId: 1,
+    metadata: undefined,
+    toJSON: () => ({}),
+    equals: () => false,
+    toComparisonArray: () => [],
+    ...overrides,
+  } as unknown as CrudEntry;
+}
+
+/** A localStorage stand-in so `syncDeviceId` mints a stable id. */
+function installStorage(): void {
+  const entries = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => entries.get(key) ?? null, // eslint-disable-line unicorn/no-null
+      setItem: (key: string, value: string) => entries.set(key, value),
+      removeItem: (key: string) => entries.delete(key),
+    },
+  });
+}
+
+/** A one-transaction queue whose `complete()` is a spy. */
+function queuedDatabase(entries: readonly CrudEntry[]): {
+  database: UploadDatabase;
+  complete: jest.Mock;
+} {
+  const complete = jest.fn().mockResolvedValue(undefined);
+  let isDelivered = false;
+  const transaction: CrudTransaction = {
+    crud: [...entries],
+    complete,
+    haveMore: false,
+    transactionId: 1,
+  };
+  return {
+    database: {
+      getAll: <Row>() =>
+        Promise.resolve([
+          { id: rigId, owner_id: 'owner-1', nickname: 'Silver Bullet' } as Row,
+        ]),
+      getNextCrudTransaction: () => {
+        if (isDelivered) return Promise.resolve(null); // eslint-disable-line unicorn/no-null
+        isDelivered = true;
+        return Promise.resolve(transaction);
+      },
+    },
+    complete,
+  };
+}
 
 /**
  * How the sync engine gets its credentials, and the one case where it must not
@@ -93,11 +165,49 @@ describe('RvSyncConnector', () => {
     ).rejects.toThrow('503');
   });
 
-  it('returns from uploadData rather than throwing', async () => {
+  it('returns from uploadData rather than throwing when the queue is empty', async () => {
     // A throw is how a connector reports a failed upload, and the SDK answers
-    // it with an uncapped retry loop. Nothing is written locally yet (#147).
+    // it with an uncapped retry loop. An empty queue is not a failure.
     await expect(
-      new RvSyncConnector(OWNER_A).uploadData(),
+      new RvSyncConnector(OWNER_A).uploadData(emptyDatabase()),
     ).resolves.toBeUndefined();
+  });
+
+  describe('uploadData — replaying a queued transaction', () => {
+    beforeEach(installStorage);
+    afterEach(() => Reflect.deleteProperty(globalThis, 'localStorage'));
+
+    it('replays an entry and completes the transaction once every entry lands', async () => {
+      fetchSpy.mockResolvedValue(new Response(undefined, { status: 200 }));
+      const { database, complete } = queuedDatabase([crudEntry({})]);
+
+      await new RvSyncConnector(OWNER_A).uploadData(database);
+
+      expect(complete).toHaveBeenCalledTimes(1);
+      const call = fetchSpy.mock.calls[0];
+      expect(call).toBeDefined();
+      const [, init] = call ?? [];
+      const headers = new Headers(init?.headers);
+      expect(headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}:7$/);
+    });
+
+    it('treats a fatal status (the row is already gone) as done, not a failure', async () => {
+      fetchSpy.mockResolvedValue(new Response(undefined, { status: 404 }));
+      const { database, complete } = queuedDatabase([crudEntry({})]);
+
+      await new RvSyncConnector(OWNER_A).uploadData(database);
+
+      expect(complete).toHaveBeenCalledTimes(1);
+    });
+
+    it('throws without completing on a retryable failure, so the SDK backs off', async () => {
+      fetchSpy.mockResolvedValue(new Response('boom', { status: 503 }));
+      const { database, complete } = queuedDatabase([crudEntry({})]);
+
+      await expect(
+        new RvSyncConnector(OWNER_A).uploadData(database),
+      ).rejects.toThrow('503');
+      expect(complete).not.toHaveBeenCalled();
+    });
   });
 });

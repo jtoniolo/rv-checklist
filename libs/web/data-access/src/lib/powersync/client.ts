@@ -129,7 +129,12 @@ function buildSchema(): Schema {
               kind.startsWith('integer') ? column.integer : column.text,
             ]),
           ),
-          { ...(indexes !== undefined && { indexes }) },
+          // `trackMetadata` carries the upload connector's own contract
+          // (`upload-metadata.ts`, #147) — a queued write's edit clock and,
+          // for a run, its step ops — in the `_metadata` column PowerSync
+          // hands back on each CRUD entry. A column diff alone cannot carry
+          // either.
+          { trackMetadata: true, ...(indexes !== undefined && { indexes }) },
         ),
       ];
     }),
