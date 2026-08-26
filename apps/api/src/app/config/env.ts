@@ -143,6 +143,19 @@ export const EnvSchema = z.object({
     .default(
       'https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback',
     ),
+
+  /**
+   * Enables `POST /auth/e2e-login` (issue #156): a Google-verification-free
+   * sign-in for the offline-charter Playwright suite, which has no headless
+   * path through One Tap. Runs the real {@link AuthService.loginWithGoogle}
+   * (same cookies, same first-login seeding) against a caller-supplied email
+   * instead of a verified Google profile — so it must default to disabled and
+   * stay unset in every deployed environment; the chart never sets it.
+   */
+  E2E_TEST_AUTH: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

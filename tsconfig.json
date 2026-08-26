@@ -20,6 +20,9 @@
     },
     {
       "path": "./libs/web/ui"
+    },
+    {
+      "path": "./apps/web-e2e"
     }
   ],
   "compilerOptions": {}

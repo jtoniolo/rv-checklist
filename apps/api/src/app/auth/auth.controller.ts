@@ -1,20 +1,25 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   Headers,
   HttpCode,
+  NotFoundException,
   Post,
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Owner } from '@rv-checklist/domain';
 import type { Response } from 'express';
+import type { Env } from '../config/env.js';
 import { AuthService } from './auth.service.js';
 import {
   CurrentGoogleProfile,
   CurrentOwner,
 } from './current-user.decorator.js';
+import { E2eLoginDto } from './e2e-login.dto.js';
 import type { GoogleProfile } from './google-verifier.js';
 import { GoogleAuthGuard, JwtAuthGuard } from './guards.js';
 import {
@@ -35,6 +40,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly tokens: TokenService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
   /** Exchange a verified Google credential (One Tap) for httpOnly auth cookies. */
@@ -46,6 +52,46 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
     @Headers('user-agent') userAgent?: string,
   ): Promise<void> {
+    const { pair } = await this.auth.loginWithGoogle(profile, userAgent);
+    res.cookie(
+      ACCESS_COOKIE,
+      pair.accessToken,
+      this.tokens.accessCookieOptions(),
+    );
+    res.cookie(
+      REFRESH_COOKIE,
+      pair.refreshToken,
+      this.tokens.refreshCookieOptions(),
+    );
+  }
+
+  /**
+   * A Google-verification-free sign-in for the offline-charter Playwright
+   * suite (issue #156), which has no headless path through One Tap. 404s
+   * (indistinguishable from a route that never existed) unless
+   * `E2E_TEST_AUTH` is set — never true outside that suite's own boot. Runs
+   * the same {@link AuthService.loginWithGoogle} as the real endpoint against
+   * a synthetic, always-"verified" profile keyed by the given email, so
+   * cookies, first-login seeding, and session tracking all behave exactly as
+   * they do for a real owner.
+   */
+  @HttpCode(200)
+  @Post('e2e-login')
+  async e2eLogin(
+    @Body() body: E2eLoginDto,
+    @Res({ passthrough: true }) res: Response,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<void> {
+    if (!this.config.get('E2E_TEST_AUTH', { infer: true })) {
+      throw new NotFoundException();
+    }
+    const profile: GoogleProfile = {
+      sub: `e2e:${body.email}`,
+      email: body.email,
+      emailVerified: true,
+      name: 'E2E Test Owner',
+      picture: undefined,
+    };
     const { pair } = await this.auth.loginWithGoogle(profile, userAgent);
     res.cookie(
       ACCESS_COOKIE,

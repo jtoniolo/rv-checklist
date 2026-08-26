@@ -1,5 +1,6 @@
 import { type INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_PIPE } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
@@ -14,6 +15,7 @@ import {
   type WebSessionRecord,
 } from '@rv-checklist/api-data-access';
 import cookieParser from 'cookie-parser';
+import { ZodValidationPipe } from 'nestjs-zod';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { StarterContentSeeder } from '../seed/seed.service.js';
@@ -362,6 +364,17 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
     });
   });
 
+  // -- POST /auth/e2e-login (off by default) ---------------------------------
+
+  describe('POST /auth/e2e-login', () => {
+    it('404s when E2E_TEST_AUTH is not enabled', async () => {
+      await request(server)
+        .post('/auth/e2e-login')
+        .send({ email: 'e2e@example.com' })
+        .expect(404);
+    });
+  });
+
   // -- POST /auth/refresh ---------------------------------------------------
 
   describe('POST /auth/refresh', () => {
@@ -561,5 +574,122 @@ describe('Auth HTTP integration (cookie transport, ADR-0019)', () => {
         .set('Authorization', 'Bearer garbage')
         .expect(401);
     });
+  });
+});
+
+/**
+ * `E2E_TEST_AUTH=true` is the one config knob this suite covers separately
+ * (issue #156): a fresh app instance stands in for what the Playwright
+ * offline-charter suite boots against, so the default-disabled behavior above
+ * is never accidentally exercised with the backdoor open.
+ */
+describe('POST /auth/e2e-login (E2E_TEST_AUTH enabled)', () => {
+  let app: INestApplication;
+  let server: App;
+
+  beforeAll(async () => {
+    const clock = new FakeClock();
+    const module = await Test.createTestingModule({
+      imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          ignoreEnvFile: true,
+          load: [
+            () => ({
+              JWT_SECRET,
+              POWERSYNC_JWT_SECRET,
+              POWERSYNC_URL,
+              JWT_ACCESS_TTL: 900,
+              REFRESH_TTL_DAYS: 30,
+              REFRESH_REUSE_INTERVAL_SECONDS: 120,
+              GOOGLE_CLIENT_ID: 'fake-client-id',
+              DATABASE_URL: 'postgres://unused',
+              WEB_ORIGIN: 'http://localhost:4200',
+              E2E_TEST_AUTH: true,
+            }),
+          ],
+        }),
+        PassportModule,
+        JwtModule.register({ secret: JWT_SECRET }),
+      ],
+      controllers: [AuthController, MeController],
+      providers: [
+        AuthService,
+        TokenService,
+        JwtStrategy,
+        GoogleIdTokenStrategy,
+        { provide: Clock, useValue: clock },
+        { provide: GoogleIdTokenVerifier, useClass: FakeGoogleVerifier },
+        { provide: UserStore, useClass: FakeUserStore },
+        { provide: RefreshTokenStore, useValue: new FakeRefreshStore(clock) },
+        { provide: StarterContentSeeder, useClass: FakeSeeder },
+        { provide: APP_PIPE, useClass: ZodValidationPipe },
+      ],
+    }).compile();
+
+    app = module.createNestApplication();
+    app.use(cookieParser());
+    await app.init();
+    server = app.getHttpServer() as App;
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('sets httpOnly access and refresh cookies for the given email, like /auth/google', async () => {
+    const res = await request(server)
+      .post('/auth/e2e-login')
+      .send({ email: 'playwright@example.com' })
+      .expect(200);
+
+    const cookies = parseCookies(res);
+    expect(cookies['rv.access']).toBeDefined();
+    expect(cookies['rv.refresh']).toBeDefined();
+    assertHttpOnlyCookie(res, 'rv.access');
+    assertHttpOnlyCookie(res, 'rv.refresh');
+  });
+
+  it('signs a session that authenticates against /me as that email', async () => {
+    const signIn = await request(server)
+      .post('/auth/e2e-login')
+      .send({ email: 'dashboard@example.com' })
+      .expect(200);
+    const cookies = parseCookies(signIn);
+
+    const res = await request(server)
+      .get('/me')
+      .set('Cookie', [`rv.access=${cookies['rv.access'] ?? ''}`])
+      .expect(200);
+
+    expect(res.body).toMatchObject({ email: 'dashboard@example.com' });
+  });
+
+  it('rejects a request with no email', async () => {
+    await request(server).post('/auth/e2e-login').send({}).expect(400);
+  });
+
+  it('reuses the same owner (and its seeded content) on a second call with the same email', async () => {
+    const first = await request(server)
+      .post('/auth/e2e-login')
+      .send({ email: 'repeat@example.com' })
+      .expect(200);
+    const second = await request(server)
+      .post('/auth/e2e-login')
+      .send({ email: 'repeat@example.com' })
+      .expect(200);
+
+    const firstMe = await request(server)
+      .get('/me')
+      .set('Cookie', [`rv.access=${parseCookies(first)['rv.access'] ?? ''}`])
+      .expect(200);
+    const secondMe = await request(server)
+      .get('/me')
+      .set('Cookie', [`rv.access=${parseCookies(second)['rv.access'] ?? ''}`])
+      .expect(200);
+
+    const firstOwner = firstMe.body as { id: string };
+    const secondOwner = secondMe.body as { id: string };
+    expect(firstOwner.id).toEqual(secondOwner.id);
   });
 });
