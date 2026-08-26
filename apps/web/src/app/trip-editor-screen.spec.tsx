@@ -4,9 +4,35 @@ import type {
   StopRead,
   TripRead,
 } from '@rv-checklist/domain';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { StoreProvider } from './store-provider';
 import { TripEditorScreen } from './trip-editor-screen';
+
+// The reconnect signal (issue #154) is faked here rather than routed through
+// a real sync client: jsdom has no Worker or IndexedDB, so the real
+// `observeSyncReconnect` never fires (see connectivity.spec.ts, which covers
+// the real signal against a fake `LocalDatabase`). `mockReconnectSignal` lets
+// a test simulate the sync client regaining a connection it had lost.
+const mockReconnectSignal: { fire: (() => void) | undefined } = {
+  fire: undefined,
+};
+jest.mock('@rv-checklist/web-data-access', () => ({
+  ...jest.requireActual<typeof import('@rv-checklist/web-data-access')>(
+    '@rv-checklist/web-data-access',
+  ),
+  observeSyncReconnect: (notify: () => void) => {
+    mockReconnectSignal.fire = notify;
+    return () => {
+      mockReconnectSignal.fire = undefined;
+    };
+  },
+}));
 
 jest.mock('next/link', () => {
   return {
@@ -799,6 +825,98 @@ describe('TripEditorScreen (issue #115)', () => {
       expect(await bodyOf(fetchSpy, 'POST', '/maps/route-distance')).toEqual({
         originPlaceId: 'ChIJ-killbear',
         destinationPlaceId: 'ChIJ-b',
+      });
+    });
+
+    describe('automatic leg re-fetch on reconnect (issue #154)', () => {
+      it('fills a stop that synced offline with no leg once the sync client reconnects', async () => {
+        const first: StopRead = { ...stop1, placeId: 'ChIJ-a' };
+        fetchSpy = stubFetch({
+          trips: [{ ...trip, startPlaceId: 'ChIJ-home', stops: [first] }],
+          legKm: 145,
+        });
+        renderScreen();
+        await screen.findAllByRole('button', { name: 'Edit' });
+        expect(
+          requestsOf(fetchSpy, 'POST', '/maps/route-distance'),
+        ).toHaveLength(0);
+
+        await act(async () => {
+          mockReconnectSignal.fire?.();
+          await Promise.resolve();
+        });
+
+        await waitFor(async () => {
+          expect(
+            await bodyOf(fetchSpy, 'PATCH', `/stops/${STOP_1_ID}`),
+          ).toEqual({ legKm: 145, legKmManual: false });
+        });
+        expect(await bodyOf(fetchSpy, 'POST', '/maps/route-distance')).toEqual({
+          originPlaceId: 'ChIJ-home',
+          destinationPlaceId: 'ChIJ-a',
+        });
+      });
+
+      it('leaves a manually entered leg untouched on reconnect', async () => {
+        const first: StopRead = {
+          ...stop1,
+          placeId: 'ChIJ-a',
+          legKm: 80,
+          legKmManual: true,
+        };
+        fetchSpy = stubFetch({
+          trips: [{ ...trip, startPlaceId: 'ChIJ-home', stops: [first] }],
+        });
+        renderScreen();
+        await screen.findAllByRole('button', { name: 'Edit' });
+
+        await act(async () => {
+          mockReconnectSignal.fire?.();
+          await Promise.resolve();
+        });
+
+        expect(
+          requestsOf(fetchSpy, 'POST', '/maps/route-distance'),
+        ).toHaveLength(0);
+      });
+
+      it('leaves an arrived stop’s leg untouched on reconnect', async () => {
+        const first: StopRead = {
+          ...stop1,
+          placeId: 'ChIJ-a',
+          arrived: true,
+        };
+        fetchSpy = stubFetch({
+          trips: [{ ...trip, startPlaceId: 'ChIJ-home', stops: [first] }],
+        });
+        renderScreen();
+        await screen.findAllByRole('button', { name: 'Edit' });
+
+        await act(async () => {
+          mockReconnectSignal.fire?.();
+          await Promise.resolve();
+        });
+
+        expect(
+          requestsOf(fetchSpy, 'POST', '/maps/route-distance'),
+        ).toHaveLength(0);
+      });
+
+      it('fetches nothing on reconnect when an end lacks a place reference', async () => {
+        fetchSpy = stubFetch({
+          trips: [{ ...trip, startPlaceId: 'ChIJ-home', stops: [stop1] }],
+        });
+        renderScreen();
+        await screen.findAllByRole('button', { name: 'Edit' });
+
+        await act(async () => {
+          mockReconnectSignal.fire?.();
+          await Promise.resolve();
+        });
+
+        expect(
+          requestsOf(fetchSpy, 'POST', '/maps/route-distance'),
+        ).toHaveLength(0);
       });
     });
 

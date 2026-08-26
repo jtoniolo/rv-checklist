@@ -1,4 +1,4 @@
-import { observeSyncConnection } from './connectivity.js';
+import { observeSyncConnection, observeSyncReconnect } from './connectivity.js';
 import type { LocalDatabase } from './powersync/local-store.js';
 
 /**
@@ -133,6 +133,96 @@ describe('observeSyncConnection', () => {
     await settle();
     database.setConnected(false);
 
+    expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The reconnect signal behind #154's leg re-fetch: a connection that comes
+ * back after being lost, never the page load's first connect (which is not a
+ * reconnect, and would otherwise re-fetch every qualifying leg on every
+ * visit).
+ */
+describe('observeSyncReconnect', () => {
+  it('does not fire on the first connect of a page load', async () => {
+    const database = fakeDatabase({ connected: false });
+    const notify = jest.fn();
+
+    observeSyncReconnect(notify, () => Promise.resolve(database));
+    await settle();
+    database.setConnected(true);
+
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('fires once a connection that existed is lost and regained', async () => {
+    const database = fakeDatabase({ connected: false });
+    const notify = jest.fn();
+
+    observeSyncReconnect(notify, () => Promise.resolve(database));
+    await settle();
+    database.setConnected(true);
+    database.setConnected(false);
+    database.setConnected(true);
+
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fire again while the connection stays up', async () => {
+    const database = fakeDatabase({ connected: false });
+    const notify = jest.fn();
+
+    observeSyncReconnect(notify, () => Promise.resolve(database));
+    await settle();
+    database.setConnected(true);
+    database.setConnected(false);
+    database.setConnected(true);
+    database.setConnected(true);
+
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires again on a second drop and recovery', async () => {
+    const database = fakeDatabase({ connected: false });
+    const notify = jest.fn();
+
+    observeSyncReconnect(notify, () => Promise.resolve(database));
+    await settle();
+    database.setConnected(true);
+    database.setConnected(false);
+    database.setConnected(true);
+    database.setConnected(false);
+    database.setConnected(true);
+
+    expect(notify).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports nothing when there is no local store', async () => {
+    const notify = jest.fn();
+
+    const dispose = observeSyncReconnect(notify, () =>
+      Promise.resolve(undefined),
+    );
+    await settle();
+    dispose();
+
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('unsubscribes on dispose', async () => {
+    const database = fakeDatabase({ connected: false });
+    const notify = jest.fn();
+
+    const dispose = observeSyncReconnect(notify, () =>
+      Promise.resolve(database),
+    );
+    await settle();
+    database.setConnected(true);
+    dispose();
+    database.setConnected(false);
+    database.setConnected(true);
+
+    expect(database.disposed()).toBe(1);
     expect(notify).not.toHaveBeenCalled();
   });
 });

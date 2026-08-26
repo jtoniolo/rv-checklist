@@ -61,6 +61,53 @@ export function observeSyncConnection(
   };
 }
 
+/**
+ * Report every time the sync client regains a connection it had previously
+ * lost (issue #154) — never the first connect of a page load, which is not a
+ * reconnect and would otherwise re-fetch every qualifying leg on every visit.
+ * Returns a dispose function.
+ *
+ * This is deliberately a weaker signal than "the write queue has fully
+ * replayed": PowerSync exposes only the connection state (see
+ * `LocalDatabase.onConnectionChange`), not an upload-drained event. A
+ * reconnect-triggered fetch is best-effort and re-runs `canAutoFillLeg`'s
+ * guards regardless, so an upload still mid-flight simply means the stop or
+ * its place ID is not there yet and the fetch is skipped, not wrong.
+ */
+export function observeSyncReconnect(
+  notify: () => void,
+  open: () => Promise<LocalDatabase | undefined> = connectLocalDatabase,
+): () => void {
+  let isDisposed = false;
+  let unsubscribe: (() => void) | undefined;
+  let hasConnectedBefore = false;
+  let hasLostConnection = false;
+
+  void open()
+    .then((database) => {
+      if (database === undefined || isDisposed) return;
+      unsubscribe = database.onConnectionChange((isConnected) => {
+        if (isConnected) {
+          if (hasConnectedBefore && hasLostConnection) {
+            hasLostConnection = false;
+            notify();
+          }
+          hasConnectedBefore = true;
+        } else if (hasConnectedBefore) {
+          hasLostConnection = true;
+        }
+      });
+    })
+    .catch(() => {
+      // No local store on this page — nothing to reconnect.
+    });
+
+  return (): void => {
+    isDisposed = true;
+    unsubscribe?.();
+  };
+}
+
 /** `true` while the device cannot reach the server. See the module comment. */
 export function useIsOffline(): boolean {
   // Both start "online" rather than reading `navigator.onLine` in the
