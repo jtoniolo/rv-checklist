@@ -17,3 +17,4 @@ export * from './lib/maps.js';
 export * from './lib/trip.js';
 export * from './lib/attachment.js';
 export * from './lib/sw-warming.js';
+export * from './lib/outbox.js';

@@ -5,7 +5,7 @@ import {
   WritableStream,
 } from 'node:stream/web';
 import { TextDecoder, TextEncoder } from 'node:util';
-import { MessagePort } from 'node:worker_threads';
+import { BroadcastChannel, MessagePort } from 'node:worker_threads';
 
 // Give the RTK Query base query an absolute base URL so `fetchBaseQuery` can
 // build a valid `Request` under jsdom (a relative URL throws). Runs before the
@@ -38,6 +38,12 @@ Object.assign(globalThis, {
   // timeout. Without a global MessageChannel the scheduler falls back to
   // setTimeout, which leaks nothing.
   MessagePort,
+  // jsdom ships no `BroadcastChannel` at all — the offline attachment outbox
+  // (issue #152) uses it to tell any open tab a queued capture changed.
+  // Unlike `MessageChannel` above, this one has no open 'message' listener
+  // by default (a spec opens and closes its own), so it carries none of that
+  // risk.
+  BroadcastChannel,
 });
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { FormData, Headers, Request, Response } = require('undici') as {
@@ -85,3 +91,28 @@ Object.defineProperty(globalThis.navigator, 'onLine', {
   writable: true,
   value: true,
 });
+
+// jsdom's realm has no `structuredClone` — the outbox specs (issue #152,
+// `apps/web/sw/outbox-*.spec.ts`) exercise `fake-indexeddb`, which clones the
+// stored value on every `put`. Good enough for the flat, one-Blob-field
+// records the outbox deals in; not a general-purpose structured clone.
+function structuredCloneForTests<T>(value: T): T {
+  if (value instanceof Blob) return value.slice(0, value.size, value.type) as T;
+  if (Array.isArray(value)) {
+    return value.map((item: unknown) => structuredCloneForTests(item)) as T;
+  }
+  if (value !== null && typeof value === 'object') {
+    const clone: Record<string, unknown> = {};
+    for (const [key, entryValue] of Object.entries(value)) {
+      clone[key] =
+        entryValue instanceof Blob
+          ? entryValue.slice(0, entryValue.size, entryValue.type)
+          : entryValue;
+    }
+    return clone as T;
+  }
+  return value;
+}
+if (typeof structuredClone === 'undefined') {
+  Object.assign(globalThis, { structuredClone: structuredCloneForTests });
+}

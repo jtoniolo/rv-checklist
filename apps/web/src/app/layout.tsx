@@ -1,6 +1,7 @@
 import './global.css';
 import type { Metadata, Viewport } from 'next';
 import type { JSX, ReactNode } from 'react';
+import { AttachmentOutboxBridge } from './attachment-outbox-bridge';
 import { StoreProvider } from './store-provider';
 import { ServiceWorkerRegistrar } from './sw-register';
 import { SyncSignInBanner } from './sync-banner';
@@ -45,6 +46,7 @@ export default function RootLayout({
           {children}
         </StoreProvider>
         <ServiceWorkerRegistrar />
+        <AttachmentOutboxBridge />
       </body>
     </html>
   );

@@ -11,3 +11,4 @@ export * from './lib/store.js';
 export * from './lib/hooks.js';
 export * from './lib/seed-cache.js';
 export * from './lib/sw-warming.js';
+export * from './lib/outbox/outbox.js';

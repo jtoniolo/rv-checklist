@@ -16,6 +16,10 @@
  * gets the branded `/offline` page instead.
  */
 import {
+  ATTACHMENT_OUTBOX_SYNC_TAG,
+  OUTBOX_BROADCAST_CHANNEL,
+} from '@rv-checklist/domain';
+import {
   CacheableResponsePlugin,
   CacheFirst,
   ExpirationPlugin,
@@ -27,11 +31,26 @@ import {
 } from 'serwist';
 import { respondToAttachment } from './attachment-cache.js';
 import { handleSwMessage } from './message-handler.js';
+import { flushOutbox } from './outbox-flush.js';
+import { openOutboxDatabase } from './outbox-store.js';
 
 declare const self: ServiceWorkerGlobalScope & {
   /** Injected by `sw/build.mjs` at build time. */
   readonly __SW_MANIFEST: (PrecacheEntry | string)[];
 };
+
+/**
+ * The Background Sync API has no `lib.webworker.d.ts` types — TypeScript has
+ * never shipped them (Chromium-only, no cross-browser spec to standardize
+ * against). Declared locally rather than pulled in from a `@types` package
+ * that would bring the rest of an unused surface with it.
+ */
+interface SyncEvent extends ExtendableEvent {
+  readonly tag: string;
+}
+
+/** `NEXT_PUBLIC_API_BASE_URL`, injected by `sw/build.mjs` (this worker is never a Next.js runtime). */
+declare const __API_BASE_URL__: string;
 
 /** The precached, data-free page shown for a route with no cached copy. */
 const OFFLINE_URL = '/offline';
@@ -209,5 +228,36 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     handleSwMessage(self.caches, event.data, (url) =>
       fetch(url, { credentials: 'include' }),
     ),
+  );
+});
+
+/**
+ * The offline attachment outbox's flush (ADR-0028, issue #152): one-shot
+ * Background Sync, registered by the page (`enqueueAttachmentCapture` in
+ * `@rv-checklist/web-data-access`) every time a capture queues. `waitUntil`
+ * with a **rejected** promise is this API's own retry signal — resolving
+ * always, regardless of `shouldRetry`, would tell the browser the sync
+ * succeeded and it would never come back for the entries left pending.
+ */
+self.addEventListener('sync', (event: Event) => {
+  const syncEvent = event as SyncEvent;
+  if (syncEvent.tag !== ATTACHMENT_OUTBOX_SYNC_TAG) return;
+  syncEvent.waitUntil(
+    (async () => {
+      const db = await openOutboxDatabase();
+      const { shouldRetry } = await flushOutbox({
+        db,
+        apiBaseUrl: __API_BASE_URL__,
+        fetcher: (input, init) => fetch(input, init),
+        broadcast: (message) => {
+          const channel = new BroadcastChannel(OUTBOX_BROADCAST_CHANNEL);
+          channel.postMessage(message);
+          channel.close();
+        },
+      });
+      if (shouldRetry) {
+        throw new Error('Attachment outbox has entries left to retry');
+      }
+    })(),
   );
 });

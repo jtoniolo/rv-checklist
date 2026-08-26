@@ -9,12 +9,17 @@ import {
 } from '@rv-checklist/domain';
 import {
   attachmentUrl,
+  discardOutboxAttachment,
+  enqueueAttachmentCapture,
   evictAttachmentCache,
+  retryOutboxAttachment,
   useDeleteAttachmentMutation,
   useIsAttachmentCached,
   useIsOffline,
+  useOutboxEntriesForStop,
   useSetCampgroundMapMutation,
   useUploadAttachmentMutation,
+  type OutboxEntry,
 } from '@rv-checklist/web-data-access';
 import { Button, Collapsible } from '@rv-checklist/web-ui';
 import {
@@ -114,6 +119,8 @@ export function StopAttachments({
   const [isOpen, setIsOpen] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [upload, { isLoading: isUploading }] = useUploadAttachmentMutation();
+  const isOffline = useIsOffline();
+  const outboxEntries = useOutboxEntriesForStop(stop.id);
   const pickerRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
 
@@ -128,6 +135,25 @@ export function StopAttachments({
       }
       setError(undefined);
       for (const file of files) {
+        // Offline captures never touch `uploadAttachment` (ADR-0028): they
+        // queue in the IndexedDB outbox and wait for Background Sync (or the
+        // app reopening) to replay them — there is no server row yet to fail
+        // an immediate mutation against.
+        if (isOffline) {
+          const queued = await enqueueAttachmentCapture({
+            stopId: stop.id,
+            tripId,
+            rigId,
+            file,
+          });
+          if (queued === undefined) {
+            setError(
+              `Couldn't queue “${file.name}” for upload. Please try again.`,
+            );
+            return;
+          }
+          continue;
+        }
         try {
           await upload({ stopId: stop.id, tripId, rigId, file }).unwrap();
         } catch {
@@ -136,7 +162,7 @@ export function StopAttachments({
         }
       }
     },
-    [upload, stop.id, tripId, rigId],
+    [upload, stop.id, tripId, rigId, isOffline],
   );
 
   useEffect(() => {
@@ -164,7 +190,7 @@ export function StopAttachments({
     void uploadFiles(files);
   };
 
-  const count = stop.attachments.length;
+  const count = stop.attachments.length + outboxEntries.length;
   return (
     <div className="border-t border-hairline pt-3">
       <Collapsible
@@ -189,6 +215,13 @@ export function StopAttachments({
                     tripId={tripId}
                     rigId={rigId}
                     onError={setError}
+                  />
+                ))}
+                {outboxEntries.map((entry) => (
+                  <OutboxAttachmentRow
+                    key={entry.id}
+                    entry={entry}
+                    stopId={stop.id}
                   />
                 ))}
               </ul>
@@ -346,6 +379,63 @@ function AttachmentRow({
         aria-label={`Delete ${attachment.filename}`}
       >
         Delete
+      </button>
+    </li>
+  );
+}
+
+/**
+ * One queued offline capture (ADR-0028, issue #152) — outbox-only, so
+ * there is no server row to view, flag, or delete: just the badge for its
+ * status and the two actions the outbox itself owns. Retrying re-registers
+ * Background Sync; discarding is a plain IndexedDB delete, never a server
+ * call, since a pending or failed capture never had a server row to begin
+ * with.
+ */
+function OutboxAttachmentRow({
+  entry,
+  stopId,
+}: {
+  readonly entry: OutboxEntry;
+  readonly stopId: Id;
+}): JSX.Element {
+  const isFailed = entry.status === 'failed';
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+      <span className="min-w-0 flex-1 truncate font-medium">
+        {entry.filename}
+      </span>
+      <span className="shrink-0 text-xs text-brand-muted">
+        {formatSize(entry.blob.size)}
+      </span>
+      <span
+        className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-medium ${
+          isFailed
+            ? 'border-red-600 text-red-600 dark:border-red-400 dark:text-red-400'
+            : 'border-hairline text-brand-muted'
+        }`}
+      >
+        {isFailed
+          ? (entry.errorMessage ?? 'Upload failed')
+          : 'Waiting to upload'}
+      </span>
+      {isFailed ? (
+        <button
+          type="button"
+          onClick={() => void retryOutboxAttachment(stopId, entry.id)}
+          className="shrink-0 text-xs font-medium text-brand underline hover:no-underline dark:text-ink-inverted"
+          aria-label={`Retry ${entry.filename}`}
+        >
+          Retry
+        </button>
+      ) : undefined}
+      <button
+        type="button"
+        onClick={() => void discardOutboxAttachment(stopId, entry.id)}
+        className="shrink-0 text-xs text-brand-muted underline hover:text-red-600 disabled:opacity-50 dark:hover:text-red-400"
+        aria-label={`Discard ${entry.filename}`}
+      >
+        Discard
       </button>
     </li>
   );

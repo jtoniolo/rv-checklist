@@ -1,3 +1,4 @@
+import 'fake-indexeddb/auto';
 import {
   TripReadSchema,
   tripStatus,
@@ -14,6 +15,12 @@ import {
 import { StopAttachments } from './stop-attachments';
 import { StoreProvider } from './store-provider';
 import { TripScreen } from './trip-screen';
+
+/** Cut or restore the network the way a browser reports it (issue #153's `useIsOffline`). */
+function setNetwork(isOnline: boolean): void {
+  (navigator as unknown as { onLine: boolean }).onLine = isOnline;
+  fireEvent(globalThis, new Event(isOnline ? 'online' : 'offline'));
+}
 
 jest.mock('next/link', () => {
   return {
@@ -205,6 +212,19 @@ describe('Stop attachments (issue #117)', () => {
           : new Request(call[0] as string, call[1] as RequestInit),
       )
       .filter((r) => r.method === method && new URL(r.url).pathname === path);
+  }
+
+  // `fake-indexeddb/auto` backs one outbox for the whole file, with no reset
+  // between tests (deleting it between tests would block on the still-open
+  // connection these specs never close). A fresh stop id per test keeps one
+  // test's queued capture from ever being read back by another's
+  // `useOutboxEntriesForStop` (used by the offline-capture tests below).
+  function renderWithFreshStop(stopId: string): void {
+    trip = makeTrip([]);
+    const [stop] = trip.stops;
+    if (stop === undefined) throw new Error('expected a stop');
+    trip = { ...trip, stops: [{ ...stop, id: stopId }] };
+    renderScreen();
   }
 
   it('uploads a pasted file as multipart and shows the refreshed list', async () => {
@@ -422,5 +442,56 @@ describe('Stop attachments (issue #117)', () => {
     expect(sentRequests('POST', `/stops/${STOP_B}/attachments`)).toHaveLength(
       1,
     );
+  });
+
+  describe('offline capture (issue #152)', () => {
+    afterEach(() => {
+      setNetwork(true);
+    });
+
+    it('queues an offline capture instead of uploading, with a "waiting to upload" badge', async () => {
+      const stopId = uuid(900);
+      renderWithFreshStop(stopId);
+      await screen.findByRole('heading', { name: 'Killbear PP' });
+      await expandAttachments();
+      setNetwork(false);
+
+      const file = new File(['png-bytes'], 'killbear-map.png', {
+        type: 'image/png',
+      });
+      fireEvent.paste(document, { clipboardData: { files: [file] } });
+
+      expect(await screen.findByText('killbear-map.png')).toBeTruthy();
+      expect(screen.getByText(/waiting to upload/i)).toBeTruthy();
+      // Never hit the network — no server row exists for a pending capture.
+      expect(sentRequests('POST', `/stops/${stopId}/attachments`)).toHaveLength(
+        0,
+      );
+    });
+
+    it('discards a pending capture with no server call', async () => {
+      const stopId = uuid(901);
+      renderWithFreshStop(stopId);
+      await screen.findByRole('heading', { name: 'Killbear PP' });
+      await expandAttachments();
+      setNetwork(false);
+
+      const file = new File(['png-bytes'], 'killbear-map.png', {
+        type: 'image/png',
+      });
+      fireEvent.paste(document, { clipboardData: { files: [file] } });
+      await screen.findByText('killbear-map.png');
+
+      fireEvent.click(
+        screen.getByRole('button', { name: /discard.*killbear-map\.png/i }),
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText('killbear-map.png')).toBeNull();
+      });
+      expect(sentRequests('POST', `/stops/${stopId}/attachments`)).toHaveLength(
+        0,
+      );
+    });
   });
 });

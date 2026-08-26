@@ -3,7 +3,11 @@
   "compilerOptions": {
     "outDir": "./out-tsc/jest",
     "types": ["jest", "node"],
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // Matches `tsconfig.lib.json` (issue #152's outbox specs use real
+    // `IDBDatabase`/`IDBFactory` types against `fake-indexeddb`); the base
+    // config's `lib` is `es2022` only.
+    "lib": ["es2022", "dom", "dom.iterable"]
   },
   "include": [
     "jest.config.ts",
