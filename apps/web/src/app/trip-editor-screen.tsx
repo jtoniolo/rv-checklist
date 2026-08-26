@@ -30,6 +30,7 @@ import {
   previousPlaceIn,
 } from './leg-recalc';
 import { PlaceAutocomplete } from './place-autocomplete';
+import { useReconnectLegRefetch } from './reconnect-leg-refetch';
 import { StopAttachments } from './stop-attachments';
 
 const labelClass =
@@ -347,6 +348,16 @@ function StopsSection({
   const [deleteStop] = useDeleteStopMutation();
   const [reorderStop] = useReorderStopMutation();
   const autoFillLeg = useAutoFillLeg(trip.id, rigId);
+
+  // Reconnect re-fetch (issue #154, ADR-0028): whatever synced offline with
+  // both ends placed gets its leg filled once the sync client reconnects,
+  // without owner action. autoFillLeg's canAutoFillLeg guard skips manual,
+  // arrived and un-placed stops the same as every other caller here.
+  useReconnectLegRefetch({
+    items: stops,
+    startPlaceId: trip.startPlaceId,
+    fill: autoFillLeg,
+  });
 
   /** The place ID a leg into `index` starts from — previous stop, or the trip start. */
   const previousEndPlaceId = (index: number): string | undefined =>
