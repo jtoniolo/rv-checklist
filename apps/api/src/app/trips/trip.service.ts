@@ -14,6 +14,7 @@ import {
 } from '@rv-checklist/api-data-access';
 import {
   DuplicateIdError,
+  liveChecklistIds,
   tripStatus,
   type CreateTripWithId,
   type Id,
@@ -94,20 +95,22 @@ export class TripService {
     const stops = await this.stops.listByTrip(trip.id);
     return {
       ...trip,
-      checklistIds: await this.liveChecklistIds(trip),
+      checklistIds: await this.readLiveChecklistIds(trip),
       stops: await Promise.all(stops.map((stop) => this.toStopRead(stop))),
       status: tripStatus(stops),
     };
   }
 
   /** The trip's checklist ids minus any pointing at a since-deleted checklist. */
-  private async liveChecklistIds(trip: Trip): Promise<Id[]> {
+  private async readLiveChecklistIds(trip: Trip): Promise<Id[]> {
     if (trip.checklistIds.length === 0) {
       return [];
     }
     const checklists = await this.checklists.listByRig(trip.rigId);
-    const live = new Set(checklists.map((c) => c.id));
-    return trip.checklistIds.filter((id) => live.has(id));
+    return liveChecklistIds(
+      trip.checklistIds,
+      checklists.map((c) => c.id),
+    );
   }
 
   /**

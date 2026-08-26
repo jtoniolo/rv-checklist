@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AttachmentSchema } from './attachment.js';
-import { IdSchema, IsoDateSchema } from './common.js';
+import { IdSchema, IsoDateSchema, type Id } from './common.js';
 
 /**
  * A Stop — one ordered overnight halt on a trip (CONTEXT.md, issue #111): the
@@ -229,6 +229,21 @@ export function tripStatus(
   const arrivedCount = stops.filter((stop) => stop.arrived).length;
   if (arrivedCount === 0) return 'planned';
   return arrivedCount === stops.length ? 'completed' : 'underway';
+}
+
+/**
+ * A trip's `checklistIds` minus any pointing at a since-deleted checklist
+ * (CONTEXT.md — `checklistIds` is unconstrained in storage, so a read drops a
+ * dangling id rather than failing). Shared by the API's trip read path and
+ * the web's local read path (issue #155) so the two never drift.
+ */
+export function liveChecklistIds(
+  checklistIds: readonly Id[],
+  existingChecklistIds: readonly Id[],
+): Id[] {
+  if (checklistIds.length === 0) return [];
+  const live = new Set(existingChecklistIds);
+  return checklistIds.filter((id) => live.has(id));
 }
 
 /** The stops a {@link currentTrip} candidate must carry — order, arrival, and date. */
