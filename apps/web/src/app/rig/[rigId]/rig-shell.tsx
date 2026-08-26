@@ -1,10 +1,13 @@
 'use client';
 
-import type { Id, Rig } from '@rv-checklist/domain';
+import { findCurrentTrip, type Id, type Rig } from '@rv-checklist/domain';
 import {
   selectThemeKey,
   useAppSelector,
+  useCurrentTripWarming,
+  useIsOffline,
   useListRigsQuery,
+  useListTripsByRigQuery,
   useMeQuery,
 } from '@rv-checklist/web-data-access';
 import {
@@ -47,7 +50,13 @@ const frameClass = 'mx-auto w-full max-w-5xl px-4 lg:px-6';
  *
  * This is the app's only header, so it is where the app-wide offline indicator
  * lives (issue #153); the signed-out routes render bare wrappers with no chrome
- * to put it in.
+ * to put it in. It is also mounted on every rig-scoped route regardless of
+ * which one the owner opened, which is what makes it the right place for
+ * current-trip warming (ADR-0028, issue #151) — trigger (c), "app open while
+ * online", falls straight out of this component's own mount, and triggers
+ * (a) and (b) come along for free from the same trips watch query the
+ * dashboard already reads (`findCurrentTrip`), including a synced attachment
+ * arriving on the current trip.
  */
 export function RigShell({
   rigId,
@@ -58,6 +67,9 @@ export function RigShell({
 }): JSX.Element {
   const { data: owner } = useMeQuery();
   const { data: rigs = [] } = useListRigsQuery();
+  const { data: trips } = useListTripsByRigQuery(rigId);
+  const isOffline = useIsOffline();
+  useCurrentTripWarming(rigId, findCurrentTrip(trips ?? []), isOffline);
   const themeKey = useAppSelector(selectThemeKey);
   const vars = useMemo(() => themeFor(themeKey).vars, [themeKey]);
   const activeRig = rigs.find((r) => r.id === rigId);

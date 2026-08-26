@@ -9,3 +9,4 @@ export * from './lib/theme.slice.js';
 export * from './lib/store.js';
 export * from './lib/hooks.js';
 export * from './lib/seed-cache.js';
+export * from './lib/sw-warming.js';

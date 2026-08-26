@@ -10,7 +10,7 @@
     "lib": ["esnext", "webworker"],
     "module": "esnext",
     "moduleResolution": "bundler",
-    "types": []
+    "types": ["jest"]
   },
   "include": ["**/*.ts"]
 }
