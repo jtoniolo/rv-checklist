@@ -50,3 +50,30 @@ describe('env / chart contract', () => {
     expect(overlap).toEqual([]);
   });
 });
+
+/**
+ * The other half of the same drift problem: `.env.example` is the only thing
+ * telling a developer (or the operator writing the cluster Secret) which
+ * variables exist. A var added to EnvSchema and not documented here is found
+ * the hard way — a boot failure on someone else's machine. Optional vars count:
+ * COOKIE_DOMAIN is optional to the parser but decides whether auth cookies are
+ * `Secure` and cross-subdomain (ADR-0019), so leaving it undocumented is how it
+ * ends up unset in production.
+ */
+describe('env / .env.example contract', () => {
+  const examplePath = path.join(__dirname, '../../../../../.env.example');
+  const example = readFileSync(examplePath, 'utf8');
+
+  // Matches both a live assignment and a commented-out one — an optional var
+  // documented as `# POWERSYNC_URL=...` is documented.
+  const documented = new Set<string>();
+  for (const [, name] of example.matchAll(/^#?\s*([A-Z][A-Z0-9_]*)=/gm)) {
+    if (name) documented.add(name);
+  }
+
+  it('documents every env var EnvSchema knows about', () => {
+    const known = Object.keys(EnvSchema.shape);
+    const missing = known.filter((key) => !documented.has(key));
+    expect(missing).toEqual([]);
+  });
+});

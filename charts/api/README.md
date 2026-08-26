@@ -12,10 +12,17 @@ helm upgrade --install rv-checklist-api \
   oci://ghcr.io/jtoniolo/charts/rv-checklist-api --version X.Y.Z \
   --set config.GOOGLE_CLIENT_ID=<your-google-oauth-client-id> \
   --set config.MCP_ISSUER_URL=<public-origin-of-the-api> \
+  --set config.WEB_ORIGIN=<public-origin-of-the-web-app> \
+  --set config.COOKIE_DOMAIN=<common-parent-domain> \
   --set config.S3_ENDPOINT=<garage-s3-endpoint> \
   --set config.S3_BUCKET=<attachment-bucket> \
   --set existingSecret=rv-checklist-api
 ```
+
+Every one of those is required: the chart refuses to render without it, rather
+than deploying a pod that crash-loops or, worse, runs with a wrong value. The
+api test `apps/api/src/app/config/chart-guards.spec.ts` renders the chart to
+prove each guard still fires.
 
 Chart version `X.Y.Z` always deploys image `ghcr.io/jtoniolo/rv-checklist-api:X.Y.Z`.
 The two can never disagree, and both trace back to the git tag `vX.Y.Z`.
@@ -107,7 +114,10 @@ connections.
 | ------------------- | ------- | -------------------------------------------------------------- |
 | `image.tag`         | `""`    | Empty means "use `appVersion`". Override only to pin a `sha-` build. |
 | `image.pullPolicy`  | `IfNotPresent` | Safe — published tags are immutable.                    |
-| `existingSecret`    | `""`    | See above.                                                      |
+| `existingSecret`    | `""`    | **Required** — rendering fails without it. See above.           |
+| `config.WEB_ORIGIN` | `""`    | **Required** — the deployed web origin (`https://rv.example.com`). Rendering fails when empty or pointing at localhost: it is the only origin CORS lets call the API. |
+| `config.COOKIE_DOMAIN` | `""` | **Required** — common parent of the web and API hosts (`.rv.example.com`), so both receive the httpOnly auth cookies (ADR-0019); setting it also marks them `Secure`. |
+| `config.POWERSYNC_URL` | `http://localhost:8080` | Rendering fails on a localhost value when `powersync.enabled` — browsers get this URL from `GET /auth/powersync-token`. |
 | `config.REFRESH_REUSE_INTERVAL_SECONDS` | `"120"` | Reuse interval for a rotated-out refresh token (ADR-0028): a replay inside this window still refreshes, so a rotation response lost on an unreliable network self-heals. |
 
 There is no `config.PORT`. `containerPort` is a fixed `3000` and the Service

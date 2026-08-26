@@ -1,3 +1,6 @@
+{{- if not .Values.existingSecret }}
+{{- fail "existingSecret is required. The chart creates no Secret of its own — point this at one the cluster materialises (e.g. via Vault) holding the keys listed under `secretKeys` in values.yaml. Left empty, the Deployment gets no secrets at all and the API CrashLoops on its own env validation." }}
+{{- end }}
 {{- if not .Values.config.GOOGLE_CLIENT_ID }}
 {{- fail "config.GOOGLE_CLIENT_ID is required. Set it to the Google OAuth client id this API verifies One Tap ID tokens against — the same id the web app ships to the browser. It is not a secret, so it belongs here and not in existingSecret. Left empty, the API fails its own env validation and CrashLoops." }}
 {{- end }}
@@ -9,6 +12,15 @@
 {{- end }}
 {{- if not .Values.config.S3_BUCKET }}
 {{- fail "config.S3_BUCKET is required. Set it to the app's attachment bucket (ADR-0026) — rv-checklist in production. Left empty, the API fails its own env validation and CrashLoops." }}
+{{- end }}
+{{- if not .Values.config.COOKIE_DOMAIN }}
+{{- fail "config.COOKIE_DOMAIN is required. Set it to the common parent domain of the web host and the API host (example: .rv.example.com) so both receive the httpOnly auth cookies (ADR-0019); setting it also marks them Secure. Left empty, the cookies are scoped to the API host alone and sent without Secure — the web app never sees a session." }}
+{{- end }}
+{{- if or (not .Values.config.WEB_ORIGIN) (contains "localhost" .Values.config.WEB_ORIGIN) }}
+{{- fail "config.WEB_ORIGIN is required and must be the deployed web origin (example: https://rv.example.com), not the localhost default. It is the only origin CORS lets call the API, so a localhost value blocks every real browser." }}
+{{- end }}
+{{- if and .Values.powersync.enabled (contains "localhost" .Values.config.POWERSYNC_URL) }}
+{{- fail "config.POWERSYNC_URL is still the localhost default while powersync.enabled. Set it to the externally reachable URL routed to the powersync Service (port 8080) — GET /auth/powersync-token hands this to browsers, so a localhost value points every client at itself and sync never connects." }}
 {{- end }}
 apiVersion: v1
 kind: ConfigMap

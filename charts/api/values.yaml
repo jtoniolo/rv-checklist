@@ -21,7 +21,14 @@ fullnameOverride: ""
 # only ever point the Service at a dead port. A per-pod port is meaningless in
 # Kubernetes anyway — every pod has its own IP. The app's own default applies.
 config:
-  WEB_ORIGIN: "http://localhost:4200"
+  # Required — rendering fails without it, and fails on a localhost value. The
+  # deployed web origin (example: https://rv.example.com). It is the only origin
+  # CORS lets call the API, so the chart refuses to ship the dev default.
+  WEB_ORIGIN: ""
+  # Required — rendering fails without it. Common parent domain of the web host
+  # and the API host (example: .rv.example.com), so both receive the httpOnly
+  # auth cookies (ADR-0019); setting it also marks them Secure. Not a secret.
+  COOKIE_DOMAIN: ""
   # Required — rendering fails without it. Not a secret: the web app ships this
   # same id to the browser. The matching client secret IS in the system since
   # v0.2.9 (the MCP OAuth server exchanges authorization codes with Google);
@@ -50,7 +57,8 @@ config:
   # Public origin browsers reach the PowerSync sync service at (ADR-0028).
   # GET /auth/powersync-token hands it to clients, so when powersync.enabled
   # this must be the externally reachable URL the deployer routes to the
-  # powersync Service (port 8080). The default only works in local dev.
+  # powersync Service (port 8080) — rendering fails if it is still localhost.
+  # The default only applies while powersync is off.
   POWERSYNC_URL: "http://localhost:8080"
 
 # Name of a pre-existing Secret. The chart does not create a Secret — the
@@ -91,6 +99,7 @@ config:
 # Rotating that Secret does not restart the pods, and cannot: a chart can only
 # hash what it renders itself. Rolling on rotation is the consumer's job — with
 # Vault Secrets Operator, point `rolloutRestartTargets` at this Deployment.
+# Required — rendering fails without it.
 existingSecret: ""
 
 # Keys the chart requires in existingSecret — the chart's half of the secret

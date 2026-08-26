@@ -78,9 +78,14 @@ declared in `public/_headers` — nothing extra to configure.
 each key and the install command. The chart creates no Secret; the deployer
 points `existingSecret` at one its platform materialises.
 
-A contract test (`apps/api/src/app/config/env-chart-contract.spec.ts`) fails CI
-when the API requires an env var the chart does not declare — so this document
-and the chart cannot silently drift from the code. Any change that adds a
+Two test suites hold that contract. `env-chart-contract.spec.ts` fails CI when
+the API requires an env var the chart does not declare, or when `.env.example`
+does not document one the schema knows about. `chart-guards.spec.ts` renders the
+chart with `helm template` and proves it refuses to render when `existingSecret`,
+`WEB_ORIGIN`, `COOKIE_DOMAIN`, `GOOGLE_CLIENT_ID`, `MCP_ISSUER_URL`, `S3_ENDPOINT`
+or `S3_BUCKET` is missing — or when `WEB_ORIGIN`, or `POWERSYNC_URL` under
+`powersync.enabled`, is left pointing at localhost. So this document and the
+chart cannot silently drift from the code. Any change that adds a
 required env var updates the chart, its README, and `.env.example` in the same
 change, plus a deploy note for the operator (see `CONTEXT.md`, Deployment
 contract).
