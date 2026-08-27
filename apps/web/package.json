@@ -62,14 +62,21 @@
         ]
       },
       "start": {
+        "//": "next start defaults to port 3000, which is the API's (root .env PORT=3000). Pinned to 4200 to match the dev target \u2014 and because playwright.config.mts boots this target and waits on http://localhost:4200.",
         "dependsOn": [
           "build-sw"
-        ]
+        ],
+        "options": {
+          "port": 4200
+        }
       },
       "serve-static": {
         "dependsOn": [
           "build-sw"
-        ]
+        ],
+        "options": {
+          "port": 4200
+        }
       },
       "build:worker": {
         "dependsOn": [
