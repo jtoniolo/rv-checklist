@@ -11,6 +11,17 @@ Amends [ADR-0011](0011-redux-rtk-state.md).
 Amended by [ADR-0028](0028-offline-first-pwa-powersync.md): SSR governs online use
 only — offline, a service worker serves runtime-cached pages and the hooks-only
 components re-render from the local PowerSync store.
+Amended by [#159](https://github.com/jtoniolo/rv-checklist/issues/159): **SSR now
+governs public routes only.** Signed-in routes become a single client-rendered
+shell — ADR-0028's runtime-cached-pages model could not survive a detail route
+whose id was created off grid, and the local store (ADR-0029) removed the
+spinner-first-paint this ADR was written to fix. Surviving: rig-scoped URLs,
+hooks-only components, RTK Query discipline, dual JWT extractors, and the edge
+middleware's auth guard and `/welcome` redirect. Going: the server data fetch and
+Pattern C seeding on signed-in pages. A replacement ADR is owed by
+[#164](https://github.com/jtoniolo/rv-checklist/issues/164), once
+[#161](https://github.com/jtoniolo/rv-checklist/issues/161)–[#163](https://github.com/jtoniolo/rv-checklist/issues/163)
+settle the router, the serving path and the root route.
 
 ## Context
 

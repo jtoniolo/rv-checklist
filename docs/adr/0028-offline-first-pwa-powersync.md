@@ -10,6 +10,15 @@ Amends [ADR-0018](0018-true-hybrid-ssr-web-architecture.md) (offline rendering p
 [ADR-0012](0012-google-one-tap-passport-refresh-tokens.md) (refresh-token reuse interval),
 and [ADR-0011](0011-redux-rtk-state.md) (what feeds the RTK Query cache).
 Extends [ADR-0026](0026-stop-attachments-shared-garage-bucket.md) (attachments offline).
+Amended by [#159](https://github.com/jtoniolo/rv-checklist/issues/159): the
+**cached-pages model and current-trip route warming are superseded**. A detail
+route can carry a client-generated id created off grid, so neither a per-URL
+document nor a per-URL RSC payload can ever exist for it, and no route set or
+warming scope closes that. Signed-in routes become a single client-rendered
+shell instead; one document answers every signed-in URL. The attachment caches,
+the IndexedDB outbox, Background Sync and the whole PowerSync read and write
+path below are **unaffected** — as is current-trip *attachment* warming. The
+replacement ADR is owed by [#164](https://github.com/jtoniolo/rv-checklist/issues/164).
 Amended by [ADR-0029](0029-powersync-read-path-into-rtk-query.md): the read-path
 section below gives the shape; ADR-0029 fixes the contract — `upsertQueryEntries`
 as the one way in, no emission before the first sync completes, and precedence
