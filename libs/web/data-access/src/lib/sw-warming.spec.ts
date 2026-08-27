@@ -1,9 +1,14 @@
 import {
   TripReadSchema,
   tripStatus,
+  type SwMessage,
   type TripRead,
 } from '@rv-checklist/domain';
-import { buildTripWarmMessage, warmingActions } from './sw-warming.js';
+import {
+  buildTripWarmMessage,
+  postToServiceWorker,
+  warmingActions,
+} from './sw-warming.js';
 
 const RIG_ID = '550e8400-e29b-41d4-a716-446655440010';
 const TRIP_ID = '550e8400-e29b-41d4-a716-446655440100';
@@ -120,5 +125,103 @@ describe('warmingActions', () => {
     const actions = warmingActions(RIG_ID, undefined, undefined);
     expect(actions.drop).toBeUndefined();
     expect(actions.cache).toBeUndefined();
+  });
+});
+
+/**
+ * The first-ever visit is the one that matters: the worker is still
+ * installing while the page renders, so `navigator.serviceWorker.controller`
+ * is null exactly when {@link useCurrentTripWarming}'s effect fires. Dropping
+ * the message there means a freshly installed PWA caches nothing on the visit
+ * that installed it — open it once, drive out of signal, and every route
+ * falls back to `/offline`. The effect never re-runs to try again (its deps
+ * are the rig, the trip and the offline flag; none of them change when the
+ * worker activates), so waiting for the controller has to happen here.
+ */
+function withContainer(container: ServiceWorkerContainer | undefined): void {
+  Object.defineProperty(globalThis.navigator, 'serviceWorker', {
+    configurable: true,
+    value: container,
+  });
+}
+
+describe('postToServiceWorker', () => {
+  type Listener = () => void;
+
+  function fakeServiceWorker(): {
+    container: ServiceWorkerContainer;
+    posted: SwMessage[];
+    activate: () => void;
+  } {
+    const posted: SwMessage[] = [];
+    const listeners: Listener[] = [];
+    let controller: { postMessage(message: SwMessage): void } | null = null; // eslint-disable-line unicorn/no-null
+
+    const container = {
+      get controller() {
+        return controller;
+      },
+      ready: Promise.resolve({} as ServiceWorkerRegistration),
+      addEventListener: (type: string, listener: Listener) => {
+        if (type === 'controllerchange') listeners.push(listener);
+      },
+      removeEventListener: (type: string, listener: Listener) => {
+        if (type !== 'controllerchange') return;
+        const at = listeners.indexOf(listener);
+        if (at !== -1) listeners.splice(at, 1);
+      },
+    } as unknown as ServiceWorkerContainer;
+
+    return {
+      container,
+      posted,
+      activate: () => {
+        controller = {
+          postMessage: (m) => {
+            posted.push(m);
+          },
+        };
+        // Snapshot: a listener removes itself as it runs.
+        const snapshot = [...listeners];
+        for (const listener of snapshot) listener();
+      },
+    };
+  }
+
+  const message: SwMessage = {
+    type: 'rv-checklist/drop-trip',
+    tripId: TRIP_ID,
+  };
+
+  afterEach(() => {
+    withContainer(undefined);
+  });
+
+  it('posts immediately when a controller is already in place', async () => {
+    const sw = fakeServiceWorker();
+    sw.activate();
+    withContainer(sw.container);
+
+    await postToServiceWorker(message);
+
+    expect(sw.posted).toEqual([message]);
+  });
+
+  it('waits for the worker to take control instead of dropping the message', async () => {
+    const sw = fakeServiceWorker();
+    withContainer(sw.container);
+
+    const posting = postToServiceWorker(message);
+    expect(sw.posted).toEqual([]);
+
+    sw.activate();
+    await posting;
+
+    expect(sw.posted).toEqual([message]);
+  });
+
+  it('gives up quietly when the browser has no service worker support', async () => {
+    withContainer(undefined);
+    await expect(postToServiceWorker(message)).resolves.toBeUndefined();
   });
 });

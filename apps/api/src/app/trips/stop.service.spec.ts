@@ -66,16 +66,26 @@ const aliceDistance = async (rigs: InMemoryRigRepository) => {
   return rig?.distanceKm;
 };
 
+/**
+ * One instant the whole timeline below hangs off, captured once. Reading
+ * `Date.now()` per call made every helper return a *different* Date each time,
+ * so a test that passed `deleteStamp()` into a write and then compared the
+ * result against `deleteStamp()` was comparing two instants a tick apart — a
+ * 1 ms flake whenever the clock happened to tick in between. Every offset here
+ * is half an hour or more, so pinning the origin changes nothing else.
+ */
+const NOW = Date.now();
+
 // LWW stamps (issue #141): clearly older / newer than any record the test just wrote.
-const staleStamp = () => new Date(Date.now() - 60_000);
-const newerStamp = () => new Date(Date.now() + 60_000);
+const staleStamp = () => new Date(NOW - 60_000);
+const newerStamp = () => new Date(NOW + 60_000);
 
 // The replay timeline for the exempt-write clock (issue #143): the rows were
 // last edited hours ago, the offline arrival is stamped an hour back, and the
 // rename queued behind it half an hour back. Everything replays now.
-const longAgo = () => new Date(Date.now() - 3 * 60 * 60 * 1000);
-const arrivalStamp = () => new Date(Date.now() - 60 * 60 * 1000);
-const renameStamp = () => new Date(Date.now() - 30 * 60 * 1000);
+const longAgo = () => new Date(NOW - 3 * 60 * 60 * 1000);
+const arrivalStamp = () => new Date(NOW - 60 * 60 * 1000);
+const renameStamp = () => new Date(NOW - 30 * 60 * 1000);
 // An offline delete replaying at the same point in that timeline (issue #157).
 const deleteStamp = arrivalStamp;
 

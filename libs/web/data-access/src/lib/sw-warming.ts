@@ -12,16 +12,51 @@ import { attachmentUrl } from './api.js';
 /**
  * Current-trip warming, the client's half of the message protocol
  * (ADR-0028, issue #151). The service worker is not always in control of the
- * page (no support, mid-registration, dev mode never registers one at all —
- * `sw-register.tsx`), so posting is always best-effort and silent.
+ * page (no support, dev mode never registers one at all — `sw-register.tsx`),
+ * so posting is always best-effort and silent.
+ *
+ * When a worker exists but has not claimed this page yet, the message waits
+ * rather than being dropped. That gap is the whole first visit: the worker
+ * installs while the page renders, so `controller` is null exactly when
+ * {@link useCurrentTripWarming}'s effect fires, and the effect has no reason
+ * to run again once `clientsClaim` takes hold. Dropping it there meant a
+ * freshly installed PWA cached nothing on the visit that installed it — open
+ * it once, drive out of signal, and every route fell back to `/offline`.
  */
-export function postToServiceWorker(message: SwMessage): void {
-  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
-    return;
-  }
-  const { controller } = navigator.serviceWorker;
-  if (controller === null) return;
-  controller.postMessage(message);
+export async function postToServiceWorker(message: SwMessage): Promise<void> {
+  // Checked by value, not with `in`: the key is present but undefined in a
+  // non-secure context and under some test environments.
+  const container: ServiceWorkerContainer | undefined =
+    typeof navigator === 'undefined' ? undefined : navigator.serviceWorker;
+  if (!container) return;
+  const controller = container.controller ?? (await whenControlled(container));
+  controller?.postMessage(message);
+}
+
+/**
+ * The controller once a worker claims this page, or `undefined` if none ever
+ * does. `ready` resolves on activation but says nothing about control, and
+ * `controllerchange` fires on the claim without carrying the controller — so
+ * this waits on both and reads `controller` back off the container.
+ */
+function whenControlled(
+  container: ServiceWorkerContainer,
+): Promise<ServiceWorker | undefined> {
+  return new Promise((resolve) => {
+    const settle = (): void => {
+      if (container.controller === null) return;
+      container.removeEventListener('controllerchange', settle);
+      resolve(container.controller);
+    };
+    container.addEventListener('controllerchange', settle);
+    // Covers the claim that lands between the null check above and this
+    // listener going on: `ready` resolving is the latest point at which a
+    // worker could already be in control with no further event coming.
+    void container.ready.then(settle).catch(() => {
+      container.removeEventListener('controllerchange', settle);
+      resolve(undefined);
+    });
+  });
 }
 
 /** The routes a current trip warms: the rig dashboard and this trip's page. */
@@ -121,8 +156,10 @@ export function useCurrentTripWarming(
       current,
       previousTrip.current,
     );
-    if (drop) postToServiceWorker(drop);
-    if (cache) postToServiceWorker(cache);
+    // Fire-and-forget: posting now waits for the worker to take control, and
+    // an effect cannot await. Failure is silent by design (see the doc above).
+    if (drop) void postToServiceWorker(drop);
+    if (cache) void postToServiceWorker(cache);
     previousTripId.current = current?.id;
     previousTrip.current = current;
     // `current` is compared by identity above via its id/attachment
@@ -139,7 +176,7 @@ export function useCurrentTripWarming(
  * (issue #151's fourth acceptance criterion).
  */
 export function evictAttachmentCache(attachmentId: Id): void {
-  postToServiceWorker({
+  void postToServiceWorker({
     type: 'rv-checklist/evict-attachment',
     attachmentUrl: attachmentUrl(attachmentId),
   });
