@@ -1,15 +1,19 @@
 # Triage Labels
 
-The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
+The skills use five triage roles. This file maps each role to the label string
+in the issue tracker of this repository.
 
-| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
-| -------------------------- | -------------------- | ---------------------------------------- |
-| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
-| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
-| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
-| `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
-| `wontfix`                  | `wontfix`            | Will not be actioned                     |
+An AFK agent is an agent that does work when no person is present.
 
-When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
+| Label in mattpocock/skills | Label in this tracker | Meaning                                        |
+| -------------------------- | --------------------- | ---------------------------------------------- |
+| `needs-triage`             | `needs-triage`        | The maintainer must evaluate this issue.       |
+| `needs-info`               | `needs-info`          | The issue waits for data from the reporter.    |
+| `ready-for-agent`          | `ready-for-agent`     | The issue is complete. An AFK agent can start. |
+| `ready-for-human`          | `ready-for-human`     | A person must do this work.                    |
+| `wontfix`                  | `wontfix`             | No person and no agent will do this work.      |
 
-Edit the right-hand column to match whatever vocabulary you actually use.
+A skill can name a role. An example is "apply the AFK-ready triage label". Use
+the label string from the second column of this table.
+
+If you use different label strings, change the second column.

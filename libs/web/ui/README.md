@@ -1,7 +1,8 @@
 # @rv-checklist/web-ui
 
-This library was generated with [Nx](https://nx.dev).
+[Nx](https://nx.dev) generated this library.
 
-## Running unit tests
+## Run the unit tests
 
-Run `nx test @rv-checklist/web-ui` to execute the unit tests via [Jest](https://jestjs.io).
+Run `nx test @rv-checklist/web-ui`. This command runs the unit tests with
+[Jest](https://jestjs.io).

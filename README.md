@@ -1,9 +1,9 @@
-# RV Checklist & Maintenance Tracker
+# RV Checklist and Maintenance Tracker
 
-A personal aid for an RV owner whose failure mode is object permanence —
-checklists surface out-of-sight things at the moment they matter, and
-maintenance tracking keeps "when did I last do this?" answerable.
+This application helps an RV owner who forgets the objects that are out of
+sight. The checklists show these objects at the time when the owner needs them.
+The maintenance records answer the question "When did I do this task last?"
 
 ## Documentation
 
-- [Connecting Claude to the MCP endpoint](docs/mcp.md)
+- [Connect Claude to the MCP endpoint](docs/mcp.md)

@@ -1,18 +1,27 @@
 # Domain Docs
 
-How the engineering skills should consume this repo's domain documentation when exploring the codebase.
+This file tells the engineering skills how to use the domain documentation of
+this repository. Read this file before you explore the code.
 
-## Before exploring, read these
+## Read these files first
 
-- **`CONTEXT.md`** at the repo root, or
-- **`CONTEXT-MAP.md`** at the repo root if it exists — it points at one `CONTEXT.md` per context. Read each one relevant to the topic.
-- **`docs/adr/`** — read ADRs that touch the area you're about to work in. In multi-context repos, also check `src/<context>/docs/adr/` for context-scoped decisions.
+- `CONTEXT.md` at the root of the repository. Or:
+- `CONTEXT-MAP.md` at the root, if that file exists. It points to one
+  `CONTEXT.md` for each context. Read each context that applies to the topic.
+- `docs/adr/`. Read the architecture decision records that apply to your work
+  area. If the repository has more than one context, also look in
+  `src/<context>/docs/adr/` for decisions that apply to one context.
 
-If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
+If a file in this list does not exist, continue your work. Do not report the
+missing file. Do not propose to create the file.
+
+The `/domain-modeling` skill creates these files when a term or a decision
+becomes clear. You can start that skill from `/grill-with-docs` and from
+`/improve-codebase-architecture`.
 
 ## File structure
 
-Single-context repo (most repos):
+A repository with one context. Most repositories use this structure:
 
 ```
 /
@@ -23,42 +32,64 @@ Single-context repo (most repos):
 └── src/
 ```
 
-Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
+A repository with more than one context. `CONTEXT-MAP.md` is at the root:
 
 ```
 /
 ├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions
+├── docs/adr/                          ← decisions for the full system
 └── src/
     ├── ordering/
     │   ├── CONTEXT.md
-    │   └── docs/adr/                  ← context-specific decisions
+    │   └── docs/adr/                  ← decisions for one context
     └── billing/
         ├── CONTEXT.md
         └── docs/adr/
 ```
 
-## When to split a growing CONTEXT.md
+## When to divide a large CONTEXT.md
 
-Start single-context. When the root `CONTEXT.md` gets too big to hold in your head — it has grown past a few screens, mixes vocabulary from clearly separate areas (e.g. ordering terms next to billing terms), or you keep scrolling past irrelevant sections to find the ones you need — **split it into multiple contexts** rather than letting it keep growing.
+Start with one context. Divide the root `CONTEXT.md` when one of these
+conditions becomes true:
 
-To split:
+- The file is longer than a small number of screens.
+- The file mixes the vocabulary of two separate areas. An example is ordering
+  terms next to billing terms.
+- You must scroll past sections that do not apply, to find the sections that
+  apply.
 
-1. Identify the distinct contexts (bounded areas of the domain) the single file has accumulated.
-2. Create a per-context `CONTEXT.md` for each — under `src/<context>/CONTEXT.md`, matching the multi-context layout above — and move each area's vocabulary and decisions into its own file.
-3. Replace the root `CONTEXT.md` with a `CONTEXT-MAP.md` that lists the contexts and points at each `CONTEXT.md`.
-4. Move any context-specific ADRs into `src/<context>/docs/adr/`; leave system-wide ones in the root `docs/adr/`.
+Do not let the file continue to grow. To divide the file:
 
-Prefer splitting early over carrying one oversized file — a context you can read end-to-end is worth more than one exhaustive document. When a split is warranted, hand it to `/domain-modeling`, which owns the structure of these files.
+1. Find the separate contexts in the file. A context is one bounded area of the
+   domain.
+2. Create one `CONTEXT.md` for each context at `src/<context>/CONTEXT.md`. Use
+   the structure that the section above shows. Move the vocabulary and the
+   decisions of each area into its own file.
+3. Replace the root `CONTEXT.md` with a `CONTEXT-MAP.md`. This file lists the
+   contexts and points to each `CONTEXT.md`.
+4. Move each ADR that applies to one context into `src/<context>/docs/adr/`.
+   Keep each ADR that applies to the full system in the root `docs/adr/`.
 
-## Use the glossary's vocabulary
+Divide the file early. A context that you can read from start to end is more
+useful than one large document. Give this work to `/domain-modeling`. That skill
+controls the structure of these files.
 
-When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.
+## Use the vocabulary of the glossary
 
-If the concept you need isn't in the glossary yet, that's a signal — either you're inventing language the project doesn't use (reconsider) or there's a real gap (note it for `/domain-modeling`).
+Your output can name a domain concept. This can occur in an issue title, a
+refactor proposal, a hypothesis, or a test name. Use the term with the
+definition that `CONTEXT.md` gives. Do not change to a synonym that the glossary
+rejects.
 
-## Flag ADR conflicts
+The glossary can be missing a concept that you need. This condition shows one of
+two problems. Possibly you invented language that the project does not use, and
+you must think again. Possibly the glossary has a true gap, and you must record
+the gap for `/domain-modeling`.
 
-If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
+## Report a conflict with an ADR
 
-> _Contradicts ADR-0007 (event-sourced orders) — but worth reopening because…_
+If your output disagrees with an ADR, report the conflict. Do not replace the
+decision without a report.
+
+> This contradicts ADR-0007 (event-sourced orders). Open the decision again,
+> because...

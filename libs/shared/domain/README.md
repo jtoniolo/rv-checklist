@@ -1,11 +1,12 @@
 # domain
 
-This library was generated with [Nx](https://nx.dev).
+[Nx](https://nx.dev) generated this library.
 
-## Building
+## Build the library
 
-Run `nx build domain` to build the library.
+Run `nx build domain`.
 
-## Running unit tests
+## Run the unit tests
 
-Run `nx test domain` to execute the unit tests via [Jest](https://jestjs.io).
+Run `nx test domain`. This command runs the unit tests with
+[Jest](https://jestjs.io).

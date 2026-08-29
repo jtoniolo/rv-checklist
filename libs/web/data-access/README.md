@@ -1,11 +1,12 @@
 # data-access
 
-This library was generated with [Nx](https://nx.dev).
+[Nx](https://nx.dev) generated this library.
 
-## Building
+## Build the library
 
-Run `nx build data-access` to build the library.
+Run `nx build data-access`.
 
-## Running unit tests
+## Run the unit tests
 
-Run `nx test data-access` to execute the unit tests via [Jest](https://jestjs.io).
+Run `nx test data-access`. This command runs the unit tests with
+[Jest](https://jestjs.io).
