@@ -31,7 +31,7 @@
     ]
   },
   "disableBundledSkills": true,
-  "disableWorkflows": true,
+  "disableWorkflows": false,
   "disableRemoteControl": false,
   "disableClaudeAiConnectors": true,
   "disableArtifact": true
