@@ -1,60 +1,80 @@
-# 13. Styling — Tailwind CSS v4, mobile-first by construction
+# 13. Styling with Tailwind CSS v4, mobile-first by construction
 
 Date: 2026-07-20
 
 ## Status
 
-Accepted
+Accepted.
 
 ## Context
 
-ADR-0010 calls for a mobile-first PWA, and #11's scope described a "mobile-first
-empty shell." But "mobile-first" was only prose — never an acceptance criterion —
-and the shell shipped as a fixed `max-width: 40rem` centered column with **no
-breakpoints**: identical at every viewport, a phone-width column on desktop.
-That is mobile-*sized*, not mobile-*first* (which means styling the small screen
-first, then progressively enhancing upward). The gap sailed through "done"
-because nothing tested it.
+ADR-0010 requires a mobile-first PWA. The scope of issue #11 described a
+"mobile-first empty shell".
 
-Rather than hand-roll responsive CSS per screen — and re-forget the enhancement
-each time — we want the tooling to make mobile-first the path of least
-resistance, and one shared frame every screen inherits.
+But "mobile-first" was prose only. It was never an acceptance criterion. The
+shell that we released was a centered column with a fixed `max-width: 40rem` and
+**no breakpoints**. It was the same at each viewport size, and it made a column of
+the width of a telephone on a desktop screen.
+
+That result is the *size* of a telephone. It is not mobile-*first*. Mobile-first
+means that you write the styles for the small screen first, and then you improve
+the layout for the larger screens.
+
+The fault passed the "done" check because no test examined it.
+
+We do not want to write responsive CSS for each screen manually, because we will
+forget the improvement each time. Instead we want two things. The tools must make
+mobile-first the easiest path. And one shared frame must give the behavior to
+each screen.
 
 ## Decision
 
 - **Tailwind CSS v4** is the styling system for `apps/web`. Its responsive model
-  is mobile-first by construction: an unprefixed utility is the phone baseline,
-  and `sm:` / `md:` / `lg:` prefixes are `min-width` enhancements — you cannot
-  write the desktop layout without visibly opting into a breakpoint.
-- **Design tokens** (brand palette; default breakpoints kept) live in one
-  `@theme` block in `global.css`. Utility class order is **enforced** via
-  `prettier-plugin-tailwindcss`, so it fails the (already lint-blocking) Prettier
-  check — no new rule surface.
-- **Shared responsive primitives live in `libs/web/ui`** (`scope:web`,
-  `type:ui`, per ADR-0009). The `Page` frame is the first: phone baseline, then
-  `sm`/`lg` widen the measure and padding. Every screen wraps its content in a
-  primitive from this lib, so responsiveness is inherited, not re-derived.
-- Tailwind scans the lib via an `@source` directive; Next transpiles the
-  raw-TSX lib via `transpilePackages`.
+  is mobile-first by construction. A utility with no prefix is the baseline for a
+  telephone. The `sm:`, `md:`, and `lg:` prefixes are improvements at a
+  `min-width` value. Thus you cannot write the desktop layout without a visible
+  breakpoint.
+- **The design tokens are in one `@theme` block in `global.css`.** These tokens
+  are the palette of the brand. We keep the default breakpoints.
 
-## Alternatives considered
+  The `prettier-plugin-tailwindcss` plugin **applies** the order of the utility
+  classes. An incorrect order fails the Prettier check, and that check already
+  stops the lint. Thus this rule adds no new configuration.
+- **The shared responsive primitives are in `libs/web/ui`.** That library has the
+  `scope:web` tag and the `type:ui` tag. Refer to ADR-0009.
 
-- **Roll our own CSS Modules + tokens** — no dependency, but nothing makes
-  mobile-first the default; the same omission recurs. Rejected: it is the
-  pattern that just failed.
-- **Type-safe CSS (Panda / vanilla-extract)** — great fit for the strict-TS
-  posture, but smaller ecosystem and still hand-built components.
-- **Component library (Mantine / Chakra)** — most batteries, but a heavy,
-  opinionated dependency with React 19 / Next 16 SSR-compat risk; premature for
-  a personal PWA whose components barely exist yet. Revisit if feature slices
-  want a full component kit; Tailwind pairs with headless kits (Radix/shadcn)
-  when that day comes.
+  The `Page` frame is the first primitive. It has a baseline for a telephone. The
+  `sm` and `lg` breakpoints then increase the width and the padding. Each screen
+  puts its content in a primitive from this library. Thus each screen inherits
+  the responsive behavior and does not repeat it.
+- Tailwind reads the library through an `@source` directive. Next transpiles the
+  library, which holds raw TSX, through `transpilePackages`.
+
+## Alternatives that we compared
+
+- **Our own CSS Modules and tokens.** This alternative adds no dependency. But no
+  part of it makes mobile-first the default, so the same fault occurs again. We
+  rejected it, because it is the pattern that failed.
+- **Type-safe CSS, with Panda or vanilla-extract.** This alternative agrees well
+  with our strict TypeScript rules. But its ecosystem is smaller, and we must
+  still build each component manually.
+- **A component library, such as Mantine or Chakra.** This alternative supplies
+  the most functions. But it is a large dependency with strong opinions. It also
+  has a risk with the SSR compatibility of React 19 and Next 16. It is too early
+  for a personal PWA that has very few components.
+
+  Examine this alternative again if a later feature needs a full set of
+  components. Tailwind operates correctly with a headless set, such as Radix or
+  shadcn, at that time.
 
 ## Consequences
 
-- A PostCSS/Tailwind build step and utility classes in JSX; the trade for
-  mobile-first being automatic and enforced.
-- Later slices build UI by composing `libs/web/ui` primitives and Tailwind
-  utilities, using breakpoint prefixes for anything beyond the phone baseline.
-- Shared classes used only inside `libs/web/ui` require the `@source` entry so
-  Tailwind emits them; new UI libs need the same.
+- The build gets a PostCSS step and a Tailwind step, and the JSX gets utility
+  classes. This is the cost, and in exchange mobile-first is automatic and
+  applied.
+- Later work builds the user interface from the primitives in `libs/web/ui` and
+  the Tailwind utilities. Each change above the baseline of the telephone uses a
+  breakpoint prefix.
+- A shared class that only `libs/web/ui` uses needs the `@source` entry.
+  Otherwise Tailwind does not emit that class. A new UI library needs the same
+  entry.
