@@ -48,7 +48,10 @@ describe('edge middleware', () => {
   let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
 
   beforeEach(() => {
-    process.env.NEXT_PUBLIC_API_BASE_URL = 'https://api.test/api';
+    // `next build` types the generated env keys as read-only, so the test
+    // writes through an index signature.
+    (process.env as Record<string, string>)['NEXT_PUBLIC_API_BASE_URL'] =
+      'https://api.test/api';
     fetchSpy = jest.spyOn(globalThis, 'fetch');
   });
 

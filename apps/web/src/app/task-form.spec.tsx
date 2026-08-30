@@ -66,6 +66,7 @@ describe('TaskForm', () => {
       description: 'Sediment builds up.',
       interval: { months: 6 },
       fieldSchema: [],
+      tags: [],
     };
     const onSubmit = jest.fn();
     render(
@@ -158,6 +159,7 @@ describe('TaskForm', () => {
       name: 'Repack wheel bearings',
       interval: { km: 20_000 },
       fieldSchema: [],
+      tags: [],
     };
     const onSubmit = jest.fn();
     render(
@@ -224,6 +226,7 @@ describe('TaskForm', () => {
       name: 'Service trailer axle',
       interval: { months: 24, km: 30_000 },
       fieldSchema: [],
+      tags: [],
     };
     render(
       <TaskForm
@@ -281,6 +284,7 @@ describe('TaskForm', () => {
       name: 'Repack wheel bearings',
       interval: { km: 20_000 },
       fieldSchema: [],
+      tags: [],
     };
     render(
       <TaskForm
@@ -304,6 +308,7 @@ describe('TaskForm', () => {
       interval: { months: 6 },
       lastPerformed: '2025-07-21',
       fieldSchema: [],
+      tags: [],
     };
     render(
       <TaskForm
@@ -326,6 +331,7 @@ describe('TaskForm', () => {
       name: 'Re-glue loose trim',
       oneTime: true,
       fieldSchema: [],
+      tags: [],
     };
     render(
       <TaskForm

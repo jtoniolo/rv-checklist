@@ -1,7 +1,7 @@
 import type { Run } from '@rv-checklist/domain';
 import {
-  api,
   makeStore,
+  resetApiState,
   seedSignedIn,
   seedRun,
 } from '@rv-checklist/web-data-access';
@@ -55,7 +55,7 @@ function trackedStore(): ReturnType<typeof makeStore> {
 }
 
 function resetStores(): void {
-  for (const store of stores) store.dispatch(api.util.resetApiState());
+  for (const store of stores) store.dispatch(resetApiState());
   stores.length = 0;
 }
 

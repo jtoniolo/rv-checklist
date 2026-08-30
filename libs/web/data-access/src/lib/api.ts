@@ -1017,6 +1017,19 @@ export const {
 } = api;
 
 /**
+ * The action that clears every cached query entry and cancels the watches
+ * behind them.
+ *
+ * The web app reaches this library through its declaration output, and that
+ * output loses the RTK Query module augmentation that puts `util` on `api`:
+ * the app resolves `@reduxjs/toolkit/query` to the ESM declaration file and
+ * `@reduxjs/toolkit/query/react` to the CommonJS one, so the two `ApiModules`
+ * interfaces never merge. Exporting the action creator directly gives the app
+ * a type it can resolve.
+ */
+export const resetApiState = api.util.resetApiState;
+
+/**
  * The URL an attachment's bytes stream from — the API's proxied download
  * (ADR-0026), authenticated by the same httpOnly cookies as every other call
  * (ADR-0019), so a plain same-site link or a `credentials: 'include'` fetch

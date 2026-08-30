@@ -249,7 +249,7 @@ describe('TripEditorScreen (issue #115)', () => {
       await openStopForm(0);
 
       expect(
-        screen.getByRole('button', {
+        screen.getByRole<HTMLButtonElement>('button', {
           name: 'Fetch distance',
         }).disabled,
       ).toBe(true);
@@ -269,7 +269,7 @@ describe('TripEditorScreen (issue #115)', () => {
       await openStopForm(1);
 
       expect(
-        screen.getByRole('button', {
+        screen.getByRole<HTMLButtonElement>('button', {
           name: 'Fetch distance',
         }).disabled,
       ).toBe(true);
@@ -289,14 +289,16 @@ describe('TripEditorScreen (issue #115)', () => {
       renderScreen();
       await openStopForm(0);
 
-      const fetchButton = screen.getByRole('button', {
+      const fetchButton = screen.getByRole<HTMLButtonElement>('button', {
         name: 'Fetch distance',
       });
       expect(fetchButton.disabled).toBe(false);
       fireEvent.click(fetchButton);
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Leg \(km\)/).value).toBe('145');
+        expect(
+          screen.getByLabelText<HTMLInputElement>(/Leg \(km\)/).value,
+        ).toBe('145');
       });
       expect(await bodyOf(fetchSpy, 'POST', '/maps/route-distance')).toEqual({
         originPlaceId: 'ChIJ-home',
@@ -312,7 +314,7 @@ describe('TripEditorScreen (issue #115)', () => {
       await openStopForm(0);
 
       expect(
-        screen.getByRole('button', {
+        screen.getByRole<HTMLButtonElement>('button', {
           name: 'Fetch distance',
         }).disabled,
       ).toBe(true);
@@ -347,9 +349,13 @@ describe('TripEditorScreen (issue #115)', () => {
 
       // Place details pre-fill the editable owner fields (ADR-0025).
       await waitFor(() => {
-        expect(screen.getByLabelText(/Address/).value).toBe(details.address);
+        expect(screen.getByLabelText<HTMLInputElement>(/Address/).value).toBe(
+          details.address,
+        );
       });
-      expect(screen.getByLabelText(/Phone/).value).toBe(details.phone);
+      expect(screen.getByLabelText<HTMLInputElement>(/Phone/).value).toBe(
+        details.phone,
+      );
 
       // Saving carries the picked place ID and the pre-filled fields.
       fireEvent.click(screen.getByRole('button', { name: 'Save stop' }));
@@ -580,7 +586,9 @@ describe('TripEditorScreen (issue #115)', () => {
       await addStopAndPickPlace();
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Leg \(km\)/).value).toBe('165');
+        expect(
+          screen.getByLabelText<HTMLInputElement>(/Leg \(km\)/).value,
+        ).toBe('165');
       });
       expect(await bodyOf(fetchSpy, 'POST', '/maps/route-distance')).toEqual({
         originPlaceId: 'ChIJ-first',
@@ -606,7 +614,9 @@ describe('TripEditorScreen (issue #115)', () => {
       await addStopAndPickPlace();
 
       await waitFor(() => {
-        expect(screen.getByLabelText(/Leg \(km\)/).value).toBe('145');
+        expect(
+          screen.getByLabelText<HTMLInputElement>(/Leg \(km\)/).value,
+        ).toBe('145');
       });
       expect(await bodyOf(fetchSpy, 'POST', '/maps/route-distance')).toEqual({
         originPlaceId: 'ChIJ-home',
@@ -634,12 +644,16 @@ describe('TripEditorScreen (issue #115)', () => {
       // The pick still pre-fills place details — once that landed, no
       // route-distance call may have fired and the typed leg stands.
       await waitFor(() => {
-        expect(screen.getByLabelText(/Address/).value).toBe(details.address);
+        expect(screen.getByLabelText<HTMLInputElement>(/Address/).value).toBe(
+          details.address,
+        );
       });
       expect(requestsOf(fetchSpy, 'POST', '/maps/route-distance')).toHaveLength(
         0,
       );
-      expect(screen.getByLabelText(/Leg \(km\)/).value).toBe('80');
+      expect(screen.getByLabelText<HTMLInputElement>(/Leg \(km\)/).value).toBe(
+        '80',
+      );
 
       fireEvent.click(screen.getByRole('button', { name: 'Add stop' }));
       await waitFor(async () => {

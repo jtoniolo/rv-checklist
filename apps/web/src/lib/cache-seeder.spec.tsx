@@ -5,7 +5,7 @@ import type {
   Rig,
   Run,
 } from '@rv-checklist/domain';
-import { api, makeStore } from '@rv-checklist/web-data-access';
+import { makeStore, resetApiState } from '@rv-checklist/web-data-access';
 import { render, screen } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { CacheSeeder } from './cache-seeder';
@@ -62,7 +62,7 @@ describe('CacheSeeder', () => {
   });
 
   afterEach(() => {
-    for (const store of stores) store.dispatch(api.util.resetApiState());
+    for (const store of stores) store.dispatch(resetApiState());
     stores.length = 0;
     fetchSpy.mockRestore();
     localStorage.clear();

@@ -185,11 +185,13 @@ async function addPlacedStop(
   fireEvent.click(await screen.findByRole('option', { name: optionName }));
   if (expectedLegKm === undefined) {
     await waitFor(() => {
-      expect(screen.getByLabelText(/Address/).value).toBe(details.address);
+      expect(screen.getByLabelText<HTMLInputElement>(/Address/).value).toBe(
+        details.address,
+      );
     });
   } else {
     await waitFor(() => {
-      expect(screen.getByLabelText(/Leg \(km\)/).value).toBe(
+      expect(screen.getByLabelText<HTMLInputElement>(/Leg \(km\)/).value).toBe(
         String(expectedLegKm),
       );
     });
@@ -368,7 +370,9 @@ describe('NewTripScreen (issues #114, #120)', () => {
         }),
       );
       await waitFor(() => {
-        expect(screen.getByLabelText(/Leg \(km\)/).value).toBe('200');
+        expect(
+          screen.getByLabelText<HTMLInputElement>(/Leg \(km\)/).value,
+        ).toBe('200');
       });
       fireEvent.change(screen.getByLabelText(/Leg \(km\)/), {
         target: { value: '80' },

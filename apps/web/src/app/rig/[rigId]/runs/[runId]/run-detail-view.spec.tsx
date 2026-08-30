@@ -1,7 +1,7 @@
 import type { Checklist, Run } from '@rv-checklist/domain';
 import {
-  api,
   makeStore,
+  resetApiState,
   seedChecklists,
   seedRun,
   seedSignedIn,
@@ -78,7 +78,7 @@ describe('RunDetailView (issue #58)', () => {
   });
 
   afterEach(() => {
-    for (const store of stores) store.dispatch(api.util.resetApiState());
+    for (const store of stores) store.dispatch(resetApiState());
     stores.length = 0;
     fetchSpy.mockRestore();
     localStorage.clear();

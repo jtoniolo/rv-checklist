@@ -19,7 +19,10 @@ import { TripScreen } from './trip-screen';
 /** Cut or restore the network the way a browser reports it (issue #153's `useIsOffline`). */
 function setNetwork(isOnline: boolean): void {
   (navigator as unknown as { onLine: boolean }).onLine = isOnline;
-  fireEvent(globalThis, new Event(isOnline ? 'online' : 'offline'));
+  fireEvent(
+    globalThis as Window & typeof globalThis,
+    new Event(isOnline ? 'online' : 'offline'),
+  );
 }
 
 jest.mock('next/link', () => {

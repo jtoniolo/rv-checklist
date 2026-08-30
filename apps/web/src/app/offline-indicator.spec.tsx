@@ -14,7 +14,10 @@ import { OfflineIndicator } from './offline-indicator';
 /** Cut or restore the network the way a browser reports it. */
 function setNetwork(isOnline: boolean): void {
   (navigator as unknown as { onLine: boolean }).onLine = isOnline;
-  fireEvent(globalThis, new Event(isOnline ? 'online' : 'offline'));
+  fireEvent(
+    globalThis as Window & typeof globalThis,
+    new Event(isOnline ? 'online' : 'offline'),
+  );
 }
 
 describe('OfflineIndicator', () => {

@@ -1,4 +1,4 @@
-import { api, makeStore } from '@rv-checklist/web-data-access';
+import { makeStore, resetApiState } from '@rv-checklist/web-data-access';
 import {
   act,
   fireEvent,
@@ -51,7 +51,7 @@ function trackedStore(): ReturnType<typeof makeStore> {
 }
 
 function resetStores(): void {
-  for (const store of stores) store.dispatch(api.util.resetApiState());
+  for (const store of stores) store.dispatch(resetApiState());
   stores.length = 0;
 }
 
