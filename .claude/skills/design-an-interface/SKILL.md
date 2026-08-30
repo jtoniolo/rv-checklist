@@ -1,33 +1,38 @@
 ---
 name: design-an-interface
-description: Generate multiple radically different interface designs for a module using parallel sub-agents. Use when user wants to design an API, explore interface options, compare module shapes, or mentions "design it twice".
+description: Makes several very different interface designs for a module with sub-agents that run at the same time. Use it when the user wants to design an API, compare interface options, compare the shapes of a module, or says "design it twice".
 ---
 
 # Design an Interface
 
-Based on "Design It Twice" from "A Philosophy of Software Design": your first idea is unlikely to be the best. Generate multiple radically different designs, then compare.
+This skill uses the "Design It Twice" method from the book "A Philosophy of
+Software Design". Your first design is usually not the best design. Make several
+very different designs. Then compare them.
 
-## Workflow
+## Procedure
 
-### 1. Gather Requirements
+### 1. Collect the requirements
 
-Before designing, understand:
+Before you design, get the answer to each of these questions:
 
-- [ ] What problem does this module solve?
-- [ ] Who are the callers? (other modules, external users, tests)
-- [ ] What are the key operations?
-- [ ] Any constraints? (performance, compatibility, existing patterns)
-- [ ] What should be hidden inside vs exposed?
+- [ ] Which problem does this module solve?
+- [ ] Who calls this module? The callers can be other modules, external users,
+      or tests.
+- [ ] Which are the primary operations?
+- [ ] Which constraints apply? Constraints include performance, compatibility,
+      and the patterns that the code already uses.
+- [ ] Which parts stay internal, and which parts become public?
 
-Ask: "What does this module need to do? Who will use it?"
+Ask the user: "What must this module do? Who will use it?"
 
-### 2. Generate Designs (Parallel Sub-Agents)
+### 2. Make the designs with sub-agents
 
-Spawn 3+ sub-agents simultaneously using Task tool. Each must produce a **radically different** approach.
+Start 3 sub-agents or more at the same time. Use the Task tool. Each sub-agent
+must make a **very different** design.
+
+Use this prompt for each sub-agent:
 
 ```
-Prompt template for each sub-agent:
-
 Design an interface for: [module description]
 
 Requirements: [gathered requirements]
@@ -45,50 +50,61 @@ Output format:
 4. Trade-offs of this approach
 ```
 
-### 3. Present Designs
+### 3. Show the designs
 
-Show each design with:
+Show each design with these three parts:
 
-1. **Interface signature** - types, methods, params
-2. **Usage examples** - how callers actually use it in practice
-3. **What it hides** - complexity kept internal
+1. **The interface**: the types, the methods, and the parameters.
+2. **Examples of use**: the code that a caller writes.
+3. **The hidden parts**: the complex logic that stays internal.
 
-Present designs sequentially so user can absorb each approach before comparison.
+Show the designs one after the other. The user can then read each design before
+the comparison starts.
 
-### 4. Compare Designs
+### 4. Compare the designs
 
-After showing all designs, compare them on:
+After you show all the designs, compare them against these criteria:
 
-- **Interface simplicity**: fewer methods, simpler params
-- **General-purpose vs specialized**: flexibility vs focus
-- **Implementation efficiency**: does shape allow efficient internals?
-- **Depth**: small interface hiding significant complexity (good) vs large interface with thin implementation (bad)
-- **Ease of correct use** vs **ease of misuse**
+- **Simplicity of the interface**: fewer methods and simpler parameters.
+- **General use against special use**: flexibility against a narrow focus.
+- **Efficiency of the implementation**: the shape of the interface must permit
+  efficient internal code.
+- **Depth**: a small interface that hides much complexity is good. A large
+  interface with a thin implementation is bad.
+- **Correct use against incorrect use**: the design must make correct use easy
+  and incorrect use difficult.
 
-Discuss trade-offs in prose, not tables. Highlight where designs diverge most.
+Write the comparison in prose. Do not use a table. Show the points where the
+designs differ most.
 
-### 5. Synthesize
+### 5. Combine the designs
 
-Often the best design combines insights from multiple options. Ask:
+The best design frequently takes parts from more than one option. Ask the user:
 
-- "Which design best fits your primary use case?"
-- "Any elements from other designs worth incorporating?"
+- "Which design fits your primary use best?"
+- "Which parts of the other designs do you want in it?"
 
-## Evaluation Criteria
+## Evaluation criteria
 
-From "A Philosophy of Software Design":
+These criteria come from "A Philosophy of Software Design".
 
-**Interface simplicity**: Fewer methods, simpler params = easier to learn and use correctly.
+**Simplicity of the interface**: fewer methods and simpler parameters make the
+module easier to learn and easier to use correctly.
 
-**General-purpose**: Can handle future use cases without changes. But beware over-generalization.
+**General use**: a general interface accepts future uses without a change. But do
+not make the interface more general than necessary.
 
-**Implementation efficiency**: Does interface shape allow efficient implementation? Or force awkward internals?
+**Efficiency of the implementation**: the shape of the interface must permit
+efficient internal code. It must not force awkward internal code.
 
-**Depth**: Small interface hiding significant complexity = deep module (good). Large interface with thin implementation = shallow module (avoid).
+**Depth**: a small interface that hides much complexity is a deep module, and a
+deep module is good. A large interface with a thin implementation is a shallow
+module. Do not make shallow modules.
 
-## Anti-Patterns
+## Errors to prevent
 
-- Don't let sub-agents produce similar designs - enforce radical difference
-- Don't skip comparison - the value is in contrast
-- Don't implement - this is purely about interface shape
-- Don't evaluate based on implementation effort
+- Do not let the sub-agents make similar designs. Make each design very
+  different.
+- Do not omit the comparison. The comparison gives the value.
+- Do not write the implementation. This skill designs the interface only.
+- Do not evaluate a design by the quantity of work in its implementation.
