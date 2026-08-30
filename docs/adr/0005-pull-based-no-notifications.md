@@ -1,38 +1,48 @@
-# 5. Pull-based — no notifications
+# 5. The application is pull-based and sends no notification
 
 Date: 2026-07-16
 
 ## Status
 
-Accepted
+Accepted.
 
 ## Context
 
-The owner describes being "forgetful," but the need is not to be *nagged* — it
-is to **not miss a step** when running a checklist, and to **see how long since**
-a maintenance task was last done so they can judge when to do it again. The
-trigger is a real-life event the user initiates ("it's spring, I'm opening the
-RV"; "I'm going on a trip"), not a clock.
+The owner says that the owner forgets things. But the owner does not want
+frequent reminders.
+
+The owner has two needs. The first need is to **miss no step** during a run of a
+checklist. The second need is to **know the time since the last performance** of
+a maintenance task, so that the owner can decide when to do it again.
+
+A real event starts the use of the application. The user starts that event.
+Examples are "It is spring and I am opening the RV" and "I am going on a trip". A
+clock does not start the use.
 
 ## Decision
 
-- The app is **pull-based**: a reference the user consults, not a system that
-  reaches out.
-- **No notifications of any kind** — no push, no email, no scheduled nudges, no
-  background scheduler.
-- **Due / overdue status is computed on read** from a task's optional interval
-  and its last completion, and shown passively when the user opens the app.
+- The application is **pull-based**. It is a reference that the user reads. It is
+  not a system that speaks first.
+- **The application sends no notification of any type.** It sends no push
+  message, no email, and no scheduled reminder. It has no background scheduler.
+- **The application calculates the due status and the overdue status on a read.**
+  It uses the optional interval of a task and the last completion of that task.
+  It shows the status when the user opens the application. It takes no other
+  action.
 
-## Alternatives considered
+## Alternatives that we compared
 
-- **Email / push reminders driven by a scheduler** (k8s CronJob or NestJS cron)
-  — rejected. Explicitly not wanted, and it would add a scheduler plus a delivery
-  channel to the deployment for no value the owner asked for.
+- **Reminders by email or by push message, from a scheduler.** The scheduler
+  could be a k8s CronJob or a cron function in NestJS. We rejected this
+  alternative. The owner does not want it. It also adds a scheduler and a
+  delivery channel to the deployment, and the owner asked for no function that
+  needs them.
 
 ## Consequences
 
-- No scheduler, job runner, or notification infrastructure in the system or the
-  deployment (reinforces ADR-0001's simplicity).
-- Due-status is a read-time computation, not stored state to keep in sync.
-- If proactive reminders are ever wanted, that is a new effort that reopens this
-  decision — it is out of scope today.
+- The system and the deployment have no scheduler, no job runner, and no
+  notification infrastructure. This keeps the simple structure of ADR-0001.
+- The due status is a calculation at the time of a read. It is not a stored value
+  that the application must keep current.
+- A person can want reminders in the future. That is new work, and it opens this
+  decision again. It is out of scope now.

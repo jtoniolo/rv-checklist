@@ -1,55 +1,71 @@
-# 1. Deployment and connectivity topology
+# 1. Deployment and connectivity structure
 
 Date: 2026-07-16
 
 ## Status
 
-Superseded by [ADR-0018](0018-true-hybrid-ssr-web-architecture.md) (web-tier and data-path) and [ADR-0020](0020-public-repo-deployment-split.md) (topology)
+[ADR-0018](0018-true-hybrid-ssr-web-architecture.md) supersedes the web tier and
+the data path. [ADR-0020](0020-public-repo-deployment-split.md) supersedes the
+structure.
 
 ## Context
 
-The app is a personal, pull-based RV checklist + maintenance tracker, deployed
-onto the operator's self-hosted infrastructure, which runs **k3s**, uses **CloudNativePG (CNPG)** for
-Postgres, keeps secrets in **Vault**, and already exposes self-hosted services
-to the internet through **Cloudflare Tunnels**, one
-hostname per service. The stack is an Nx monorepo with a **NestJS** API and a
-**Next.js** web app. We need to decide where each tier runs and how they connect.
+The application is a personal, pull-based RV checklist and maintenance tracker.
+It deploys onto the infrastructure of the operator, who hosts it.
+
+That infrastructure runs **k3s**. It uses **CloudNativePG (CNPG)** for Postgres.
+It keeps the secrets in **Vault**. It already gives the internet access to the
+services of the operator through **Cloudflare Tunnels**, with one hostname for
+each service.
+
+The application is an Nx monorepo with a **NestJS** API and a **Next.js** web
+application. We must decide where each tier operates and how the tiers connect.
 
 ## Decision
 
-- **Web** — Next.js with **SSR**, deployed to a **Cloudflare Worker** (via
-  OpenNext / `@opennextjs/cloudflare`). The Worker renders the app; it is **not
-  a BFF** and does not proxy API traffic.
-- **API** — **NestJS in k3s**, exposed on its own hostname via a **Cloudflare
-  Tunnel** (`cloudflared`), exactly like the operator's other self-hosted services. **No
-  Cloudflare Access** in front — the hostname is public and protected by JWT
-  auth only.
-- **Data path** — the **browser calls the API directly** (bearer JWT; CORS
-  allows the web origin). The Worker SSRs the page shell; **authenticated data
-  is fetched client-side**. The Worker holds no server-side session.
-- **Config / secrets** — application **secrets live in Vault**; non-secret
-  configuration lives in a **ConfigMap**. Database credentials come from CNPG's
-  generated app secret, surfaced through the existing Vault flow.
-- **Database** — CloudNativePG; the app connects to the `<cluster>-rw` service.
-  **TypeORM migrations run automatically at application startup.**
-- **Backups** — none for now.
+- **Web**: Next.js with **SSR**, deployed to a **Cloudflare Worker** through
+  OpenNext (`@opennextjs/cloudflare`). The Worker renders the application. The
+  Worker is **not a BFF** and does not proxy the traffic to the API.
+- **API**: **NestJS in k3s**, on its own hostname through a **Cloudflare
+  Tunnel** (`cloudflared`). This is the same method as the other self-hosted
+  services of the operator. There is **no Cloudflare Access** in front of the
+  API. The hostname is public, and JWT authentication is the only protection.
+- **Data path**: the **browser calls the API directly** with a bearer JWT. CORS
+  permits the web origin. The Worker renders the shell of the page on the
+  server. The browser gets the **authenticated data on the client**. The Worker
+  holds no session on the server.
+- **Configuration and secrets**: the **secrets of the application are in
+  Vault**. The configuration that is not secret is in a **ConfigMap**. The
+  credentials of the database come from the application secret that CNPG makes,
+  through the existing Vault procedure.
+- **Database**: CloudNativePG. The application connects to the `<cluster>-rw`
+  service. **The TypeORM migrations run automatically when the application
+  starts.**
+- **Backups**: none at this time.
 
-## Alternatives considered
+## Alternatives that we compared
 
-- **Next.js as an edge-Worker BFF** proxying the API over the tunnel — rejected.
-  It adds a second deployment model and a Worker→origin hop for every dynamic
-  call, buying edge locality this personal, one-to-few-user app does not need.
-- **Static SPA, no SSR** — rejected; SSR on a Worker was a deliberate choice.
-- **Cloudflare Access in front of the API** — rejected; JWT validation at the
-  API is sufficient, and Access adds infra for no benefit here.
+- **Next.js as a BFF in an edge Worker**, with a proxy to the API through the
+  tunnel. We rejected this alternative. It adds a second deployment model. It
+  also adds one hop from the Worker to the origin for each dynamic call. It
+  gives locality at the edge, and this personal application, with one user or a
+  small number of users, does not need that locality.
+- **A static SPA with no SSR.** We rejected this alternative. SSR on a Worker
+  was an intentional decision.
+- **Cloudflare Access in front of the API.** We rejected this alternative. The
+  JWT validation at the API is sufficient. Access adds infrastructure and gives
+  no benefit here.
 
 ## Consequences
 
-- Deployment matches the established "service in k3s, Cloudflare
-  Tunnel out" pattern; only the web tier lives at the edge.
-- SSR renders the shell fast; authenticated content depends on client-side
-  fetches to the self-hosted API, so app availability is tied to its uptime
-  (acceptable — same as every other self-hosted service).
-- CORS must be configured on the API to allow the web origin.
-- No database backups is a known, accepted risk to revisit; CNPG can schedule
-  backups to object storage when wanted.
+- The deployment agrees with the usual pattern of the operator: a service in k3s
+  with a Cloudflare Tunnel to the internet. Only the web tier operates at the
+  edge.
+- SSR renders the shell quickly. The authenticated content needs requests from
+  the client to the self-hosted API. Thus the availability of the application
+  depends on the availability of that API. This is acceptable, because it is the
+  same for each other self-hosted service.
+- The API must have a CORS configuration that permits the web origin.
+- The absence of database backups is a known risk. We accept the risk now and
+  will examine it again. CNPG can write scheduled backups to object storage when
+  we want them.

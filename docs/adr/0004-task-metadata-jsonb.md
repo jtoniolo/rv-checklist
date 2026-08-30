@@ -1,34 +1,40 @@
-# 4. Task metadata as JSONB, with snapshot-to-log
+# 4. Task metadata as JSONB, copied into the log
 
 Date: 2026-07-16
 
 ## Status
 
-Accepted
+Accepted.
 
 ## Context
 
-Tasks need user-defined custom fields (e.g. tire pressure, product used) that are
-typed and may carry a unit. The metadata definition is **part of what defines a
-task** — each task owns its own fields; fields are *not* a library shared and
-referenced across tasks. Two storage approaches were weighed: normalize the
-fields/values across tables, or store them as JSONB.
+A task needs custom fields that the user defines. Examples are the tire pressure
+and the product that the user applied. Each field has a type and can have a unit.
+
+The definition of the metadata is **part of the definition of the task**. Each
+task owns its own fields. The fields are *not* a library that more than one task
+uses.
+
+We compared two methods of storage. The first method makes normalized tables for
+the fields and the values. The second method keeps them as JSONB.
 
 ## Decision
 
-- **Field definitions live in JSONB on the task** — a `field_schema` array. They
-  are owned by exactly one task and read with it, so they are embedded, not put
-  in a shared `field_definition` table.
-- **Field shape** — each field has:
-  - `name` — text, **unique within the task**, the **only** user-facing
-    identifier (no separate "key" is surfaced).
-  - `type` — one of `text | note | number | boolean | date`.
-  - `required` — yes/no.
-  - `unit` — optional text, meaningful only for `number`.
-- **UI mapping** — `boolean` renders as **Yes/No**; `number` shows value + unit.
-- **Recorded values** — a completion (log entry) stores a **snapshot** of the
-  task's `field_schema` plus a `value` per field. Values are stored as their
-  native JSON type.
+- **The field definitions are in a JSONB value on the task.** The value is a
+  `field_schema` array. One task owns the definitions, and the application reads
+  them with the task. Thus the definitions are in the task, and not in a shared
+  `field_definition` table.
+- **The shape of a field.** Each field has these four properties:
+  - `name`: text. It is **unique in the task**. It is the **only** identifier
+    that the user sees. The application does not show a separate key.
+  - `type`: one of `text`, `note`, `number`, `boolean`, or `date`.
+  - `required`: yes or no.
+  - `unit`: optional text. It has a meaning for the `number` type only.
+- **The user interface.** A `boolean` field shows **Yes** or **No**. A `number`
+  field shows the value and the unit.
+- **The recorded values.** A completion makes a log entry. That entry stores a
+  **copy** of the `field_schema` of the task, and it adds a `value` to each
+  field. The application stores each value in its native JSON type.
 
 ```json
 // task.field_schema
@@ -38,33 +44,39 @@ fields/values across tables, or store them as JSONB.
 [ { "name": "Tire Pressure", "type": "number", "required": true, "unit": "psi", "value": 32 } ]
 ```
 
-## Alternatives considered
+## Alternatives that we compared
 
-- **Normalized EAV** (`field_definition` + `field_value` tables) — rejected.
-  Access is read-mostly and entity-local; EAV pays a join-and-pivot tax on the
-  most common operation and handles per-field types awkwardly. Cross-record
-  value queries (the EAV strength) are not a primary need; a GIN index or
-  promoting a hot field to a real column covers the rare case.
-- **Shared field-definition table** — rejected; fields are task-owned, not a
-  reusable cross-task library.
+- **A normalized EAV structure**, with a `field_definition` table and a
+  `field_value` table. We rejected this alternative. The access is mostly a read,
+  and it stays in one entity. EAV needs a join and a pivot for that most frequent
+  operation, and it holds a different type for each field with difficulty.
+
+  EAV is good at a query for one value across many records. We do not need that
+  query. For the small number of times when we do need it, a GIN index is
+  sufficient. We can also move a frequently-read field into a real column.
+- **A shared table of field definitions.** We rejected this alternative. A task
+  owns its fields. The fields are not a library that more than one task uses.
 
 ## Consequences
 
-- **Snapshot-to-log gives per-entry versioning for free:** editing a task's
-  fields later never rewrites history — each log entry stays honest about what it
-  asked and what was answered that day ("what was the spec when I last did
-  this?").
-- **Validation is app-enforced.** JSONB cannot carry a uniqueness or type
-  constraint, so the API validates the field shape and enforces "no duplicate
-  field names within a task" on save.
-- Any internal slug the code needs may be derived from `name`, but it is never
-  surfaced; `name` is the identifier in the domain language.
-- Occasional filtering on values uses a GIN index; sustained reporting on a
-  field would justify promoting it to a real column.
+- **The copy in the log gives a version for each entry, at no cost.** A later
+  change to the fields of a task never changes the history. Each log entry
+  continues to show the questions of that day and the answers of that day. Thus
+  the owner can answer the question "What was the specification when I last did
+  this?"
+- **The application does the validation.** JSONB cannot carry a constraint for
+  uniqueness or for a type. Thus the API validates the shape of each field. On a
+  save, the API also refuses two fields with the same name in one task.
+- The code can calculate an internal slug from `name`. The application never
+  shows that slug. In the language of the domain, `name` is the identifier.
+- For the small number of filters on a value, use a GIN index. If a report reads
+  one field continuously, move that field into a real column.
 
-## Open
+## Open questions
 
-Whether a plain checklist step (a label with no fields) is modelled as a task
-with no schema or a distinct item type, and whether snapshot-to-log applies to
-plain ticks or only maintenance completions, are domain-model questions tracked
-in issue #2 / `CONTEXT.md`, not this ADR.
+Two questions remain. Is a plain checklist step, which is a label with no fields,
+a task with no schema or a different type of object? And does the copy-to-log
+rule apply to a plain step, or to a maintenance completion only?
+
+These are questions about the domain model. Issue #2 and `CONTEXT.md` track them.
+This ADR does not answer them.

@@ -1,45 +1,57 @@
-# 2. Authentication — Google SSO with bearer JWT
+# 2. Authentication with Google SSO and a bearer JWT
 
 Date: 2026-07-16
 
 ## Status
 
-Accepted
+Accepted.
 
-Amended by [ADR-0019](0019-cookie-token-transport.md)
+[ADR-0019](0019-cookie-token-transport.md) amends this ADR.
 
 ## Context
 
-The app is flat multi-user (see ADR-0003): every user signs in and owns their
-own data. The web tier is SSR on a Cloudflare Worker and the API is NestJS in
-k3s, so the browser and API are on different origins. The owner's stated
-preference is to sign in with **Google**.
+The application is flat and has more than one user. Refer to ADR-0003. Each user
+signs in and owns the data of that user.
+
+The web tier is SSR on a Cloudflare Worker. The API is NestJS in k3s. Thus the
+browser and the API are on different origins.
+
+The owner wants to sign in with **Google**.
 
 ## Decision
 
-- Authenticate with **Google SSO (OAuth 2.0 / OIDC)**.
-- The browser holds a **bearer JWT** and sends it to the NestJS API on each
-  request. NestJS validates the token as a **stateless resource server** — no
-  server-side session, no BFF.
-- Google's ID token is verified server-side once; a **short-lived first-party
-  JWT** is then used for API calls, so the API trusts one issuer it controls.
+- Authenticate with **Google SSO**, which uses OAuth 2.0 and OIDC.
+- The browser holds a **bearer JWT**. It sends the JWT to the NestJS API with
+  each request.
+- NestJS validates the token as a **stateless resource server**. There is no
+  session on the server and no BFF.
+- The server verifies the ID token from Google one time. The application then
+  uses a **first-party JWT with a short life** for the calls to the API. Thus the
+  API trusts one issuer, and the API controls that issuer.
 
-## Alternatives considered
+## Alternatives that we compared
 
-- **Session cookies** between browser and API — rejected. Cross-origin
-  (Worker ↔ k3s) makes them third-party cookies (`SameSite=None`, and being
-  phased out); bearer tokens avoid that and drop CSRF concerns.
-- **NestJS/Passport owns the whole OAuth flow** — viable; deferred as an
-  implementation detail rather than the architectural decision.
-- **Cloudflare Access** as the auth gate — rejected (see ADR-0001).
+- **Session cookies between the browser and the API.** We rejected this
+  alternative. The Worker and k3s are different origins, which makes the cookies
+  third-party cookies. Such cookies need `SameSite=None`, and browsers are
+  removing them. A bearer token prevents this problem and also removes the CSRF
+  problem.
+- **NestJS and Passport control the full OAuth procedure.** This alternative is
+  possible. We did not decide it here, because it is an implementation detail and
+  not an architecture decision.
+- **Cloudflare Access as the authentication gate.** We rejected this alternative.
+  Refer to ADR-0001.
 
 ## Consequences
 
-- CORS on the API must allow the web origin.
-- Token refresh/expiry handling is required.
-- The token lives in the browser (standard SPA posture); the marginal XSS
-  hardening of an httpOnly-cookie BFF was judged not worth a proxy tier.
-- The exact issuer mechanism (Auth.js on the Worker vs. a Google client-side
-  flow vs. NestJS-issued) is an implementation detail; see the research on the
-  `research/google-sso-worker-nestjs` branch. The **decision** is fixed:
-  Google SSO → bearer JWT validated by the API.
+- The CORS configuration on the API must permit the web origin.
+- The application must refresh the token and must react to an expired token.
+- The token is in the browser. This is the usual condition for an SPA. An
+  httpOnly cookie with a BFF gives a small increase in protection against XSS. We
+  decided that this increase does not justify a proxy tier.
+- The exact mechanism of the issuer is an implementation detail. The options are
+  Auth.js on the Worker, a Google procedure on the client, and a JWT that NestJS
+  issues. The research is on the `research/google-sso-worker-nestjs` branch.
+
+The **decision** does not change: Google SSO gives a bearer JWT, and the API
+validates that JWT.

@@ -1,40 +1,44 @@
-# 3. Flat multi-user tenancy with row-level ownership
+# 3. Flat tenancy for more than one user, with ownership on each row
 
 Date: 2026-07-16
 
 ## Status
 
-Accepted
+Accepted.
 
 ## Context
 
-Today there is one intended user, but the owner wants to sign in regardless and
-may let friends use the app later. The question is how much tenancy to build now
-without either over-engineering or painting into a corner.
+At this time there is one intended user. But the owner wants to sign in, and the
+owner can permit friends to use the application later.
+
+The question is how much tenancy to build now. We must not build too much, and we
+must not prevent a later change.
 
 ## Decision
 
-- **Flat multi-user.** Multiple real user accounts may exist; there are **no
-  organizations, teams, or tenant-isolation boundaries**.
-- **Row-level ownership.** Top-level entities carry an `owner_id`; every query is
-  scoped to the signed-in user.
-- **Deferred:** true multi-tenancy — tenant isolation guarantees, self-serve
-  onboarding, billing, admin tooling.
+- **Flat, with more than one user.** More than one real user account can exist.
+  There are **no organizations, no teams, and no boundaries that isolate a
+  tenant**.
+- **Ownership on each row.** Each top-level entity carries an `owner_id`. Each
+  query is limited to the user who signed in.
+- **Not now**: true multi-tenancy. This includes guarantees that isolate a
+  tenant, self-service onboarding, billing, and tools for an administrator.
 
-"Friends later" becomes *turn on registration (and optional sharing)* — not a
-data-model migration.
+To add friends later, we start the registration function and possibly a sharing
+function. We do not change the data model.
 
-## Alternatives considered
+## Alternatives that we compared
 
-- **Single-user / no auth** (rely on private network) — rejected; the owner
-  wants sign-in and per-user data.
-- **Full multi-tenant SaaS** now — rejected; orgs, isolation, onboarding, and
-  billing are a product, not a personal tool.
+- **One user, with no authentication**, on a private network. We rejected this
+  alternative. The owner wants a sign-in and data for each user.
+- **Full multi-tenant SaaS now.** We rejected this alternative. Organizations,
+  isolation, onboarding, and billing make a product. This application is a
+  personal tool.
 
 ## Consequences
 
-- `owner_id` appears on aggregate roots from day one; all reads/writes are
-  owner-scoped.
-- Authentication exists from the start (see ADR-0002).
-- Multi-tenancy stays cheap to add later precisely because data is already
-  owner-scoped and auth already exists.
+- Each aggregate root carries `owner_id` from the first day. Each read and each
+  write is limited to the owner.
+- Authentication exists from the start. Refer to ADR-0002.
+- Multi-tenancy stays inexpensive to add later. This is true because the data is
+  already limited to an owner, and because authentication already exists.

@@ -1,56 +1,66 @@
-# 6. Rig as the aggregate for maintenance
+# 6. The rig is the aggregate for maintenance
 
 Date: 2026-07-16
 
 ## Status
 
-Accepted
+Accepted.
 
-Refines the ownership chain in ADR-0003.
+This ADR refines the chain of ownership in ADR-0003.
 
 ## Context
 
-Maintenance tasks, checklists, and their history need a clear target. Scoping
-them to a *person* is wrong: the thing being maintained is the RV ("rig"), a
-person may own more than one, and rigs get sold or traded in the real world. The
-rig is also the natural home for a growing "true record of the RV." Introducing
-the entity now is cheaper than retrofitting a `rig_id` onto tasks, checklists,
-and logs later.
+The maintenance tasks, the checklists, and their history need a clear target.
+
+A *person* is the incorrect target. The object that a person maintains is the RV,
+which this project calls the rig. A person can own more than one rig. Also, a
+person can sell a rig or exchange it.
+
+The rig is also the correct location for a record of the RV that grows with time.
+
+If we make this entity now, the cost is lower. If we add a `rig_id` to the tasks,
+the checklists, and the logs later, the cost is higher.
 
 ## Decision
 
-- Introduce a **Rig** as a first-class entity **now** (not deferred). A user may
-  own several (**multi-rig**).
-- A Rig captures identifying / real-world info: **VIN, make, model, year** (and
-  a user-facing name/nickname for display).
-- **Maintenance tasks, checklists, and completion logs scope to a Rig**, not
-  directly to the User. Ownership chain: **`User → Rig → {Task, Checklist, Log
-  entry}`**. The Rig carries `owner_id`; child entities reference `rig_id`. This
-  refines ADR-0003 — row-level ownership is expressed via the rig.
-- **Rigs do not transfer between users.** A rig belongs to one user; there is no
-  in-app ownership-transfer / sale flow. A real-world sale simply ends outside
-  the app.
+- Make a **Rig** entity **now**. It is a first-class entity. Do not do this work
+  later. A user can own more than one rig.
+- A Rig holds the data that identifies it in the real world: the **VIN**, the
+  **make**, the **model**, and the **year**. It also holds a name or a nickname
+  for the display.
+- **The maintenance tasks, the checklists, and the completion logs belong to a
+  Rig.** They do not belong directly to the User. The chain of ownership is
+  **`User → Rig → {Task, Checklist, Log entry}`**. The Rig carries `owner_id`.
+  Each child entity refers to a `rig_id`.
 
-## Alternatives considered
+  This refines ADR-0003. The rig expresses the ownership on each row.
+- **A rig does not move from one user to a different user.** A rig belongs to one
+  user. The application has no procedure to transfer the ownership or to sell the
+  rig. A sale in the real world ends outside the application.
 
-- **Scope maintenance to the User directly (no Rig)** — rejected; maintenance
-  against a person is meaningless, breaks with multiple rigs, and loses the
-  rig-centric record.
-- **Add the Rig later** — rejected; retrofitting `rig_id` across tasks,
-  checklists, and logs is more expensive than introducing it up front.
-- **Rig ownership transfer between users** — rejected / out of scope; rigs do
-  not move between users.
+## Alternatives that we compared
+
+- **Attach the maintenance directly to the User, with no Rig.** We rejected this
+  alternative. Maintenance on a person has no meaning. It also fails when the
+  person owns more than one rig, and it loses the record that centers on the rig.
+- **Add the Rig later.** We rejected this alternative. To add `rig_id` to the
+  tasks, the checklists, and the logs later costs more than to make the entity
+  now.
+- **Transfer the ownership of a rig between users.** We rejected this
+  alternative. It is out of scope. A rig does not move between users.
 
 ## Consequences
 
-- `rig_id` appears on tasks, checklists, and log entries from day one; queries
-  scope by the signed-in user's rigs.
-- Choosing/entering a rig becomes part of first-run onboarding (MVP scope, #7).
-- The Rig is the anchor for a richer record over time.
+- The tasks, the checklists, and the log entries carry `rig_id` from the first
+  day. Each query is limited to the rigs of the user who signed in.
+- The first-run onboarding must let the user select or enter a rig. This is in
+  the scope of the MVP, in issue #7.
+- The Rig is the anchor for a larger record in the future.
 
-## Future (deferred — not now)
+## Future work, which we do not do now
 
-- A **Problem** entity (defects / issues on the rig).
-- An **Update / modification** entity (mods, upgrades).
+- A **Problem** entity, for the defects and the faults on the rig.
+- An **Update** entity, for the modifications and the improvements.
 
-Both are tracked as fog on the map, not built now.
+The map records these two as areas that are not yet clear. We do not build them
+now.
