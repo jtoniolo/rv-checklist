@@ -6,26 +6,24 @@ const REFRESH_COOKIE = 'rv.refresh';
 /**
  * Paths that never require a session.
  *
- * The last three are here for the service worker (ADR-0028). The browser
- * re-fetches the worker script to check for an update, and the worker itself
- * fetches the fallback page and the PowerSync assets when it installs. None of
- * those is a navigation, so a redirect to `/welcome` cannot sign anyone in — it
- * just hands back HTML where a script, a wasm module or the offline page was
- * expected — and during `install`, a poisoned precache entry or a failed
- * install.
+ * The proxy runs on the Node runtime and sees every request in every
+ * environment, so these prefixes carry the whole contract.
  *
- * On the deployed site this middleware never sees `/sw.js` or `/@powersync/`
- * anyway: `wrangler.jsonc` binds `.open-next/assets` and does not set
- * `run_worker_first`, so Cloudflare's Asset Worker answers anything that
- * matches a file in there and the Next runtime is not invoked (ADR-0029's
- * amended consequence records this). What these entries change is `next start`
- * and `nx serve-static`, where `public/` is served through Next and the
- * redirect is real. They make the two environments agree; the assets are the
- * SDK's own bytes, identical for every user, so a session buys nothing here
- * either way.
+ * `/healthz` is here so a container probe reaches the health route with no
+ * session (issue #167).
+ *
+ * The service-worker prefixes are here for the same reason (ADR-0028). The
+ * browser re-fetches the worker script to check for an update, and the worker
+ * itself fetches the fallback page and the PowerSync assets when it installs.
+ * None of those is a navigation, so a redirect to `/welcome` cannot sign anyone
+ * in — it just hands back HTML where a script, a wasm module or the offline
+ * page was expected — and during `install`, a poisoned precache entry or a
+ * failed install. The assets are the SDK's own bytes, identical for every user,
+ * so a session buys nothing here either way.
  */
 const PUBLIC_PREFIXES = [
   '/welcome',
+  '/healthz',
   '/_next/',
   '/manifest.webmanifest',
   '/icons/',
@@ -39,9 +37,9 @@ const PUBLIC_PREFIXES = [
 const REFRESH_AHEAD_SECS = 60;
 
 /**
- * Decode the payload of a JWT without verification (edge runtime — no Node
- * crypto). The API verifies authenticity on every request; the middleware only
- * needs the `exp` claim to decide whether to refresh.
+ * Decode the payload of a JWT without verification. The API verifies
+ * authenticity on every request; the proxy only needs the `exp` claim to decide
+ * whether to refresh.
  */
 function decodeJwtPayload(
   token: string,
@@ -69,7 +67,7 @@ function isNearExpiry(token: string, now: number): boolean {
 
 /**
  * Build an absolute API URL from the env-provided base. This runs on the server
- * (edge), so it prefers the server-only `API_BASE_URL`, then the public
+ * (Node runtime), so it prefers the server-only `API_BASE_URL`, then the public
  * `PUBLIC_API_BASE_URL` (ADR-0020). Falls back to the request origin + `/api` if
  * neither is set (local development).
  */
@@ -81,7 +79,7 @@ function apiUrl(path: string, requestUrl: URL): string {
   return `${base}${path}`;
 }
 
-export async function middleware(request: NextRequest): Promise<NextResponse> {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
