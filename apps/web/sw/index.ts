@@ -8,8 +8,8 @@
  *
  * The model is **cached pages, not an app shell**. Navigations stay
  * network-first, so online request and response behaviour is exactly what it
- * was before this worker existed: every navigation still reaches the edge
- * middleware and is still answered by it. What the worker adds is a copy of
+ * was before this worker existed: every navigation still reaches the proxy
+ * and is still answered by it. What the worker adds is a copy of
  * every page the owner has actually opened, so off grid those pages still
  * render and the hooks-only components re-read the PowerSync local store
  * (ADR-0029). A route the owner has never opened has no copy to serve, and
@@ -116,7 +116,7 @@ const serwist = new Serwist({
         // Serwist's default is to copy a followed redirect into the precache
         // and treat anything under 400 as cacheable. Every URL in the manifest
         // is a same-origin static file that answers 200 or is broken, so a
-        // redirect can only mean the middleware answered instead — and storing
+        // redirect can only mean the proxy answered instead — and storing
         // the sign-in page as, say, the SDK's worker would last until the SDK
         // version changed. Making `/sw.js`, `/offline` and `/@powersync/`
         // public prefixes is what stops that arising; this is the guard
@@ -171,7 +171,7 @@ const serwist = new Serwist({
       // the network genuinely fails.
       //
       // Only a 200 is cached. A navigation request carries `redirect:
-      // 'manual'`, so the middleware's redirect to `/welcome` arrives as an
+      // 'manual'`, so the proxy's redirect to `/welcome` arrives as an
       // opaque redirect (status 0) — passed straight back to the browser to
       // follow, and never stored as if it were the page.
       handler: new NetworkFirst({
