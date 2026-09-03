@@ -14,6 +14,7 @@ A full deployment runs:
 | Component | Artifact | Source of truth |
 | --- | --- | --- |
 | Web | Container image `ghcr.io/jtoniolo/rv-checklist-web:X.Y.Z` | `apps/web/Dockerfile`, published by `cd.yml` |
+| Web chart | `oci://ghcr.io/jtoniolo/charts/rv-checklist-web` version `X.Y.Z` | `charts/web/` ([README](../charts/web/README.md)) |
 | API | Container image `ghcr.io/jtoniolo/rv-checklist-api:X.Y.Z` | `apps/api/Dockerfile`, published by `cd.yml` |
 | API chart | `oci://ghcr.io/jtoniolo/charts/rv-checklist-api` version `X.Y.Z` | `charts/api/` ([README](../charts/api/README.md)) |
 | Database | Postgres; the app runs its TypeORM migrations at startup | `libs/api/data-access` migrations |
@@ -23,19 +24,34 @@ A full deployment runs:
 
 ## Release contract
 
-A git tag `vX.Y.Z` produces the images and charts at the same version; chart
-`X.Y.Z` always deploys image `X.Y.Z` — they cannot disagree. The deploying
-repository pins a release tag and consumes the published images and charts.
+A git tag `vX.Y.Z` produces four artifacts at the same version: the web image,
+the web chart, the API image, and the API chart. A chart `X.Y.Z` always deploys
+image `X.Y.Z`, so the two cannot disagree. The deploying repository pins a
+release tag and consumes the published image and chart for each tier
+(ADR-0031).
 
 ## Web
 
-The web app builds as a Next.js standalone server and ships as one
-environment-blind container image, `ghcr.io/jtoniolo/rv-checklist-web:X.Y.Z`,
-published by `cd.yml` from `apps/web/Dockerfile`. Build it from the repo root:
+The web tier runs in k3s, the same as the API. It leaves the Cloudflare Worker
+and OpenNext (ADR-0031). The web app builds as a Next.js standalone server and
+ships as one environment-blind container image,
+`ghcr.io/jtoniolo/rv-checklist-web:X.Y.Z`, published by `cd.yml` from
+`apps/web/Dockerfile`: a build stage on the current Node LTS, then a distroless
+runtime stage, the same shape as the API image. Build it from the repo root:
 
 ```sh
 docker build -f apps/web/Dockerfile -t rv-checklist-web .
 ```
+
+The proxy runs inside that container on the Node runtime. It protects the
+signed-in routes and refreshes a near-expiry token. It is no longer at the edge
+(ADR-0018, amended by ADR-0031).
+
+`charts/web/` is the deployment contract for the tier ([README](../charts/web/README.md)).
+The Deployment listens on container port 3000, and the ClusterIP Service resolves
+`targetPort: http` through it, so the Service is reachable inside the cluster on
+port 3000. A readiness probe and a liveness probe run on `/healthz`. The web pod
+holds no secret, so the chart has no `existingSecret`.
 
 The image build runs the deployment's `pnpm install`, and that install is part
 of the build, not setup that happens to come first: `apps/web` copies the
@@ -44,18 +60,21 @@ PowerSync SDK's worker and wasm into `apps/web/public/@powersync/` from its
 — ADR-0029, decision 8). The build copies `public/` beside the standalone
 server, and the browser loads the worker from `/@powersync/worker.js` at
 runtime. The Dockerfile installs with scripts enabled for this reason;
-installing with `--ignore-scripts` would ship a worker-less bundle: every page
+installing with `--ignore-scripts` would ship a worker-less image: every page
 still renders and every read still reaches the API, but the local store never
 opens and offline reads do not work.
 
 One image serves every environment (ADR-0020). The build reads no public value.
-The container reads these from its own environment at run time, and the server
-hands the two public values to the browser in an inline script:
+The container reads these three from its own environment at run time, and the
+server hands the two public values to the browser in an inline script. The chart
+declares all three under `config`, and it refuses to render when one is missing
+or a localhost value:
 
-- `PUBLIC_API_BASE_URL` — public API origin, e.g. `https://api.example.com/api`
-- `GOOGLE_CLIENT_ID` — Google OAuth client id, the same one the API verifies
-- `API_BASE_URL` — server-only internal API address for SSR fetches; optional,
-  and the server falls back to `PUBLIC_API_BASE_URL` when it is unset
+- `PUBLIC_API_BASE_URL` — the public API origin that the browser calls (example:
+  `https://api.example.com`)
+- `GOOGLE_CLIENT_ID` — the Google OAuth client id, the same one the API verifies
+- `API_BASE_URL` — the address of the API Service inside the cluster, which the
+  server calls for SSR fetches
 
 The runtime stage is `gcr.io/distroless/nodejs24-debian13:nonroot`, listens on
 port 3000 (`PORT=3000`, `HOSTNAME=0.0.0.0`), and starts the standalone server
@@ -68,6 +87,17 @@ the image build runs it, so the compiled worker ships with the rest of
 deploys no worker, and the app then works only while online. Its
 `max-age=0, must-revalidate` response header comes from `headers()` in the Next
 config — nothing extra to configure.
+
+### Cutover
+
+The move is a hard cutover (ADR-0031). The hostnames do not change, so the API's
+`WEB_ORIGIN` and `COOKIE_DOMAIN` stay as they are. The deployer:
+
+1. Installs the web chart, with the API Service address inside the cluster as
+   `config.API_BASE_URL`, the public API origin as `config.PUBLIC_API_BASE_URL`,
+   and the Google OAuth client id as `config.GOOGLE_CLIENT_ID`.
+2. Adds a tunnel route from the web hostname to the web Service on port 3000.
+3. Deletes the Worker, its custom domain, and the wrangler CI job.
 
 ## API
 

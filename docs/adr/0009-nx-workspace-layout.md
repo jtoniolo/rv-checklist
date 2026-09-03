@@ -9,6 +9,11 @@ Accepted.
 This ADR builds the stack that the Notes on the map name. ADR-0001 constrains it,
 because the web SSR operates on a Cloudflare Worker.
 
+[ADR-0031](0031-web-tier-to-k3s-container.md) amends the web build target: the
+web app builds a Next.js standalone Node server for a container in k3s, not a
+Worker bundle with OpenNext. The edge-safety constraint on the modules that the
+web app imports no longer applies.
+
 ## Context
 
 Before we make the first code, the monorepo needs a fixed shape. We must decide

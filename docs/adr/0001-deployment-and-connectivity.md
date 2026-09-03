@@ -6,7 +6,9 @@ Date: 2026-07-16
 
 [ADR-0018](0018-true-hybrid-ssr-web-architecture.md) supersedes the web tier and
 the data path. [ADR-0020](0020-public-repo-deployment-split.md) supersedes the
-structure.
+structure. [ADR-0031](0031-web-tier-to-k3s-container.md) supersedes the web-tier
+host: the web tier leaves the Cloudflare Worker and runs as a container in k3s
+behind the Cloudflare Tunnel, the same as the API.
 
 ## Context
 

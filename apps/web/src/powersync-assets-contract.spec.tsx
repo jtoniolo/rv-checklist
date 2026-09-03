@@ -70,7 +70,7 @@ describe('powersync worker assets', () => {
       deployment.indexOf('\n## API'),
     );
 
-    expect(web).toContain('pnpm install');
+    expect(web).toContain('postinstall');
     expect(web).toContain('@powersync');
   });
 });
