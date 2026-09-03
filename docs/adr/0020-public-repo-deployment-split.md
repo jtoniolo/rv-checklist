@@ -8,6 +8,11 @@ Accepted
 
 Supersedes [ADR-0001](0001-deployment-and-connectivity.md) (topology).
 
+[ADR-0031](0031-web-tier-to-k3s-container.md) supersedes the web build target:
+the web tier builds one environment-blind container image for k3s, not a Worker
+built with OpenNext and uploaded with wrangler. The public and private split of
+this ADR stays.
+
 ## Context
 
 The owner intends to publish this repo as a portfolio piece. ADR-0001 described

@@ -38,6 +38,10 @@ replacement ADR. That work starts after issues
 [#163](https://github.com/jtoniolo/rv-checklist/issues/163) decide the router, the
 path that serves the pages, and the root route.
 
+[ADR-0031](0031-web-tier-to-k3s-container.md) amends the edge middleware note:
+the middleware becomes `proxy.ts` on the Node runtime in a container in k3s, not
+code on the edge runtime. The route guard and the token refresh do not change.
+
 ## Context
 
 ADR-0001 named the web tier "SSR on a Cloudflare Worker". But the application that

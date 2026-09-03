@@ -105,6 +105,6 @@ describe('service worker build wiring', () => {
     );
 
     expect(web).toContain('sw.js');
-    expect(web).toContain('_headers');
+    expect(web).toContain('apps/web/sw/');
   });
 });
