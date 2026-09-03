@@ -64,10 +64,7 @@ describe('powersync worker assets', () => {
   });
 
   it('documents the install as part of the deployment’s web build', () => {
-    const deployment = readFileSync(
-      path.join(repoRoot, 'docs/deployment.md'),
-      'utf8',
-    );
+    const deployment = read('docs/deployment.md');
     const web = deployment.slice(
       deployment.indexOf('\n## Web'),
       deployment.indexOf('\n## API'),
