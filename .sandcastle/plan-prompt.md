@@ -46,7 +46,20 @@ record. Add your own edges on top of it.
 An issue is **unblocked** when it has zero blocking dependencies on other open
 issues.
 
-For each unblocked issue, make a branch name in the exact format
+# LIMIT
+
+Return **three issues or fewer**. This is a hard limit.
+
+Each issue gets its own Docker sandbox, and each sandbox runs an agent, a full
+dependency install, and the test suite. The host does not have the power for
+more than three at one time.
+
+If more than three issues are unblocked, keep the three issues that unblock the
+most other work. An issue that blocks another open issue comes first. The
+remaining issues wait for the next cycle, and the loop picks them up after the
+merge.
+
+For each issue that you keep, make a branch name in the exact format
 `sandcastle/issue-{id}`. Do not add a slug and do not add a suffix. The name
 must be deterministic, so that a second plan for the same issue gives the same
 branch name and keeps the earlier work.
@@ -59,8 +72,9 @@ Write your plan as a JSON object inside `<plan>` tags:
 {"issues": [{"id": "42", "title": "Fix auth bug", "branch": "sandcastle/issue-42"}]}
 </plan>
 
-Include only unblocked issues. If every issue is blocked, include the one
-candidate with the fewest or the weakest dependencies.
+Include only unblocked issues, and include three issues or fewer. If every
+issue is blocked, include the one candidate with the fewest or the weakest
+dependencies.
 
 Always write the `<plan>` tags, also when there is no work. If there is no
 issue to work on, write `<plan>{"issues": []}</plan>`. The run then exits.

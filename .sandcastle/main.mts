@@ -41,6 +41,14 @@ const planSchema = z.object({
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
 
+// Maximum number of issues to work at one time. Each issue gets its own Docker
+// sandbox, its own dependency install, and its own test run. This host does not
+// have the power for more than three.
+//
+// The plan prompt states the same limit. This constant enforces it, in case the
+// planner returns more.
+const MAX_PARALLEL = 3;
+
 // Hooks run inside the sandbox after the sandbox starts.
 //
 // Only the implementer and the reviewer use this hook. Each of them gets a
@@ -92,7 +100,18 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
     output: sandcastle.Output.object({ tag: "plan", schema: planSchema }),
   });
 
-  const issues = plan.output.issues;
+  const planned = plan.output.issues;
+  const issues = planned.slice(0, MAX_PARALLEL);
+
+  if (planned.length > issues.length) {
+    console.warn(
+      `Planner returned ${planned.length} issue(s). The limit is ${MAX_PARALLEL}. ` +
+        `Deferring: ${planned
+          .slice(MAX_PARALLEL)
+          .map((i) => i.id)
+          .join(", ")}`,
+    );
+  }
 
   if (issues.length === 0) {
     // No unblocked work — either everything is done or everything is blocked.
