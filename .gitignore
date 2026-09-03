@@ -84,3 +84,4 @@ tsconfig.tsbuildinfo
 # precache manifest describes one specific build's output, so a committed copy
 # could only ever be wrong.
 /apps/web/public/sw.js
+.pnpm-store/v11/index.db
