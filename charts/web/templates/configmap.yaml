@@ -1,8 +1,8 @@
-{{- if not .Values.config.GOOGLE_CLIENT_ID }}
-{{- fail "config.GOOGLE_CLIENT_ID is required. Set it to the Google OAuth client id the web app ships to the browser — the same id the API verifies against. It is not a secret. Left empty, One Tap sign-in cannot start." }}
-{{- end }}
 {{- if or (not .Values.config.PUBLIC_API_BASE_URL) (contains "localhost" .Values.config.PUBLIC_API_BASE_URL) }}
 {{- fail "config.PUBLIC_API_BASE_URL is required and must be the public API origin the browser calls (example: https://api.example.com), not a localhost value. The browser cannot reach a cluster-internal address, so a localhost value breaks every real client." }}
+{{- end }}
+{{- if not .Values.config.GOOGLE_CLIENT_ID }}
+{{- fail "config.GOOGLE_CLIENT_ID is required. Set it to the Google OAuth client id the web app ships to the browser — the same id the API verifies against. It is not a secret. Left empty, One Tap sign-in cannot start." }}
 {{- end }}
 {{- if or (not .Values.config.API_BASE_URL) (contains "localhost" .Values.config.API_BASE_URL) }}
 {{- fail "config.API_BASE_URL is required and must be the address of the API Service inside the cluster (example: http://rv-checklist-api:3000), not a localhost value. The server calls the API through this address, so a localhost value points the server at itself." }}
