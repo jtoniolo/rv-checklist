@@ -479,7 +479,7 @@ _Avoid_: error banner (offline is a mode, not a failure)
 The banner in the application that appears when the token refresh of the sync
 layer cannot authenticate. The sync layer has its own token refresh, because
 background sync has no page navigation that can carry the silent refresh of the
-edge middleware.
+proxy.
 
 There are two causes:
 
