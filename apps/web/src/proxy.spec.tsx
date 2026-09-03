@@ -1,6 +1,6 @@
 /**
- * Middleware seam tests: pure request-in/response-out. No server, no browser —
- * we construct NextRequest objects, call `middleware()`, and assert the
+ * Proxy seam tests: pure request-in/response-out. No server, no browser —
+ * we construct NextRequest objects, call `proxy()`, and assert the
  * NextResponse. Covers:
  *   - public paths pass through
  *   - guarded paths without a session redirect to /welcome with returnTo
@@ -19,9 +19,9 @@ function fakeJwt(exp: number): string {
   return `${header}.${payload}.fake-sig`;
 }
 
-async function loadMiddleware(): Promise<typeof import('./middleware')> {
+async function loadProxy(): Promise<typeof import('./proxy')> {
   jest.resetModules();
-  return import('./middleware');
+  return import('./proxy');
 }
 
 function makeRequest(
@@ -44,11 +44,11 @@ function locationOf(res: Response): URL {
   return new URL(raw);
 }
 
-describe('edge middleware', () => {
+describe('proxy', () => {
   let fetchSpy: jest.SpiedFunction<typeof globalThis.fetch>;
 
   beforeEach(() => {
-    // The middleware reads the API base URL from the process env at request
+    // The proxy reads the API base URL from the process env at request
     // time (ADR-0020); with `API_BASE_URL` unset it falls back to the public
     // `PUBLIC_API_BASE_URL`.
     (process.env as Record<string, string>)['PUBLIC_API_BASE_URL'] =
@@ -64,6 +64,7 @@ describe('edge middleware', () => {
     it.each([
       '/welcome',
       '/welcome?returnTo=/rigs',
+      '/healthz',
       '/_next/static/chunk.js',
       '/manifest.webmanifest',
       '/icons/icon-192.png',
@@ -73,8 +74,8 @@ describe('edge middleware', () => {
       '/@powersync/worker.js',
       '/@powersync/assets/wa-sqlite-async.wasm',
     ])('%s', async (path) => {
-      const { middleware } = await loadMiddleware();
-      const res = await middleware(makeRequest(path));
+      const { proxy } = await loadProxy();
+      const res = await proxy(makeRequest(path));
       expect(res.status).toBe(200);
       expect(res.headers.get('location')).toBeNull();
     });
@@ -82,8 +83,8 @@ describe('edge middleware', () => {
 
   describe('redirect to welcome', () => {
     it('redirects to /welcome with returnTo when no access cookie', async () => {
-      const { middleware } = await loadMiddleware();
-      const res = await middleware(makeRequest('/rigs/123'));
+      const { proxy } = await loadProxy();
+      const res = await proxy(makeRequest('/rigs/123'));
       expect(res.status).toBe(307);
       const location = locationOf(res);
       expect(location.pathname).toBe('/welcome');
@@ -91,8 +92,8 @@ describe('edge middleware', () => {
     });
 
     it('preserves the returnTo path for the root route', async () => {
-      const { middleware } = await loadMiddleware();
-      const res = await middleware(makeRequest('/'));
+      const { proxy } = await loadProxy();
+      const res = await proxy(makeRequest('/'));
       expect(res.status).toBe(307);
       const location = locationOf(res);
       expect(location.searchParams.get('returnTo')).toBe('/');
@@ -101,10 +102,10 @@ describe('edge middleware', () => {
 
   describe('valid session passes through', () => {
     it('allows a request with a non-expired access token', async () => {
-      const { middleware } = await loadMiddleware();
+      const { proxy } = await loadProxy();
       const futureExp = Math.floor(Date.now() / 1000) + 600;
       const req = makeRequest('/rigs', { 'rv.access': fakeJwt(futureExp) });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(200);
       expect(res.headers.get('location')).toBeNull();
     });
@@ -112,7 +113,7 @@ describe('edge middleware', () => {
 
   describe('silent refresh', () => {
     it('refreshes near-expiry tokens and forwards Set-Cookie', async () => {
-      const { middleware } = await loadMiddleware();
+      const { proxy } = await loadProxy();
       const nearExp = Math.floor(Date.now() / 1000) + 30;
       const req = makeRequest('/rigs', {
         'rv.access': fakeJwt(nearExp),
@@ -131,7 +132,7 @@ describe('edge middleware', () => {
         },
       } as unknown as Response);
 
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(200);
       expect(res.headers.getSetCookie()).toContain(mockCookieHeader);
 
@@ -141,8 +142,34 @@ describe('edge middleware', () => {
       );
     });
 
+    it('sends the refresh to the internal API_BASE_URL when it is set', async () => {
+      (process.env as Record<string, string>)['API_BASE_URL'] =
+        'https://internal.test/api';
+      try {
+        const { proxy } = await loadProxy();
+        const nearExp = Math.floor(Date.now() / 1000) + 30;
+        const req = makeRequest('/rigs', {
+          'rv.access': fakeJwt(nearExp),
+          'rv.refresh': 'opaque-refresh-value',
+        });
+
+        fetchSpy.mockResolvedValue({
+          ok: true,
+          headers: { getSetCookie: () => [] },
+        } as unknown as Response);
+
+        await proxy(req);
+        expect(fetchSpy).toHaveBeenCalledWith(
+          'https://internal.test/api/auth/refresh',
+          expect.objectContaining({ method: 'POST' }),
+        );
+      } finally {
+        delete (process.env as Record<string, string>)['API_BASE_URL'];
+      }
+    });
+
     it('refreshes when the access cookie is gone but a refresh cookie remains', async () => {
-      const { middleware } = await loadMiddleware();
+      const { proxy } = await loadProxy();
       const req = makeRequest('/rigs', {
         'rv.refresh': 'opaque-refresh-value',
       });
@@ -159,7 +186,7 @@ describe('edge middleware', () => {
         },
       } as unknown as Response);
 
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(200);
       expect(res.headers.getSetCookie()).toContain(mockCookieHeader);
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -169,7 +196,7 @@ describe('edge middleware', () => {
     });
 
     it('redirects to welcome when refresh fails', async () => {
-      const { middleware } = await loadMiddleware();
+      const { proxy } = await loadProxy();
       const nearExp = Math.floor(Date.now() / 1000) + 30;
       const req = makeRequest('/rigs', {
         'rv.access': fakeJwt(nearExp),
@@ -182,13 +209,13 @@ describe('edge middleware', () => {
         headers: { getSetCookie: () => [] },
       } as unknown as Response);
 
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(307);
       expect(locationOf(res).pathname).toBe('/welcome');
     });
 
     it('passes through if refresh throws (network error)', async () => {
-      const { middleware } = await loadMiddleware();
+      const { proxy } = await loadProxy();
       const nearExp = Math.floor(Date.now() / 1000) + 30;
       const req = makeRequest('/rigs', {
         'rv.access': fakeJwt(nearExp),
@@ -197,16 +224,16 @@ describe('edge middleware', () => {
 
       fetchSpy.mockRejectedValue(new Error('network down'));
 
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(200);
     });
 
     it('skips refresh if no refresh cookie even when near expiry', async () => {
-      const { middleware } = await loadMiddleware();
+      const { proxy } = await loadProxy();
       const nearExp = Math.floor(Date.now() / 1000) + 30;
       const req = makeRequest('/rigs', { 'rv.access': fakeJwt(nearExp) });
 
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(200);
       expect(fetchSpy).not.toHaveBeenCalled();
     });

@@ -10,7 +10,7 @@ import { useEffect, type JSX } from 'react';
 import { GoogleOneTap } from '../google-one-tap';
 
 /**
- * The signed-out welcome surface. Edge middleware redirects unauthenticated
+ * The signed-out welcome surface. The proxy redirects unauthenticated
  * requests here with `?returnTo=<original-path>`. Once the owner signs in
  * (via Google One Tap), the auth slice flips and this component navigates to
  * the preserved URL.
