@@ -1,0 +1,51 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/jtoniolo/rv-checklist-web
+  # Leave empty. The chart resolves its own image from `appVersion` in
+  # Chart.yaml, so the chart and the image it deploys can never disagree.
+  # Override only to pin a `sha-<short>` build while debugging.
+  tag: ""
+  # Safe because published tags are immutable — every publish is a distinct
+  # `X.Y.Z`, so there is never a stale cached layer under the same name.
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Non-secret environment variables (rendered into a ConfigMap).
+#
+# The web pod holds no secret. There is no `existingSecret` and no `secretKeys`.
+# The three values below are the whole contract with the runtime-config ticket
+# and the proxy ticket, so the names are exact.
+#
+# PORT is deliberately absent: `containerPort` is a fixed 3000 and the Service
+# resolves `targetPort: http` through it, so a configurable listen port would
+# only ever point the Service at a dead port. A per-pod port is meaningless in
+# Kubernetes anyway — every pod has its own IP. The app's own default applies.
+config:
+  # Required — rendering fails without it, and fails on a localhost value. The
+  # public API origin that the browser calls (example: https://api.example.com).
+  # The browser cannot reach a cluster-internal address, so the chart refuses to
+  # ship a localhost value.
+  PUBLIC_API_BASE_URL: ""
+  # Required — rendering fails without it. The Google OAuth client id. Not a
+  # secret: the browser receives the same id. It must match the API's
+  # GOOGLE_CLIENT_ID.
+  GOOGLE_CLIENT_ID: ""
+  # Required — rendering fails without it, and fails on a localhost value. The
+  # address of the API Service inside the cluster (example:
+  # http://rv-checklist-api:3000). The server calls the API through this
+  # address, so a localhost value points the server at itself.
+  API_BASE_URL: ""
+
+service:
+  type: ClusterIP
+  port: 3000
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
