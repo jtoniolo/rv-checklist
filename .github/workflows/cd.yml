@@ -1,12 +1,14 @@
-# CD (#47, #48) — publish the API image and Helm chart to GHCR for one release.
+# CD (#47, #48, #172) — publish four artifacts to GHCR for one release.
 #
-# A release is a git tag. Bump `version`/`appVersion` in charts/api/Chart.yaml,
-# commit, tag `vX.Y.Z`, then dispatch this workflow against that tag:
-# Actions → CD → Run workflow → Tags → vX.Y.Z.
+# A release is a git tag. One tag `vX.Y.Z` makes four artifacts at one version:
+# the API image, the API chart, the web image, and the web chart. Bump
+# `version`/`appVersion` in charts/api/Chart.yaml and charts/web/Chart.yaml in
+# the same commit, tag `vX.Y.Z` on it, then dispatch this workflow against that
+# tag: Actions → CD → Run workflow → Tags → vX.Y.Z.
 #
 # The version comes from the tag, never from a run number, so every published
 # artifact traces back to a commit and `git checkout vX.Y.Z && helm package
-# charts/api` reproduces the published chart byte for byte.
+# charts/api` (or charts/web) reproduces the published chart byte for byte.
 #
 # Uses the built-in GITHUB_TOKEN with packages:write — no extra secrets.
 name: CD
@@ -19,7 +21,8 @@ permissions:
   packages: write
 
 env:
-  IMAGE: ghcr.io/jtoniolo/rv-checklist-api
+  API_IMAGE: ghcr.io/jtoniolo/rv-checklist-api
+  WEB_IMAGE: ghcr.io/jtoniolo/rv-checklist-web
 
 jobs:
   publish:
@@ -28,7 +31,8 @@ jobs:
       - uses: actions/checkout@v4
 
       # Fails before anything is published, so a bad dispatch leaves no trace
-      # in the registry.
+      # in the registry. The guard reads both charts, so one tag that disagrees
+      # with either chart stops the whole run.
       - name: Resolve version from the tag
         id: version
         # The ref reaches the shell through env, never through `${{ }}`
@@ -46,20 +50,30 @@ jobs:
           fi
 
           version="${GITHUB_REF_NAME#v}"
-          chart_version="$(awk '/^version:/ {print $2}' charts/api/Chart.yaml | tr -d '"')"
-          chart_app_version="$(awk '/^appVersion:/ {print $2}' charts/api/Chart.yaml | tr -d '"')"
 
-          if [ "$version" != "$chart_version" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} means version ${version}, but charts/api/Chart.yaml has version ${chart_version}. The tag was cut without the version bump."
-            exit 1
-          fi
+          # Check one chart against the tag. Both charts move together, so this
+          # runs once per chart and each message names the chart it read — the
+          # failure points straight at the file to fix. appVersion is what the
+          # Deployment resolves its image tag from, so a drift there would
+          # publish a chart that pulls a different image than this run builds.
+          check_chart() {
+            chart_file="$1"
+            chart_version="$(awk '/^version:/ {print $2}' "$chart_file" | tr -d '"')"
+            chart_app_version="$(awk '/^appVersion:/ {print $2}' "$chart_file" | tr -d '"')"
 
-          # appVersion is what the Deployment resolves its image tag from, so a
-          # drift here would publish a chart that pulls a different image.
-          if [ "$version" != "$chart_app_version" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} means version ${version}, but charts/api/Chart.yaml has appVersion ${chart_app_version}. The chart would deploy an image other than the one this run builds."
-            exit 1
-          fi
+            if [ "$version" != "$chart_version" ]; then
+              echo "::error::Tag ${GITHUB_REF_NAME} means version ${version}, but ${chart_file} has version ${chart_version}. The tag was cut without the version bump."
+              exit 1
+            fi
+
+            if [ "$version" != "$chart_app_version" ]; then
+              echo "::error::Tag ${GITHUB_REF_NAME} means version ${version}, but ${chart_file} has appVersion ${chart_app_version}. The chart would deploy an image other than the one this run builds."
+              exit 1
+            fi
+          }
+
+          check_chart charts/api/Chart.yaml
+          check_chart charts/web/Chart.yaml
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -71,10 +85,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ---- Docker image ----
+      # ---- Docker images ----
       # :X.Y.Z is what the chart pulls and is never overwritten. :sha-<short>
       # pins the exact commit. :latest is a human convenience only — nothing in
-      # the chart reads it.
+      # a chart reads it. The web image and the API image carry the same three
+      # tags, so one release moves both tiers to one version.
       - name: Build and push API image
         uses: docker/build-push-action@v6
         with:
@@ -82,21 +97,38 @@ jobs:
           file: apps/api/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE }}:${{ steps.version.outputs.version }}
-            ${{ env.IMAGE }}:sha-${{ steps.version.outputs.sha_short }}
-            ${{ env.IMAGE }}:latest
+            ${{ env.API_IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.API_IMAGE }}:sha-${{ steps.version.outputs.sha_short }}
+            ${{ env.API_IMAGE }}:latest
 
-      # ---- Helm chart ----
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.WEB_IMAGE }}:sha-${{ steps.version.outputs.sha_short }}
+            ${{ env.WEB_IMAGE }}:latest
+
+      # ---- Helm charts ----
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      # No --version/--app-version: the version is committed state in
-      # Chart.yaml, already checked against the tag above.
-      - name: Package chart
-        run: helm package charts/api --destination .helm-out
+      # No --version/--app-version: the version is committed state in each
+      # Chart.yaml, already checked against the tag above. Both charts publish
+      # to the same OCI registry, one tgz each.
+      - name: Package charts
+        run: |
+          helm package charts/api --destination .helm-out
+          helm package charts/web --destination .helm-out
 
-      - name: Push chart to GHCR
+      - name: Push charts to GHCR
         run: |
           helm push \
             ".helm-out/rv-checklist-api-${{ steps.version.outputs.version }}.tgz" \
+            oci://ghcr.io/jtoniolo/charts
+          helm push \
+            ".helm-out/rv-checklist-web-${{ steps.version.outputs.version }}.tgz" \
             oci://ghcr.io/jtoniolo/charts

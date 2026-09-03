@@ -7,8 +7,9 @@ disable-model-invocation: true
 # Release
 
 A release is a **git tag**. CD reads the version from the tag that you dispatch
-it against. If that tag does not agree with `charts/api/Chart.yaml`, CD refuses
-to publish. The drift guard in `.github/workflows/cd.yml` does this check.
+it against. If that tag does not agree with `charts/api/Chart.yaml` or
+`charts/web/Chart.yaml`, CD refuses to publish. The drift guard in
+`.github/workflows/cd.yml` checks both charts.
 
 A person who makes the tag manually does a sequence of steps. It is easy to do
 only a part of that sequence. You can change the version and forget the tag. You
@@ -66,7 +67,7 @@ the checks **before you change a file**.
 | The branch is `main` | `git rev-parse --abbrev-ref HEAD` prints `main` |
 | The working tree has no changes | `git status --porcelain` prints nothing |
 | The branch agrees with the remote | `git rev-parse HEAD` equals `git rev-parse origin/main` |
-| The chart passes lint | `helm lint charts/api` exits with `0` |
+| Both charts pass lint | `helm lint charts/api` and `helm lint charts/web` each exit with `0` |
 | CI passed on `HEAD` | See the paragraph below the table |
 | The tag does not exist locally | `git rev-parse -q --verify "refs/tags/v$V"` fails |
 | The tag does not exist on the remote | `git ls-remote --tags origin "refs/tags/v$V"` prints nothing |
@@ -95,46 +96,52 @@ tag to remove.
 
 ## 3. Change the version
 
-Five values are in four files. Set all five to the same `X.Y.Z` value. Then no
+Seven values are in five files. Set all seven to the same `X.Y.Z` value. Then no
 release needs a decision about which package changed.
 
 - `charts/api/Chart.yaml`: `version: X.Y.Z` and `appVersion: "X.Y.Z"`. Keep the
+  quotation marks on `appVersion`.
+- `charts/web/Chart.yaml`: `version: X.Y.Z` and `appVersion: "X.Y.Z"`. Keep the
   quotation marks on `appVersion`.
 - `package.json`: `"version": "X.Y.Z"`
 - `apps/api/package.json`: the same value.
 - `apps/web/package.json`: the same value.
 
-Then check **all five** values. The guard downstream checks only the two values
-in the chart. Thus CD does not find an incorrect `package.json` file.
+Then check **all seven** values. The guard downstream checks only the four values
+in the two charts. Thus CD does not find an incorrect `package.json` file.
 
 ```bash
 awk '/^version:/ {print $2}' charts/api/Chart.yaml | tr -d '"'
 awk '/^appVersion:/ {print $2}' charts/api/Chart.yaml | tr -d '"'
+awk '/^version:/ {print $2}' charts/web/Chart.yaml | tr -d '"'
+awk '/^appVersion:/ {print $2}' charts/web/Chart.yaml | tr -d '"'
 grep -m1 '"version"' package.json apps/api/package.json apps/web/package.json
 ```
 
-Each line must print `X.Y.Z`. The first two commands are the same commands that
-the drift guard of CD uses. If they pass here, the guard passes later. This check
-occurs before the tag exists, and the guard occurs after you dispatch CD.
+Each line must print `X.Y.Z`. The first four commands are the same commands that
+the drift guard of CD uses on each chart. If they pass here, the guard passes
+later. This check occurs before the tag exists, and the guard occurs after you
+dispatch CD.
 
-Preflight already checked the chart with lint. You then changed the chart. Thus
-check it again:
+Preflight already checked both charts with lint. You then changed both charts.
+Thus check them again:
 
 ```bash
 helm lint charts/api
+helm lint charts/web
 ```
 
 A failure here is still recoverable. Nothing is committed. This command returns
 the tree to the state that preflight approved:
 
 ```bash
-git restore charts/api/Chart.yaml package.json apps/api/package.json apps/web/package.json
+git restore charts/api/Chart.yaml charts/web/Chart.yaml package.json apps/api/package.json apps/web/package.json
 ```
 
 ## 4. Commit, tag, and push
 
 ```bash
-git commit charts/api/Chart.yaml package.json apps/api/package.json apps/web/package.json -m "Release vX.Y.Z"
+git commit charts/api/Chart.yaml charts/web/Chart.yaml package.json apps/api/package.json apps/web/package.json -m "Release vX.Y.Z"
 git tag -a "vX.Y.Z" -m "vX.Y.Z"
 git push origin main
 git push origin "vX.Y.Z"
@@ -144,7 +151,7 @@ Make the commit before the tag. Push the commit before the tag. The tag then
 always points to a commit that the remote has.
 
 **Recovery condition.** After step 3, run `git status --porcelain`. If it prints
-nothing, all five values already held `X.Y.Z`, and there is nothing to commit. Do
+nothing, all seven values already held `X.Y.Z`, and there is nothing to commit. Do
 not make a commit. Make the tag on `HEAD`, because `HEAD` already holds the
 version change. This is the purpose of the equal target version.
 
