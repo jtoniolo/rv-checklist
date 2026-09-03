@@ -13,7 +13,7 @@ A full deployment runs:
 
 | Component | Artifact | Source of truth |
 | --- | --- | --- |
-| Web | Cloudflare Worker built with OpenNext | `apps/web/wrangler.jsonc` (environment-blind) |
+| Web | Container image `ghcr.io/jtoniolo/rv-checklist-web:X.Y.Z` | `apps/web/Dockerfile`, published by `cd.yml` |
 | API | Container image `ghcr.io/jtoniolo/rv-checklist-api:X.Y.Z` | `apps/api/Dockerfile`, published by `cd.yml` |
 | API chart | `oci://ghcr.io/jtoniolo/charts/rv-checklist-api` version `X.Y.Z` | `charts/api/` ([README](../charts/api/README.md)) |
 | Database | Postgres; the app runs its TypeORM migrations at startup | `libs/api/data-access` migrations |
@@ -23,57 +23,51 @@ A full deployment runs:
 
 ## Release contract
 
-A git tag `vX.Y.Z` produces image and chart at the same version; chart `X.Y.Z`
-always deploys image `X.Y.Z` — they cannot disagree. The deploying repository
-pins a release tag: it checks out this repo at that tag for the web build and
-consumes the published image/chart for the API.
+A git tag `vX.Y.Z` produces the images and charts at the same version; chart
+`X.Y.Z` always deploys image `X.Y.Z` — they cannot disagree. The deploying
+repository pins a release tag and consumes the published images and charts.
 
 ## Web
 
-Build and deploy, with the deployer supplying every environment-specific value
-via CI variables and its own wrangler config:
+The web app builds as a Next.js standalone server and ships as one
+environment-blind container image, `ghcr.io/jtoniolo/rv-checklist-web:X.Y.Z`,
+published by `cd.yml` from `apps/web/Dockerfile`. Build it from the repo root:
 
 ```sh
-pnpm install --frozen-lockfile
-npx opennextjs-cloudflare build
-npx wrangler deploy --config apps/web/<deployer-config>.jsonc
+docker build -f apps/web/Dockerfile -t rv-checklist-web .
 ```
 
-The install is part of the build, not setup that happens to come first: `apps/web`
-copies the PowerSync SDK's worker and wasm into `apps/web/public/@powersync/`
-from its `postinstall` (they are gitignored, and they belong to the installed
-SDK version — ADR-0029, decision 8). OpenNext deploys `public/` as
-`.open-next/assets`, and the browser loads the worker from `/@powersync/worker.js`
-at runtime. Installing with `--ignore-scripts` therefore ships a worker-less
-bundle: every page still renders and every read still reaches the API, but the
-local store never opens and offline reads do not work — the browser console
-carries one warning per page saying so.
+The image build runs the deployment's `pnpm install`, and that install is part
+of the build, not setup that happens to come first: `apps/web` copies the
+PowerSync SDK's worker and wasm into `apps/web/public/@powersync/` from its
+`postinstall` (they are gitignored, and they belong to the installed SDK version
+— ADR-0029, decision 8). The build copies `public/` beside the standalone
+server, and the browser loads the worker from `/@powersync/worker.js` at
+runtime. The Dockerfile installs with scripts enabled for this reason;
+installing with `--ignore-scripts` would ship a worker-less bundle: every page
+still renders and every read still reaches the API, but the local store never
+opens and offline reads do not work.
 
-The worker name fits on the command line (`--name`), but routes and custom
-domains have no wrangler CLI flag — they can only come from a config file. The
-deployer therefore keeps its own environment-specific wrangler config (name,
-routes/custom domains) and places it next to `apps/web/wrangler.jsonc` before
-deploying: wrangler resolves `main` and `assets.directory` relative to the
-config file, so the paths from the environment-blind config only work from
-that directory.
-
-One image serves every environment (ADR-0020). The build reads no public
-value. The container reads these from its own environment at run time, and the
-server hands the two public values to the browser in an inline script:
+One image serves every environment (ADR-0020). The build reads no public value.
+The container reads these from its own environment at run time, and the server
+hands the two public values to the browser in an inline script:
 
 - `PUBLIC_API_BASE_URL` — public API origin, e.g. `https://api.example.com/api`
 - `GOOGLE_CLIENT_ID` — Google OAuth client id, the same one the API verifies
 - `API_BASE_URL` — server-only internal API address for SSR fetches; optional,
   and the server falls back to `PUBLIC_API_BASE_URL` when it is unset
 
-DNS belongs to the deployer.
+The runtime stage is `gcr.io/distroless/nodejs24-debian13:nonroot`, listens on
+port 3000 (`PORT=3000`, `HOSTNAME=0.0.0.0`), and starts the standalone server
+file with no `RUN` instruction. DNS and routing belong to the deployer.
 
-The service worker is a build output too. `npx opennextjs-cloudflare build`
-compiles `apps/web/sw/` into `apps/web/public/sw.js` after the Next build
-(ADR-0028) and ships it with the rest of `public/`; the file is gitignored, so a
-build that reaches Next some other way deploys no worker, and the app then works
-only while online. Its `max-age=0, must-revalidate` response headers are already
-declared in `public/_headers` — nothing extra to configure.
+The service worker is a build output too. The `build-sw` target compiles
+`apps/web/sw/` into `apps/web/public/sw.js` after the Next build (ADR-0028), and
+the image build runs it, so the compiled worker ships with the rest of
+`public/`; the file is gitignored, so a build that reaches Next some other way
+deploys no worker, and the app then works only while online. Its
+`max-age=0, must-revalidate` response header comes from `headers()` in the Next
+config — nothing extra to configure.
 
 ## API
 

@@ -1,8 +1,0 @@
-/_next/static/*
-  Cache-Control: public,max-age=31536000,immutable
-
-# The service worker is the one file that must never be served stale: a browser
-# holding an old copy keeps an old precache manifest, so a deploy would not
-# reach the device (ADR-0028).
-/sw.js
-  Cache-Control: public,max-age=0,must-revalidate

@@ -26,16 +26,14 @@ describe('service worker build wiring', () => {
     nx: { targets: Record<string, { dependsOn?: string[] }> };
   };
 
-  it('compiles the worker from the deploy’s own build command', () => {
-    // The deploy documented in `docs/deployment.md` runs
-    // `opennextjs-cloudflare build` directly and never goes through Nx, so this
-    // is its only route to the worker. It has to come after the Next build:
-    // the precache manifest describes that build's output.
-    const openNextConfig = read('apps/web/open-next.config.ts');
-    const buildCommand = /buildCommand:\s*"([^"]+)"/.exec(openNextConfig)?.[1];
+  it('compiles the worker in the deploy container’s build', () => {
+    // The deploy documented in `docs/deployment.md` builds the image from
+    // `apps/web/Dockerfile` (issue #171). The build stage runs the `build-sw`
+    // target, which is this build's route to the worker; drop that line and the
+    // image ships no worker, so this assertion fails.
+    const dockerfile = read('apps/web/Dockerfile');
 
-    expect(buildCommand).toBeDefined();
-    expect(buildCommand).toMatch(/next build.*&&.*sw\/build\.mjs/);
+    expect(dockerfile).toMatch(/nx run @rv-checklist\/web:build-sw/);
   });
 
   it('exposes the same compile as a target, so a local build can run it', () => {
@@ -60,12 +58,13 @@ describe('service worker build wiring', () => {
 
   it('serves the worker with headers that let a deploy reach the device', () => {
     // A browser holding a cached `/sw.js` keeps its old precache manifest, so
-    // the update check has to reach the origin every time.
-    const headers = read('apps/web/public/_headers');
-    const swRule = headers.slice(headers.indexOf('/sw.js'));
+    // the update check has to reach the origin every time. The standalone
+    // server sets this from `headers()` in the Next config (issue #171).
+    const config = read('apps/web/next.config.js');
+    const swRule = config.slice(config.indexOf("source: '/sw.js'"));
 
-    expect(swRule).toMatch(/Cache-Control:.*max-age=0/);
-    expect(swRule).toMatch(/Cache-Control:.*must-revalidate/);
+    expect(swRule).toMatch(/max-age=0/);
+    expect(swRule).toMatch(/must-revalidate/);
   });
 
   it('points the fallback at a route that exists', () => {
@@ -105,6 +104,6 @@ describe('service worker build wiring', () => {
     );
 
     expect(web).toContain('sw.js');
-    expect(web).toContain('_headers');
+    expect(web).toContain('build-sw');
   });
 });

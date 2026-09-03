@@ -20,8 +20,6 @@ export default [
   {
     ignores: [
       '.next/**/*',
-      '.open-next/**/*',
-      '.wrangler/**/*',
       // The SDK's prebuilt worker and wasm, copied in by the
       // copy-powersync-assets target (ADR-0029) — not ours to lint.
       'public/@powersync/**/*',
@@ -29,7 +27,6 @@ export default [
       // source, and it is linted.
       'public/sw.js',
       '**/out-tsc',
-      'open-next.config.ts',
     ],
   },
 ];

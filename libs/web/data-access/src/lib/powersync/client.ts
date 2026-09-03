@@ -21,8 +21,9 @@ import { localIndexes, localTables, type LocalTableName } from './tables.js';
  * wasm it loads beside it (`apps/web/public/@powersync/`). Referencing it by
  * URL rather than letting the SDK resolve `new URL('./worker.js',
  * import.meta.url)` keeps the wasm out of the bundler's hands: Turbopack has
- * no wasm handling configured here and OpenNext deploys `public/` as
- * `.open-next/assets`, so a bundled import would have to be solved twice.
+ * no wasm handling configured here, and the deploy container serves `public/`
+ * beside the standalone server, so a bundled import would have to be solved
+ * twice.
  *
  * Both the database worker and the shared sync worker load this same file —
  * the SDK selects a service over the message port.

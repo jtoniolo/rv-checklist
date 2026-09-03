@@ -14,15 +14,12 @@ const REFRESH_COOKIE = 'rv.refresh';
  * expected — and during `install`, a poisoned precache entry or a failed
  * install.
  *
- * On the deployed site this middleware never sees `/sw.js` or `/@powersync/`
- * anyway: `wrangler.jsonc` binds `.open-next/assets` and does not set
- * `run_worker_first`, so Cloudflare's Asset Worker answers anything that
- * matches a file in there and the Next runtime is not invoked (ADR-0029's
- * amended consequence records this). What these entries change is `next start`
- * and `nx serve-static`, where `public/` is served through Next and the
- * redirect is real. They make the two environments agree; the assets are the
- * SDK's own bytes, identical for every user, so a session buys nothing here
- * either way.
+ * The standalone server serves `/sw.js` and `/@powersync/` straight from
+ * `public/` (issue #171), so this middleware sees them and the redirect would
+ * be real without these entries. They keep the worker's own fetches — its
+ * update check, and the fallback page and PowerSync assets it precaches on
+ * install — from being answered with the welcome HTML. The assets are the
+ * SDK's own bytes, identical for every user, so a session buys nothing here.
  */
 const PUBLIC_PREFIXES = [
   '/welcome',

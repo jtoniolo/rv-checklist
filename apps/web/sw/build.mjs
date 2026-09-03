@@ -2,13 +2,13 @@
 /*
  * Compiles `sw/index.ts` into `public/sw.js` (ADR-0028, issue #150).
  *
- * Runs after `next build`, from two places, for the same reason the PowerSync
- * asset copy is wired twice (ADR-0029, decision 8): `buildCommand` in
- * `open-next.config.ts` covers `opennextjs-cloudflare build`, which is the
- * deploy and never goes through Nx; the `build-sw` Nx target covers a local
- * build. `apps/web/src/service-worker-contract.spec.tsx` fails the gate if
- * either wiring is dropped, because a missing service worker is invisible in
- * this repo — every page still renders, it just renders only online.
+ * Runs after `next build` through the `build-sw` Nx target, which `dependsOn`
+ * `build`. The deploy container (`apps/web/Dockerfile`, issue #171) runs that
+ * same target, so the compile is wired in one place.
+ * `apps/web/src/service-worker-contract.spec.tsx` fails the gate if either the
+ * target or the Dockerfile drops it, because a missing service worker is
+ * invisible in this repo — every page still renders, it just renders only
+ * online.
  *
  * The precache manifest is injected as an esbuild `define`, so the emitted
  * worker's bytes change whenever a precached file does, which is what makes
@@ -29,19 +29,10 @@ const outFile = path.join(publicDir, 'sw.js');
 const OFFLINE_URL = '/offline';
 
 /**
- * Never precached: the worker itself, the placeholder that keeps `public/` in
- * git, and Cloudflare's two config files. Cloudflare consumes `_headers` and
- * `_redirects` to configure the asset responses and never serves either, so
- * precaching one would 404 and, because a single failed entry fails the whole
- * install, leave the app with no worker. Only `_headers` exists today;
- * `_redirects` is listed so that adding it cannot quietly break the worker.
+ * Never precached: the worker itself and the placeholder that keeps `public/`
+ * in git.
  */
-const PUBLIC_EXCLUDED = new Set([
-  'sw.js',
-  '.gitkeep',
-  '_headers',
-  '_redirects',
-]);
+const PUBLIC_EXCLUDED = new Set(['sw.js', '.gitkeep']);
 
 /**
  * Every file under `dir`, as paths relative to it, depth first.

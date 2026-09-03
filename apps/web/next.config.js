@@ -1,10 +1,6 @@
 //@ts-check
 const fs = require('fs');
 const path = require('path');
-if (process.env.NODE_ENV === 'development') {
-  const { initOpenNextCloudflareForDev } = require('@opennextjs/cloudflare');
-  initOpenNextCloudflareForDev();
-}
 
 /**
  * Load the repo-root `.env` (issue #13) so the single committed `.env.example`
@@ -42,9 +38,33 @@ for (const [key, value] of Object.entries(rootEnv)) {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Build a self-contained server that ships in one container (issue #171).
+  // Next traces the files the server needs into `.next/standalone`; the trace
+  // root is the workspace root so it follows this app's pnpm-linked workspace
+  // dependencies out of `apps/web`. Next logs one warning about standalone
+  // output for a monorepo and then serves.
+  output: 'standalone',
+  outputFileTracingRoot: path.resolve(__dirname, '../..'),
   // The shared UI lib is published as raw TypeScript/TSX source, so Next must
   // transpile it rather than treat it as pre-built node_modules.
   transpilePackages: ['@rv-checklist/web-ui'],
+  async headers() {
+    return [
+      {
+        // The service worker is the one file that must never be served stale:
+        // a browser holding an old copy keeps an old precache manifest, so a
+        // deploy would not reach the device (ADR-0028). The `/_next/static/`
+        // immutable header is the Next.js default, so it is not set here.
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, must-revalidate',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

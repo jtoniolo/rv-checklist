@@ -59,12 +59,6 @@ test-output
 .next
 out
 
-# OpenNext (Cloudflare Worker build output)
-.open-next
-
-# Wrangler local dev state
-.wrangler
-
 # work-backlog run reports
 .reports/
 
@@ -80,7 +74,7 @@ tsconfig.tsbuildinfo
 /apps/web/public/@powersync/
 
 # The compiled service worker (ADR-0028). Built from apps/web/sw/ by
-# `nx build-sw @rv-checklist/web` and by the deploy's own build command. Its
+# `nx build-sw @rv-checklist/web`, which the deploy container runs too. Its
 # precache manifest describes one specific build's output, so a committed copy
 # could only ever be wrong.
 /apps/web/public/sw.js
