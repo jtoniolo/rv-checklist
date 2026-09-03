@@ -41,30 +41,24 @@ const planSchema = z.object({
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
 
-// Hooks run inside the sandbox before the agent starts each iteration.
-// pnpm install repairs the dependency tree that copyToWorktree seeded.
+// Hooks run inside the sandbox after the sandbox starts.
+//
+// Only the implementer and the reviewer use this hook. Each of them gets a
+// fresh git worktree, and a git worktree holds no node_modules. A clean
+// install takes about 17 s.
+//
+// The planner and the merger do NOT use this hook. The docker() provider is a
+// bind-mount provider, so the default branch strategy is "head". Under "head"
+// Sandcastle mounts the live host working tree. The host node_modules records
+// the host pnpm store path in node_modules/.modules.yaml. That path does not
+// exist in the container, so pnpm tries to purge the directory. The purge
+// would destroy the host node_modules.
+//
+// Do not add copyToWorktree for node_modules either. A copied node_modules
+// carries the same host store path and causes the same purge.
 const hooks = {
   sandbox: { onSandboxReady: [{ command: "pnpm install --frozen-lockfile" }] },
 };
-
-// Copy node_modules from the host into the worktree before each sandbox
-// starts. Avoids a full pnpm install from scratch; the hook above handles
-// platform-specific binaries and any packages added since the last copy.
-//
-// This repository is a pnpm workspace. pnpm puts a node_modules directory in
-// the root and one in each project, so every directory needs its own entry.
-const copyToWorktree = [
-  "node_modules",
-  "apps/api/node_modules",
-  "apps/web/node_modules",
-  "libs/api/data-access/node_modules",
-  "libs/shared/domain/node_modules",
-  "libs/web/data-access/node_modules",
-];
-
-// The workspace node_modules directories are large. The built-in 60 s limit is
-// too short for the first copy, so raise it.
-const timeouts = { copyToWorktreeMs: 300_000 };
 
 // ---------------------------------------------------------------------------
 // Main loop
@@ -83,7 +77,7 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // It outputs a <plan> JSON block — Output.object parses and validates it.
   // -------------------------------------------------------------------------
   const plan = await sandcastle.run({
-    hooks,
+    // No install hook. The planner only runs gh and reads files.
     sandbox: docker(),
     name: "planner",
     // One iteration is enough: the planner just needs to read and reason,
@@ -129,8 +123,6 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
         branch: issue.branch,
         sandbox: docker(),
         hooks,
-        copyToWorktree,
-        timeouts,
       });
 
       try {
@@ -219,7 +211,8 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // uses to know which branches to merge and which issues to close.
   // -------------------------------------------------------------------------
   await sandcastle.run({
-    hooks,
+    // No install hook. The merger runs in the host working tree, which already
+    // holds an installed node_modules.
     sandbox: docker(),
     name: "merger",
     maxIterations: 1,

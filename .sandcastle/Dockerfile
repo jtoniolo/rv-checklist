@@ -1,4 +1,4 @@
-FROM node:25-bookworm
+FROM node:25-trixie
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -15,9 +15,24 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
   && apt-get update && apt-get install -y gh \
   && rm -rf /var/lib/apt/lists/*
 
-# Install pnpm. This repository is a pnpm workspace and pins pnpm in the
-# "packageManager" field of package.json.
-RUN npm install -g pnpm@11.14.0
+# Install pnpm with corepack. This repository is a pnpm workspace and pins the
+# pnpm version in the "packageManager" field of package.json. Corepack reads
+# that field, so the version has one source.
+#
+# Node 25 does not ship corepack. Node removed it after Node 24. Install it
+# from npm, then cache the pinned pnpm version in the image.
+#
+# COREPACK_HOME is a shared path, because this RUN step is root and the agent
+# user must read the same cache. COREPACK_ENABLE_DOWNLOAD_PROMPT stops corepack
+# from a prompt when it fetches a version that the cache does not hold.
+ENV COREPACK_HOME=/usr/local/share/corepack
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# --force is necessary: the node image ships a yarn binary, and corepack must
+# replace it with its own shim.
+RUN npm install -g --force corepack@latest \
+  && corepack enable \
+  && corepack prepare pnpm@11.14.0 --activate \
+  && chmod -R a+rX "$COREPACK_HOME"
 
 # Build-args for UID/GID alignment: sandcastle docker build-image
 # defaults these to the host user's UID/GID so image-built files
