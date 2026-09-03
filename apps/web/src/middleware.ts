@@ -68,12 +68,16 @@ function isNearExpiry(token: string, now: number): boolean {
 }
 
 /**
- * Build an absolute API URL from the env-provided base. Falls back to the
- * request origin + `/api` if not set (local development).
+ * Build an absolute API URL from the env-provided base. This runs on the server
+ * (edge), so it prefers the server-only `API_BASE_URL`, then the public
+ * `PUBLIC_API_BASE_URL` (ADR-0020). Falls back to the request origin + `/api` if
+ * neither is set (local development).
  */
 function apiUrl(path: string, requestUrl: URL): string {
   const base =
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? `${requestUrl.origin}/api`;
+    process.env.API_BASE_URL ??
+    process.env.PUBLIC_API_BASE_URL ??
+    `${requestUrl.origin}/api`;
   return `${base}${path}`;
 }
 

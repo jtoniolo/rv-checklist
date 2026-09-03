@@ -2,8 +2,10 @@ import { BroadcastChannel as NodeBroadcastChannel } from 'node:worker_threads';
 
 // Give the RTK Query base query an absolute base URL so `fetchBaseQuery` can
 // build a valid `Request` under jsdom/node (a relative URL throws). Runs before
-// the modules under test are imported, so `config.ts` reads it.
-process.env['NEXT_PUBLIC_API_BASE_URL'] = 'https://api.test';
+// the modules under test are imported, so `config.ts` reads it. These specs run
+// under the node environment (no `window`), so `config.ts` reads the process
+// env (ADR-0020); the browser reads `window.__PUBLIC_CONFIG__` instead.
+process.env['PUBLIC_API_BASE_URL'] = 'https://api.test';
 
 // The outbox specs (issue #152) opt into `@jest-environment jsdom` for
 // `@testing-library/react`'s `renderHook`; jsdom's sandboxed realm has

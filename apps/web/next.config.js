@@ -9,8 +9,10 @@ if (process.env.NODE_ENV === 'development') {
 /**
  * Load the repo-root `.env` (issue #13) so the single committed `.env.example`
  * serves both apps: Next only auto-loads env files from the app directory, but
- * the owner keeps one `.env` at the workspace root. We read it here and expose
- * the `NEXT_PUBLIC_*` values, letting real process env win when set.
+ * the owner keeps one `.env` at the workspace root. We read it here and put the
+ * values in the process environment for local development, letting a real
+ * process env win when set. The server reads these at runtime (ADR-0020) —
+ * there is no build-time inlining any more.
  */
 function loadRootEnv() {
   const envPath = path.resolve(__dirname, '../../.env');
@@ -34,22 +36,15 @@ function loadRootEnv() {
 }
 
 const rootEnv = loadRootEnv();
+for (const [key, value] of Object.entries(rootEnv)) {
+  process.env[key] ??= value;
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // The shared UI lib is published as raw TypeScript/TSX source, so Next must
   // transpile it rather than treat it as pre-built node_modules.
   transpilePackages: ['@rv-checklist/web-ui'],
-  env: {
-    NEXT_PUBLIC_GOOGLE_CLIENT_ID:
-      process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ??
-      rootEnv.NEXT_PUBLIC_GOOGLE_CLIENT_ID ??
-      '',
-    NEXT_PUBLIC_API_BASE_URL:
-      process.env.NEXT_PUBLIC_API_BASE_URL ??
-      rootEnv.NEXT_PUBLIC_API_BASE_URL ??
-      'http://localhost:3000/api',
-  },
 };
 
 module.exports = nextConfig;

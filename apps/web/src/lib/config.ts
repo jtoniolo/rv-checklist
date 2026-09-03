@@ -1,13 +1,34 @@
 /**
- * Browser-visible config (issue #13). Both values are read from the environment
- * (`NEXT_PUBLIC_*`, inlined by Next at build) so the same bundle points at a
- * local or deployed API with no code change. The defaults live in one place —
- * `next.config.js`, which always injects a concrete value — so these reads only
- * narrow `string | undefined` to `string`.
+ * Browser-visible config (issue #13, ADR-0020). One published image serves
+ * every environment, so the two public values reach the browser at runtime, not
+ * at build time: the root layout reads them from the server environment and
+ * writes them onto `window.__PUBLIC_CONFIG__` in an inline script. Here we read
+ * that window object in the browser, where the inline script has set it, and
+ * the environment on the server, where it never is. The shape stays the same,
+ * so callers do not change.
  */
-export const config = {
-  /** Google OAuth client id for One Tap (must match the API's GOOGLE_CLIENT_ID). */
-  googleClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? '',
-  /** Base URL the browser calls the API at, including the `/api` prefix. */
-  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? '',
-} as const;
+interface PublicRuntimeConfig {
+  readonly PUBLIC_API_BASE_URL?: string;
+  readonly GOOGLE_CLIENT_ID?: string;
+}
+
+function runtimeConfig(): PublicRuntimeConfig | undefined {
+  return (globalThis as { __PUBLIC_CONFIG__?: PublicRuntimeConfig })
+    .__PUBLIC_CONFIG__;
+}
+
+function readConfig(): { googleClientId: string; apiBaseUrl: string } {
+  const runtime = runtimeConfig();
+  if (runtime) {
+    return {
+      googleClientId: runtime.GOOGLE_CLIENT_ID ?? '',
+      apiBaseUrl: runtime.PUBLIC_API_BASE_URL ?? '',
+    };
+  }
+  return {
+    googleClientId: process.env.GOOGLE_CLIENT_ID ?? '',
+    apiBaseUrl: process.env.PUBLIC_API_BASE_URL ?? '',
+  };
+}
+
+export const config = readConfig();

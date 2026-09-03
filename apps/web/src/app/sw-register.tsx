@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import type { JSX } from 'react';
+import { config } from '../lib/config';
 
 /**
  * Registers the service worker (ADR-0028) — what makes the app installable and
@@ -27,9 +28,18 @@ export function ServiceWorkerRegistrar(): JSX.Element {
       return;
     }
 
+    // The worker reads the API base URL from its own registration URL
+    // (ADR-0020): the published image is environment-blind, so the one place
+    // the worker itself calls the API — the outbox flush — cannot rely on a
+    // compile-time constant. The page, which does know the runtime value,
+    // hands it over in the query string.
+    const swUrl = config.apiBaseUrl
+      ? `/sw.js?api=${encodeURIComponent(config.apiBaseUrl)}`
+      : '/sw.js';
+
     const register = async (): Promise<void> => {
       try {
-        await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.register(swUrl);
       } catch {
         // Offline support is a progressive enhancement; ignore failures.
       }

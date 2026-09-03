@@ -49,8 +49,15 @@ interface SyncEvent extends ExtendableEvent {
   readonly tag: string;
 }
 
-/** `NEXT_PUBLIC_API_BASE_URL`, injected by `sw/build.mjs` (this worker is never a Next.js runtime). */
-declare const __API_BASE_URL__: string;
+/**
+ * The API base URL, read from this worker's own registration URL (ADR-0020):
+ * the page registers `/sw.js?api=<url>` with the runtime value, so the
+ * published image carries no build-time constant. Empty when the page
+ * registered no `api` param (local development, or an API on the page origin).
+ */
+function apiBaseUrl(): string {
+  return new URL(self.location.href).searchParams.get('api') ?? '';
+}
 
 /** The precached, data-free page shown for a route with no cached copy. */
 const OFFLINE_URL = '/offline';
@@ -90,7 +97,7 @@ function isBuildAsset({ url, sameOrigin }: RouteMatchCallbackOptions): boolean {
 
 /**
  * An attachment download (ADR-0026, ADR-0028) — the API's proxied byte
- * stream, so cross-origin against `NEXT_PUBLIC_API_BASE_URL` rather than this
+ * stream, so cross-origin against the runtime API base URL rather than this
  * worker's own origin (ADR-0019: the browser calls the API directly).
  * Matched on path alone; current-trip warming (issue #151) is what puts the
  * bytes in cache ahead of the first request, and {@link respondToAttachment}
@@ -247,7 +254,7 @@ self.addEventListener('sync', (event: Event) => {
       const db = await openOutboxDatabase();
       const { shouldRetry } = await flushOutbox({
         db,
-        apiBaseUrl: __API_BASE_URL__,
+        apiBaseUrl: apiBaseUrl(),
         fetcher: (input, init) => fetch(input, init),
         broadcast: (message) => {
           const channel = new BroadcastChannel(OUTBOX_BROADCAST_CHANNEL);

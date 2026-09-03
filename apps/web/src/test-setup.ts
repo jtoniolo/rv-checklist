@@ -9,8 +9,17 @@ import { BroadcastChannel, MessagePort } from 'node:worker_threads';
 
 // Give the RTK Query base query an absolute base URL so `fetchBaseQuery` can
 // build a valid `Request` under jsdom (a relative URL throws). Runs before the
-// modules under test are imported, so the data-access `config.ts` reads it.
-Object.assign(process.env, { NEXT_PUBLIC_API_BASE_URL: 'https://api.test' });
+// modules under test are imported, so the app and data-access `config.ts` read
+// it. In the browser (this jsdom env) that config reads `window.__PUBLIC_CONFIG__`
+// (ADR-0020), the object the root layout writes at runtime; the process env
+// value covers any server-side (`process.env`) read the same suites make.
+Object.assign(globalThis, {
+  __PUBLIC_CONFIG__: {
+    PUBLIC_API_BASE_URL: 'https://api.test',
+    GOOGLE_CLIENT_ID: 'test-google-client-id',
+  },
+});
+Object.assign(process.env, { PUBLIC_API_BASE_URL: 'https://api.test' });
 
 // jsdom ships no fetch API; specs that exercise RTK Query need the real
 // constructors (`fetchBaseQuery` builds `Request`s, mocks build `Response`s),

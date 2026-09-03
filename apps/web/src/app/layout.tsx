@@ -33,6 +33,22 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
+/**
+ * The two public values, serialised for the inline bootstrap script. One
+ * published image serves every environment (ADR-0020), so the server reads the
+ * values from its own environment on each request and hands them to the browser
+ * here — no build-time inlining, no rebuild to point at a different API or
+ * OAuth client. `<` is escaped so a value can never close the script tag.
+ */
+function publicConfigScript(): string {
+  const runtime = {
+    PUBLIC_API_BASE_URL: process.env.PUBLIC_API_BASE_URL ?? '',
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
+  };
+  const json = JSON.stringify(runtime).replaceAll('<', String.raw`\u003c`);
+  return `window.__PUBLIC_CONFIG__=${json}`;
+}
+
 export default function RootLayout({
   children,
 }: {
@@ -41,6 +57,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        {/* Runs before the client bundle reads `config`, so the browser sees
+            this request's values (ADR-0020). */}
+        <script dangerouslySetInnerHTML={{ __html: publicConfigScript() }} />
         <StoreProvider>
           <SyncSignInBanner />
           {children}

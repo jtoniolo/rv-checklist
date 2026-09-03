@@ -8,7 +8,13 @@ import { ServiceWorkerRegistrar } from './sw-register';
  * whatever a previous production build left behind. The second is what stops a
  * stale worker cache-firsting `/_next/static/` against the dev server and
  * handing back yesterday's chunks.
+ *
+ * The registration URL carries the runtime API base URL (ADR-0020): the worker
+ * reads it from its own location, so the published image needs no compile-time
+ * constant. `test-setup.ts` seeds `window.__PUBLIC_CONFIG__` with
+ * `https://api.test`, hence the encoded `?api=` param below.
  */
+const SW_URL = `/sw.js?api=${encodeURIComponent('https://api.test')}`;
 
 interface FakeServiceWorkerContainer {
   register: jest.Mock;
@@ -65,7 +71,7 @@ describe('ServiceWorkerRegistrar (issue #150)', () => {
     render(<ServiceWorkerRegistrar />);
 
     await waitFor(() => {
-      expect(container.register).toHaveBeenCalledWith('/sw.js');
+      expect(container.register).toHaveBeenCalledWith(SW_URL);
     });
     expect(container.getRegistrations).not.toHaveBeenCalled();
   });
@@ -84,7 +90,7 @@ describe('ServiceWorkerRegistrar (issue #150)', () => {
     });
 
     await waitFor(() => {
-      expect(container.register).toHaveBeenCalledWith('/sw.js');
+      expect(container.register).toHaveBeenCalledWith(SW_URL);
     });
   });
 

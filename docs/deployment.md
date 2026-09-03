@@ -57,10 +57,14 @@ deploying: wrangler resolves `main` and `assets.directory` relative to the
 config file, so the paths from the environment-blind config only work from
 that directory.
 
-Required at build time (inlined into the bundle):
+One image serves every environment (ADR-0020). The build reads no public
+value. The container reads these from its own environment at run time, and the
+server hands the two public values to the browser in an inline script:
 
-- `NEXT_PUBLIC_API_BASE_URL` — public API origin, e.g. `https://api.example.com/api`
-- `NEXT_PUBLIC_GOOGLE_CLIENT_ID` — Google OAuth client id
+- `PUBLIC_API_BASE_URL` — public API origin, e.g. `https://api.example.com/api`
+- `GOOGLE_CLIENT_ID` — Google OAuth client id, the same one the API verifies
+- `API_BASE_URL` — server-only internal API address for SSR fetches; optional,
+  and the server falls back to `PUBLIC_API_BASE_URL` when it is unset
 
 DNS belongs to the deployer.
 

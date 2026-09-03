@@ -20,13 +20,11 @@ import { cookies } from 'next/headers';
 /**
  * The API base URL for server-side fetches (ADR-0018). Prefers a server-only
  * env var (`API_BASE_URL`) so the server can reach the API at an internal
- * address; falls back to the browser-visible `NEXT_PUBLIC_API_BASE_URL`,
- * which Next inlines at build.
+ * address; falls back to the public `PUBLIC_API_BASE_URL`. Both are read from
+ * the process environment at request time (ADR-0020).
  */
 function apiBaseUrl(): string {
-  return (
-    process.env['API_BASE_URL'] ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? ''
-  );
+  return process.env.API_BASE_URL ?? process.env.PUBLIC_API_BASE_URL ?? '';
 }
 
 interface Parser<T> {
