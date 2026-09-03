@@ -2,7 +2,7 @@
 # Run from the repo root: docker build -f apps/api/Dockerfile .
 
 # ---- Build ----
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 
 RUN corepack enable
 
@@ -29,21 +29,23 @@ RUN npx nx sync
 # and compiled workspace modules (no source tree, no dev toolchain).
 RUN npx nx run @rv-checklist/api:prune
 
-# ---- Production ----
-FROM node:22-alpine
+# Install the production dependencies from the pruned lockfile into the pruned
+# output. The runtime stage only copies this tree, so the install must finish
+# here.
+# --ignore-scripts: the pruned lockfile carries build-tool transitive deps
+# (e.g. @swc/core) whose postinstall scripts aren't needed at runtime.
+RUN cd apps/api/dist && pnpm install --frozen-lockfile --prod --ignore-scripts
 
-RUN corepack enable && corepack prepare pnpm@11.14.0 --activate
+# ---- Production ----
+# Distroless carries only Node and its libraries: no shell, no package manager,
+# and no corepack. The image entrypoint is Node, so the command is the server
+# file only. The :nonroot tag runs as a non-root user.
+FROM gcr.io/distroless/nodejs24-debian13:nonroot
 
 WORKDIR /app
 
-# Copy the pruned build output
+# Copy the pruned build output with its production dependencies.
 COPY --from=build /app/apps/api/dist ./
 
-# Install production dependencies from the pruned lockfile.
-# --ignore-scripts: the pruned lockfile carries build-tool transitive deps
-# (e.g. @swc/core) whose postinstall scripts aren't needed at runtime.
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts
-
-USER node
 EXPOSE 3000
-CMD ["node", "main.js"]
+CMD ["main.js"]
