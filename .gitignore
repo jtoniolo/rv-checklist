@@ -78,4 +78,9 @@ tsconfig.tsbuildinfo
 # precache manifest describes one specific build's output, so a committed copy
 # could only ever be wrong.
 /apps/web/public/sw.js
-.pnpm-store/v11/index.db
+
+# The Sandcastle container bind-mounts this working tree at
+# /home/agent/workspace. The container home is on a different device, so
+# pnpm cannot hard-link into its own store and falls back to a store at the
+# project root. The directory is a build cache, not source.
+.pnpm-store/
