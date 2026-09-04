@@ -3,8 +3,11 @@
 # A release is a git tag. One tag `vX.Y.Z` makes four artifacts at one version:
 # the API image, the API chart, the web image, and the web chart. Bump
 # `version`/`appVersion` in charts/api/Chart.yaml and charts/web/Chart.yaml in
-# the same commit, tag `vX.Y.Z` on it, then dispatch this workflow against that
-# tag: Actions → CD → Run workflow → Tags → vX.Y.Z.
+# the same commit, then tag `vX.Y.Z` on it. The push of that tag starts this
+# workflow. The `/release` skill does the whole sequence.
+#
+# To run the workflow again on a tag that is already pushed, dispatch it:
+# Actions → CD → Run workflow → Tags → vX.Y.Z.
 #
 # The version comes from the tag, never from a run number, so every published
 # artifact traces back to a commit and `git checkout vX.Y.Z && helm package
@@ -14,6 +17,14 @@
 name: CD
 
 on:
+  # The tag push starts this workflow. `/release` writes the version into
+  # both charts, commits, tags, and pushes, so the tag push is the last act
+  # of one sequence and needs no second command. The drift guard below is
+  # the check that stops a bad release, and it runs on both triggers.
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  # Kept for a re-run of a tag that is already pushed.
   workflow_dispatch:
 
 permissions:

@@ -1,20 +1,20 @@
 ---
 name: release
-description: Makes a release. Reads the work since the last tag, proposes a semantic version, waits for your approval, sets the version in all the files, commits, tags, pushes, publishes the notes, and then tells you to dispatch CD.
+description: Makes a release. Reads the work since the last tag, proposes a semantic version, waits for your approval, sets the version in all the files, commits, tags, pushes, and publishes the notes. The tag push starts CD.
 disable-model-invocation: true
 ---
 
 # Release
 
-A release is a **git tag**. CD reads the version from the tag that you dispatch
-it against. If that tag does not agree with `charts/api/Chart.yaml` or
+A release is a **git tag**. The push of a `vX.Y.Z` tag starts CD. CD reads the
+version from that tag. If the tag does not agree with `charts/api/Chart.yaml` or
 `charts/web/Chart.yaml`, CD refuses to publish. The drift guard in
 `.github/workflows/cd.yml` checks both charts.
 
 A person who makes the tag manually does a sequence of steps. It is easy to do
 only a part of that sequence. You can change the version and forget the tag. You
 can make the tag and forget the version. The guard finds the difference only
-after you dispatch CD.
+after the tag push.
 
 This skill does the full sequence, or it fails in **preflight** and changes
 nothing.
@@ -206,8 +206,8 @@ grep -m1 '"version"' package.json apps/api/package.json apps/web/package.json
 
 Each line must print `X.Y.Z`. The first four commands are the same commands that
 the drift guard of CD uses on each chart. If they pass here, the guard passes
-later. This check occurs before the tag exists, and the guard occurs after you
-dispatch CD.
+later. This check occurs before the tag exists, and the guard occurs after the
+tag push.
 
 Preflight already checked both charts with lint. You then changed both charts.
 Thus check them again:
@@ -236,6 +236,10 @@ git push origin "vX.Y.Z"
 Make the commit before the tag. Push the commit before the tag. The tag then
 always points to a commit that the remote has.
 
+**The tag push publishes the release.** CD starts on that push. Every step
+before it is recoverable, and this step is not. Preflight and step 5 are the
+checks that protect it, so do not push the tag until both pass.
+
 **Recovery condition.** After step 5, run `git status --porcelain`. If it prints
 nothing, all seven values already held `X.Y.Z`, and there is nothing to commit. Do
 not make a commit. Make the tag on `HEAD`, because `HEAD` already holds the
@@ -262,18 +266,26 @@ Never use a force push. Never move a tag.
 gh release create "vX.Y.Z" --title "vX.Y.Z" --generate-notes
 ```
 
-## 8. Hand the release to the person
+## 8. Report the release
 
-A person must dispatch CD. When that person selects the tag from the list, that
-person confirms the content of the release. Thus the run ends with the
-instruction below, and the skill prints it last.
+The tag push of step 6 started CD. The publish operation is already running.
 
-The skill does not start the publish operation. Do not run
-`gh workflow run cd.yml`. Do not run the equivalent `gh api` command. This rule
-has no exception.
+Do not run `gh workflow run cd.yml`. Do not run the equivalent `gh api`
+command. Dispatch CD only when the person asks you to run a tag again, and that
+tag is already pushed. A dispatch on a new tag would make a second run of the
+same release.
+
+Read the run that the tag push started:
+
+```bash
+gh run list --workflow cd.yml --limit 1 --json status,conclusion,url
+```
+
+The run needs a few minutes. Do not wait for it. Print the text below, fill the
+URL from the command above, and end the run:
 
 ```
-Release vX.Y.Z is tagged and pushed.
+Release vX.Y.Z is tagged and pushed. CD started on the tag push.
 
-Publish it: Actions → CD → Run workflow → Tags → vX.Y.Z
+Watch it: <url>
 ```
