@@ -6,6 +6,10 @@ FROM node:24-alpine AS build
 
 RUN corepack enable
 
+# The Docker build has no TTY. Without CI, pnpm stops and asks before it
+# removes a node_modules directory (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY).
+ENV CI=true
+
 WORKDIR /app
 
 # Copy dependency manifests first for layer caching
@@ -34,7 +38,9 @@ RUN npx nx run @rv-checklist/api:prune
 # here.
 # --ignore-scripts: the pruned lockfile carries build-tool transitive deps
 # (e.g. @swc/core) whose postinstall scripts aren't needed at runtime.
-RUN cd apps/api/dist && pnpm install --frozen-lockfile --prod --ignore-scripts
+# --ignore-workspace: apps/api/dist holds no pnpm-workspace.yaml, so pnpm walks
+# up to /app and installs the whole workspace instead of the pruned lockfile.
+RUN cd apps/api/dist && pnpm install --frozen-lockfile --prod --ignore-scripts --ignore-workspace
 
 # ---- Production ----
 # Distroless carries only Node and its libraries: no shell, no package manager,
