@@ -1,6 +1,6 @@
 {
   "name": "@rv-checklist/web",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "scripts": {
     "copy-powersync-assets": "powersync-web copy-assets -o public",
