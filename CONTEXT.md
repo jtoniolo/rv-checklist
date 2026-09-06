@@ -415,12 +415,13 @@ also)
 **Sync**:
 The background exchange that keeps the local store and the server in agreement.
 The downloads arrive continuously while the device has a connection. The
-application sends the writes in the queue through the API automatically. It does
-this when the user opens the application and when the connection returns.
+application drains the write queue through the API automatically. It does this
+when the user opens the application, when the connection returns, and after a
+sign-in.
 
-Sync is never an action of the user.
-_Avoid_: backup, refresh (this word is for tokens), manual sync (this function
-does not exist)
+The owner can also start a drain from the sync screen. This is a shortcut, not a
+requirement. The automatic drain runs in all cases.
+_Avoid_: backup, refresh (this word is for tokens)
 
 **Newest wins**:
 The rule for a collision. When two devices change the same record, the
@@ -435,15 +436,61 @@ Thus if two devices complete different steps, the application counts both steps.
 _Avoid_: conflict resolution UI, merge (nothing merges, except the run steps)
 
 **Pending**:
-A write that is offline and in the queue. The most visible example is a **pending
-attachment**. The owner captures the attachment offline. The device holds it in
-the outbox with a "waiting to upload" badge. The browser uploads it, also when
-the application is closed.
+An operation in the write queue, or an attachment in the outbox. The most visible
+example is a **pending attachment**. The owner captures the attachment offline.
+The device holds it in the outbox with a "waiting to upload" badge. The browser
+uploads it, also when the application is closed.
 
 A pending object exists only on the device that made it, until the upload
-completes.
+completes. A record with a pending operation shows a "pending" badge.
 _Avoid_: draft (a pending object sends itself, but a draft waits for the user),
 unsynced (the word for the user is "pending")
+
+**Write queue**:
+The ordered list of the operations on the device that the API has not confirmed.
+Each device has one write queue, and it belongs to one owner. The device keeps
+the write queue until the drain sends each operation.
+_Avoid_: outbox (this word is for the attachment bytes), upload queue
+
+**Operation**:
+One entry in the write queue. It is one write that the owner made. It holds the
+name of the write, the payload, the edit time, and an idempotency key. An
+idempotency key is a unique key that lets the API recognize a repeat of the same
+operation.
+_Avoid_: action (the Redux term), request (the HTTP form of an operation),
+mutation
+
+**Drain**:
+The automatic send of the operations in the write queue to the API, in order,
+one at a time. A drain stops on a network failure and starts again later. A drain
+holds the whole write queue when the session is not usable.
+_Avoid_: flush (the word for the attachment outbox), upload, push
+
+**Rejected**:
+An operation that the API refused with a client error. The device discards the
+operation, shows the server version of the record, and puts a notice in the
+inbox. A rejected operation never blocks the operations behind it.
+_Avoid_: failed (a transient failure retries, and a rejection does not)
+
+**Superseded**:
+An operation that the API did not apply, because a newer change to the same
+record was already on the server. The device shows the server version and puts a
+notice in the inbox. This is the "newest wins" rule as the owner sees it.
+_Avoid_: conflict
+
+**Notice**:
+A message to the owner about an operation that the device no longer shows. The
+kinds are rejected and superseded. A notice belongs to the device and never
+syncs. The **inbox** is the screen that lists the notices. The header shows the
+count of unread notices.
+_Avoid_: notification (the browser term, and the application sends no push
+notification), error, toast
+
+**Sync screen**:
+The screen that shows the state of the sync, the count of pending operations,
+the list of pending operations, and the "Sync now" action. The offline indicator
+in the header opens it.
+_Avoid_: settings
 
 **Warming**:
 The operation that puts the pages and the attachments of the current trip on the
@@ -466,8 +513,9 @@ _Avoid_: error page, not found (the page exists, and only this device has no
 copy)
 
 **Offline indicator**:
-The signal in the header of the application that tells the owner that the device
-is offline. The connection state of the sync engine drives this signal.
+The control in the header of the application that tells the owner that the
+device is offline, and shows the count of pending operations. The connection
+state of the sync layer drives this signal. A tap opens the sync screen.
 
 Some functions cannot operate offline. These are the place autocomplete, the
 automatic leg distances, and the display of an attachment that is not on the
